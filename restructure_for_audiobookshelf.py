@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/restructure_for_audiobookshelf.py – v4.0  (2025-06-14)
+ABtools/restructure_for_audiobookshelf.py – v4.1  (2025-06-15)
 Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --commit 
 • Recursively scans source_root; every directory that *contains* audio but whose
   sub-directories don’t is treated as one “book”.
@@ -53,9 +53,16 @@ def leaf_audio_dirs(root: Path) -> List[Path]:
     ]
 
 def safe_move(src: Path, dst: Path, copy: bool = False) -> None:
-    """Move ``src`` to ``dst`` (or copy when ``copy`` is True)."""
+    """Move ``src`` to ``dst`` (or copy when ``copy`` is True) and ensure
+    ``dst`` does not already exist."""
+    if dst.exists():
+        raise FileExistsError(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
     if copy:
-        shutil.copytree(src, dst)
+        if src.is_dir():
+            shutil.copytree(src, dst)
+        else:
+            shutil.copy2(src, dst)
         return
     try:
         shutil.move(src, dst)
@@ -64,8 +71,12 @@ def safe_move(src: Path, dst: Path, copy: bool = False) -> None:
         if isinstance(e, OSError) and e.errno not in (errno.EXDEV, errno.EACCES):
             raise
         print("  ! rename failed – copying …")
-        shutil.copytree(src, dst)
-        shutil.rmtree(src)
+        if src.is_dir():
+            shutil.copytree(src, dst)
+            shutil.rmtree(src)
+        else:
+            shutil.copy2(src, dst)
+            src.unlink()
 
 # ───────── metadata ─────────
 @dataclass
@@ -229,7 +240,7 @@ def flatten_discs(book_dir: Path, dry: bool):
         if p != new:
             print(f"    {'mv' if not dry else '↪'} {p.name} → {new.name}")
             if not dry:
-                shutil.move(str(p), str(new))
+                safe_move(p, new)
     if not dry:
         for _, d in discs:
             try: d.rmdir()

@@ -7,9 +7,9 @@ This repository contains small utilities for preparing audiobook folders for [Au
 | Script | Version | Path |
 |-------|---------|------|
 
-| `combobook.py` | v1.4 | `ABtools/combobook.py` |
-| `flatten_discs.py` | v1.2 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v4.0 | `ABtools/restructure_for_audiobookshelf.py` |
+| `combobook.py` | v1.5 | `ABtools/combobook.py` |
+| `flatten_discs.py` | v1.3 | `ABtools/flatten_discs.py` |
+| `restructure_for_audiobookshelf.py` | v4.1 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.0 | `ABtools/search_and_tag.py` |
 
 ## `combobook.py`

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/flatten_discs.py  –  v1.2  (2025-05-28)
+ABtools/flatten_discs.py  –  v1.3  (2025-06-15)
 
 Flatten audiobook rips that live in
     Book Name (Disc 01)  /  Book Name (Disc 02)  …
@@ -13,6 +13,13 @@ from __future__ import annotations
 import argparse, re, shutil, sys
 from pathlib import Path
 from typing import List, Tuple
+
+def safe_move(src: Path, dst: Path) -> None:
+    """Move ``src`` to ``dst`` ensuring ``dst`` does not exist."""
+    if dst.exists():
+        raise FileExistsError(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(src), str(dst))
 
 AUDIO_EXTS = {".mp3", ".m4b", ".m4a", ".flac", ".ogg", ".opus"}
 
@@ -71,7 +78,7 @@ def flatten(parent: Path, discs: List[Tuple[int, Path]],
         print(f"   {'mv' if not dry else '↪'} {src.name} → {dest.relative_to(parent)}")
         if not dry:
             book_dir.mkdir(exist_ok=True)
-            shutil.move(str(src), str(dest))
+            safe_move(src, dest)
 
     if not dry:
         for _, d in discs:

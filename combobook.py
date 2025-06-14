@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/combobook.py  ·  v1.4  ·  2025-06-14
+ABtools/combobook.py  ·  v1.5  ·  2025-06-15
 
 USAGE
 -----
@@ -111,9 +111,16 @@ def leaf_dirs(root:Path)->List[Path]:
                         for c in p.iterdir())]
 
 def safe_move(src: Path, dst: Path, copy: bool = False) -> None:
-    """Move ``src`` to ``dst`` (or copy when ``copy`` is True)."""
+    """Move ``src`` to ``dst`` (or copy when ``copy`` is True) ensuring no
+    destination collision."""
+    if dst.exists():
+        raise FileExistsError(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
     if copy:
-        shutil.copytree(src, dst)
+        if src.is_dir():
+            shutil.copytree(src, dst)
+        else:
+            shutil.copy2(src, dst)
         return
     try:
         shutil.move(str(src), str(dst))
@@ -121,8 +128,12 @@ def safe_move(src: Path, dst: Path, copy: bool = False) -> None:
         if isinstance(e, OSError) and e.errno not in (errno.EXDEV, errno.EACCES):
             raise
         rprint("  ! rename failed – copying …")
-        shutil.copytree(src, dst)
-        shutil.rmtree(src)
+        if src.is_dir():
+            shutil.copytree(src, dst)
+            shutil.rmtree(src)
+        else:
+            shutil.copy2(src, dst)
+            src.unlink()
 
 # ───────────── existing tag reader ──────────────────────────────────────────
 def tags_from_track(track:Path)->Optional[Meta]:
