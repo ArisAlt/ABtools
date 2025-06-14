@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
-"""
+
 ABtools/combobook.py  ·  v1.3  ·  2025-06-14
-Tag (Open Library / Google Books / Audible) → flatten discs → build Audiobookshelf folders
-in one pass.
 
 USAGE
 -----
