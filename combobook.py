@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-ABtools/combobook.py  ·  v1.1  ·  2025-06-07
-Tag (Open Library / Google Books) → flatten discs → build Audiobookshelf folders
+ABtools/combobook.py  ·  v1.2  ·  2025-06-14
+Tag (Open Library / Google Books / Audible) → flatten discs → build Audiobookshelf folders
 in one pass.
 
 USAGE
@@ -57,8 +57,13 @@ SEQ_TITLE_YEAR_RX = re.compile(
 try:
     import requests, mutagen
     from mutagen import File as MFile
+    from bs4 import BeautifulSoup
 except ImportError as e:
-    sys.exit(f"missing dependency: {e.name}  ➜  pip install mutagen requests")
+    sys.exit(
+        "missing dependency: {}  ➜  pip install mutagen requests beautifulsoup4".format(
+            e.name
+        )
+    )
 
 # colour
 try:
@@ -208,23 +213,71 @@ def gb_search_all(meta: Meta) -> List[Meta]:
     except Exception:
         return []
 
+def audible_search_all(meta: Meta) -> List[Meta]:
+    try:
+        q = f"{meta.title} {meta.author}"
+        html = requests.get(
+            "https://www.audible.com/search",
+            params={"keywords": q},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10,
+        ).text
+        soup = BeautifulSoup(html, "html.parser")
+        out = []
+        for item in soup.select("li.bc-list-item"):
+            title_el = item.select_one("h3")
+            author_el = item.select_one(".authorLabel a")
+            year_el = item.select_one(".releaseDateLabel+span")
+            if not title_el or not author_el:
+                continue
+            year = None
+            if year_el:
+                m = re.search(r"\d{4}", year_el.get_text())
+                if m:
+                    year = m.group(0)
+            out.append(
+                Meta(
+                    author=author_el.get_text(strip=True),
+                    title=title_el.get_text(strip=True),
+                    year=year,
+                )
+            )
+            if len(out) >= 5:
+                break
+        return out
+    except Exception:
+        return []
+
 def _similarity(a: Meta, b: Meta) -> float:
     t1 = f"{a.author} {a.title}".lower()
     t2 = f"{b.author} {b.title}".lower()
     return SequenceMatcher(None, t1, t2).ratio()
 
-def choose_meta(guess:Meta)->Optional[Meta]:
-    candidates = ol_search_all(guess)
-    if not candidates:
-        candidates = gb_search_all(guess)
+def choose_meta(guess: Meta) -> Optional[Meta]:
+    candidates = (
+        ol_search_all(guess)
+        + gb_search_all(guess)
+        + audible_search_all(guess)
+    )
     if not candidates:
         return None
+
+    seen = set()
+    unique = []
+    for c in candidates:
+        key = (c.author.lower(), c.title.lower())
+        if key not in seen:
+            unique.append(c)
+            seen.add(key)
+    candidates = unique
 
     candidates.sort(key=lambda m: _similarity(guess, m), reverse=True)
 
     for hit in candidates:
         score = _similarity(guess, hit)
-        rprint(f"  guess: [italic]{guess.title}[/] by {guess.author} ({guess.year or '?'})")
+        rprint(
+            f"  guess: [italic]{guess.title}[/] by {guess.author} ({guess.year or '?'})"
+        )
         rprint(
             f"  match: [bold]{hit.title}[/] by {hit.author} ({hit.year or '?'})  score: {score:.2f}"
         )
