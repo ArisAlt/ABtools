@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-ABtools/combobook.py  ·  v1.1  ·  2025-06-07
-Tag (Open Library / Google Books) → flatten discs → build Audiobookshelf folders
+ABtools/combobook.py  ·  v1.3  ·  2025-06-14
+Tag (Open Library / Google Books / Audible) → flatten discs → build Audiobookshelf folders
 in one pass.
 
 USAGE
@@ -36,6 +36,8 @@ DISC_RX = re.compile(
     r'(?:[\(\[{]?)(?:disc|disk|cd|part)[\s_\-]*(?P<num>\d{1,3})(?:[\)\]}]?)',
     re.IGNORECASE,
 )
+# also match "(1 of 5)" / "(3/5)" patterns
+PART_RX = re.compile(r"\((?P<num>\d{1,3})\s*(?:of|/)?\s*\d{1,3}\)", re.IGNORECASE)
 
 # ︙ — regular expressions carried over from search_and_tag.py — ︙
 TAIL_RX  = re.compile(r"(?:\{[^}]*\})?(?:\s*\d+\.\d{2}\.\d{2})?(?:\s*\d+\s*[kK])?\s*$")
@@ -57,8 +59,13 @@ SEQ_TITLE_YEAR_RX = re.compile(
 try:
     import requests, mutagen
     from mutagen import File as MFile
+    from bs4 import BeautifulSoup
 except ImportError as e:
-    sys.exit(f"missing dependency: {e.name}  ➜  pip install mutagen requests")
+    sys.exit(
+        "missing dependency: {}  ➜  pip install mutagen requests beautifulsoup4".format(
+            e.name
+        )
+    )
 
 # colour
 try:
@@ -208,23 +215,71 @@ def gb_search_all(meta: Meta) -> List[Meta]:
     except Exception:
         return []
 
+def audible_search_all(meta: Meta) -> List[Meta]:
+    try:
+        q = f"{meta.title} {meta.author}"
+        html = requests.get(
+            "https://www.audible.com/search",
+            params={"keywords": q},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10,
+        ).text
+        soup = BeautifulSoup(html, "html.parser")
+        out = []
+        for item in soup.select("li.bc-list-item"):
+            title_el = item.select_one("h3")
+            author_el = item.select_one(".authorLabel a")
+            year_el = item.select_one(".releaseDateLabel+span")
+            if not title_el or not author_el:
+                continue
+            year = None
+            if year_el:
+                m = re.search(r"\d{4}", year_el.get_text())
+                if m:
+                    year = m.group(0)
+            out.append(
+                Meta(
+                    author=author_el.get_text(strip=True),
+                    title=title_el.get_text(strip=True),
+                    year=year,
+                )
+            )
+            if len(out) >= 5:
+                break
+        return out
+    except Exception:
+        return []
+
 def _similarity(a: Meta, b: Meta) -> float:
     t1 = f"{a.author} {a.title}".lower()
     t2 = f"{b.author} {b.title}".lower()
     return SequenceMatcher(None, t1, t2).ratio()
 
-def choose_meta(guess:Meta)->Optional[Meta]:
-    candidates = ol_search_all(guess)
-    if not candidates:
-        candidates = gb_search_all(guess)
+def choose_meta(guess: Meta) -> Optional[Meta]:
+    candidates = (
+        ol_search_all(guess)
+        + gb_search_all(guess)
+        + audible_search_all(guess)
+    )
     if not candidates:
         return None
+
+    seen = set()
+    unique = []
+    for c in candidates:
+        key = (c.author.lower(), c.title.lower())
+        if key not in seen:
+            unique.append(c)
+            seen.add(key)
+    candidates = unique
 
     candidates.sort(key=lambda m: _similarity(guess, m), reverse=True)
 
     for hit in candidates:
         score = _similarity(guess, hit)
-        rprint(f"  guess: [italic]{guess.title}[/] by {guess.author} ({guess.year or '?'})")
+        rprint(
+            f"  guess: [italic]{guess.title}[/] by {guess.author} ({guess.year or '?'})"
+        )
         rprint(
             f"  match: [bold]{hit.title}[/] by {hit.author} ({hit.year or '?'})  score: {score:.2f}"
         )
@@ -249,24 +304,52 @@ def write_tags(track:Path, meta:Meta):
     if tmp.exists(): tmp.replace(track)
 
 # ───────────── disc-flattener ────────────────────────────────────────────────
-def flatten(folder:Path,dry:bool):
-    discs = sorted((int(m.group(1)), p)
-                   for p in folder.iterdir() if p.is_dir()
-                   for m in [DISC_RX.search(p.name)] if m)
-    if not discs: return
-    tracks=[t for _,d in discs for t in sorted(d.iterdir()) if t.suffix.lower() in AUDIO_EXTS]
-    if not tracks: return
+def flatten(folder: Path, dry: bool):
+    discs = []
+    for p in folder.iterdir():
+        if not p.is_dir():
+            continue
+        m = DISC_RX.search(p.name) or PART_RX.search(p.name)
+        if m:
+            discs.append((int(m.group("num")), p))
+    discs.sort(key=lambda t: t[0])
+    if not discs:
+        return
+
+    tracks = []
+    single_file = True
+    for num, d in discs:
+        disc_tracks = sorted(t for t in d.iterdir() if t.suffix.lower() in AUDIO_EXTS)
+        tracks.extend((num, t) for t in disc_tracks)
+        if len(disc_tracks) != 1:
+            single_file = False
+    if not tracks:
+        return
+
     rprint(f"  · flatten {len(discs)} disc dirs → {len(tracks)} tracks")
-    digits=len(str(len(tracks)))
-    for i,src in enumerate(tracks,1):
-        dest=folder/f"Track {i:0{digits}d}{src.suffix.lower()}"
-        rprint(f"    {'mv' if not dry else '↪'} {src.name} → {dest.name}")
-        if not dry:
-            dest.parent.mkdir(exist_ok=True); shutil.move(src,dest)
+    if single_file:
+        digits = len(str(len(discs)))
+        for num, src in tracks:
+            dest = folder / f"Part {num:0{digits}d}{src.suffix.lower()}"
+            rprint(f"    {'mv' if not dry else '↪'} {src.name} → {dest.name}")
+            if not dry:
+                dest.parent.mkdir(exist_ok=True)
+                shutil.move(src, dest)
+    else:
+        digits = len(str(len(tracks)))
+        for i, (num, src) in enumerate(tracks, 1):
+            dest = folder / f"Track {i:0{digits}d}{src.suffix.lower()}"
+            rprint(f"    {'mv' if not dry else '↪'} {src.name} → {dest.name}")
+            if not dry:
+                dest.parent.mkdir(exist_ok=True)
+                shutil.move(src, dest)
+
     if not dry:
-        for _,d in discs:
-            try:d.rmdir()
-            except OSError:pass
+        for _, d in discs:
+            try:
+                d.rmdir()
+            except OSError:
+                pass
 
 # ───────────── track renamer ─────────────────────────────────────────────────
 def rename_tracks(folder:Path):
