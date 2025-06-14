@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/combobook.py  ·  v1.2  ·  2025-06-14
+ABtools/combobook.py  ·  v1.3  ·  2025-06-14
 Tag (Open Library / Google Books / Audible) → flatten discs → build Audiobookshelf folders
 in one pass.
 
@@ -36,6 +36,8 @@ DISC_RX = re.compile(
     r'(?:[\(\[{]?)(?:disc|disk|cd|part)[\s_\-]*(?P<num>\d{1,3})(?:[\)\]}]?)',
     re.IGNORECASE,
 )
+# also match "(1 of 5)" / "(3/5)" patterns
+PART_RX = re.compile(r"\((?P<num>\d{1,3})\s*(?:of|/)?\s*\d{1,3}\)", re.IGNORECASE)
 
 # ︙ — regular expressions carried over from search_and_tag.py — ︙
 TAIL_RX  = re.compile(r"(?:\{[^}]*\})?(?:\s*\d+\.\d{2}\.\d{2})?(?:\s*\d+\s*[kK])?\s*$")
@@ -302,24 +304,52 @@ def write_tags(track:Path, meta:Meta):
     if tmp.exists(): tmp.replace(track)
 
 # ───────────── disc-flattener ────────────────────────────────────────────────
-def flatten(folder:Path,dry:bool):
-    discs = sorted((int(m.group(1)), p)
-                   for p in folder.iterdir() if p.is_dir()
-                   for m in [DISC_RX.search(p.name)] if m)
-    if not discs: return
-    tracks=[t for _,d in discs for t in sorted(d.iterdir()) if t.suffix.lower() in AUDIO_EXTS]
-    if not tracks: return
+def flatten(folder: Path, dry: bool):
+    discs = []
+    for p in folder.iterdir():
+        if not p.is_dir():
+            continue
+        m = DISC_RX.search(p.name) or PART_RX.search(p.name)
+        if m:
+            discs.append((int(m.group("num")), p))
+    discs.sort(key=lambda t: t[0])
+    if not discs:
+        return
+
+    tracks = []
+    single_file = True
+    for num, d in discs:
+        disc_tracks = sorted(t for t in d.iterdir() if t.suffix.lower() in AUDIO_EXTS)
+        tracks.extend((num, t) for t in disc_tracks)
+        if len(disc_tracks) != 1:
+            single_file = False
+    if not tracks:
+        return
+
     rprint(f"  · flatten {len(discs)} disc dirs → {len(tracks)} tracks")
-    digits=len(str(len(tracks)))
-    for i,src in enumerate(tracks,1):
-        dest=folder/f"Track {i:0{digits}d}{src.suffix.lower()}"
-        rprint(f"    {'mv' if not dry else '↪'} {src.name} → {dest.name}")
-        if not dry:
-            dest.parent.mkdir(exist_ok=True); shutil.move(src,dest)
+    if single_file:
+        digits = len(str(len(discs)))
+        for num, src in tracks:
+            dest = folder / f"Part {num:0{digits}d}{src.suffix.lower()}"
+            rprint(f"    {'mv' if not dry else '↪'} {src.name} → {dest.name}")
+            if not dry:
+                dest.parent.mkdir(exist_ok=True)
+                shutil.move(src, dest)
+    else:
+        digits = len(str(len(tracks)))
+        for i, (num, src) in enumerate(tracks, 1):
+            dest = folder / f"Track {i:0{digits}d}{src.suffix.lower()}"
+            rprint(f"    {'mv' if not dry else '↪'} {src.name} → {dest.name}")
+            if not dry:
+                dest.parent.mkdir(exist_ok=True)
+                shutil.move(src, dest)
+
     if not dry:
-        for _,d in discs:
-            try:d.rmdir()
-            except OSError:pass
+        for _, d in discs:
+            try:
+                d.rmdir()
+            except OSError:
+                pass
 
 # ───────────── track renamer ─────────────────────────────────────────────────
 def rename_tracks(folder:Path):
