@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-combo_abooks.py   ·   2025-05-29
+ABtools/combobook.py  ·  v1.1  ·  2025-06-07
 Tag (Open Library / Google Books) → flatten discs → build Audiobookshelf folders
 in one pass.
 
@@ -22,6 +22,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
+from difflib import SequenceMatcher
 
 # ───────────── configuration ────────────────────────────────────────────────
 AUDIO_EXTS   = {".mp3", ".m4b", ".m4a", ".flac", ".ogg", ".opus"}
@@ -166,39 +167,69 @@ def guess_from_folder(leaf: Path) -> Meta:
     return Meta(author=author, title=title, year=year, series=series, seq=seq)
 
 # ───────────── online lookup (Open Library ▸ Google Books) ──────────────────
-def ol_search(meta:Meta)->Optional[Meta]:
+def ol_search_all(meta: Meta) -> List[Meta]:
     try:
         q = f"title:{meta.title} author:{meta.author}"
-        r = requests.get("https://openlibrary.org/search.json",
-                         params={"q":q,"limit":5},timeout=10).json()
-        if not r.get("docs"): return None
-        doc = r["docs"][0]
-        return Meta(
-            author = ", ".join(doc.get("author_name",["Unknown"])),
-            title  = doc.get("title"),
-            year   = str(doc.get("first_publish_year")) if doc.get("first_publish_year") else None)
-    except Exception: return None
+        r = requests.get(
+            "https://openlibrary.org/search.json",
+            params={"q": q, "limit": 5}, timeout=10,
+        ).json()
+        out = []
+        for doc in r.get("docs", []):
+            out.append(
+                Meta(
+                    author=", ".join(doc.get("author_name", ["Unknown"])),
+                    title=doc.get("title"),
+                    year=str(doc.get("first_publish_year")) if doc.get("first_publish_year") else None,
+                )
+            )
+        return out
+    except Exception:
+        return []
 
-def gb_search(meta:Meta)->Optional[Meta]:
+def gb_search_all(meta: Meta) -> List[Meta]:
     try:
         q = f'intitle:"{meta.title}"+inauthor:"{meta.author}"'
-        r = requests.get("https://www.googleapis.com/books/v1/volumes",
-                         params={"q":q,"maxResults":5},timeout=10).json()
-        if not r.get("items"): return None
-        info=r["items"][0]["volumeInfo"]
-        return Meta(
-            author = ", ".join(info.get("authors",["Unknown"])),
-            title  = info.get("title"),
-            year   = info.get("publishedDate","")[:4] or None)
-    except Exception: return None
+        r = requests.get(
+            "https://www.googleapis.com/books/v1/volumes",
+            params={"q": q, "maxResults": 5}, timeout=10,
+        ).json()
+        out = []
+        for item in r.get("items", []):
+            info = item["volumeInfo"]
+            out.append(
+                Meta(
+                    author=", ".join(info.get("authors", ["Unknown"])),
+                    title=info.get("title"),
+                    year=info.get("publishedDate", "")[:4] or None,
+                )
+            )
+        return out
+    except Exception:
+        return []
+
+def _similarity(a: Meta, b: Meta) -> float:
+    t1 = f"{a.author} {a.title}".lower()
+    t2 = f"{b.author} {b.title}".lower()
+    return SequenceMatcher(None, t1, t2).ratio()
 
 def choose_meta(guess:Meta)->Optional[Meta]:
-    hit = ol_search(guess) or gb_search(guess)
-    if not hit: return None
-    rprint(f"  guess: [italic]{guess.title}[/] by {guess.author} ({guess.year or '?'})")
-    rprint(f"  match: [bold]{hit.title}[/] by {hit.author} ({hit.year or '?'})")
-    if AUTO_YES or Confirm.ask("  use this metadata?", default=True):
-        return hit
+    candidates = ol_search_all(guess)
+    if not candidates:
+        candidates = gb_search_all(guess)
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda m: _similarity(guess, m), reverse=True)
+
+    for hit in candidates:
+        score = _similarity(guess, hit)
+        rprint(f"  guess: [italic]{guess.title}[/] by {guess.author} ({guess.year or '?'})")
+        rprint(
+            f"  match: [bold]{hit.title}[/] by {hit.author} ({hit.year or '?'})  score: {score:.2f}"
+        )
+        if AUTO_YES or Confirm.ask("  use this metadata?", default=score > 0.8):
+            return hit
     return None
 
 # ───────────── FFmpeg tag writer (title / artist / year) ─────────────────────

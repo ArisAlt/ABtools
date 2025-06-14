@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-search_and_tag.py  ·  v2.0  ·  2025-05-27
+ABtools/search_and_tag.py  ·  v2.0  ·  2025-05-27
 Tag (or strip) audiobook files using Open Library / Google Books.
 
 examples
