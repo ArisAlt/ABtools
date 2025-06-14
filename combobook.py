@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-
-ABtools/combobook.py  ·  v1.3  ·  2025-06-14
+"""
+ABtools/combobook.py  ·  v1.4  ·  2025-06-14
 
 USAGE
 -----
@@ -9,6 +9,9 @@ python combo_abooks.py  "E:\\Audio Books"  "G:\\AudiobookShelf"
 
 # tag + move, ask Y/N for each metadata hit
 python combo_abooks.py  "E:\\Audio Books"  "G:\\AudiobookShelf"  --commit
+
+# tag + copy instead of move
+python combo_abooks.py  "E:\\Audio Books"  "G:\\AudiobookShelf"  --commit  --copy
 
 # tag + move, auto-accept every hit
 python combo_abooks.py  "E:\\Audio Books"  "G:\\AudiobookShelf"  --commit  --yes
@@ -21,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 from difflib import SequenceMatcher
+import errno
 
 # ───────────── configuration ────────────────────────────────────────────────
 AUDIO_EXTS   = {".mp3", ".m4b", ".m4a", ".flac", ".ogg", ".opus"}
@@ -104,6 +108,20 @@ def leaf_dirs(root:Path)->List[Path]:
             and any(f.suffix.lower() in AUDIO_EXTS for f in p.iterdir())
             and not any(c.is_dir() and any(g.suffix.lower() in AUDIO_EXTS for g in c.iterdir())
                         for c in p.iterdir())]
+
+def safe_move(src: Path, dst: Path, copy: bool = False) -> None:
+    """Move ``src`` to ``dst`` (or copy when ``copy`` is True)."""
+    if copy:
+        shutil.copytree(src, dst)
+        return
+    try:
+        shutil.move(str(src), str(dst))
+    except (PermissionError, OSError) as e:
+        if isinstance(e, OSError) and e.errno not in (errno.EXDEV, errno.EACCES):
+            raise
+        rprint("  ! rename failed – copying …")
+        shutil.copytree(src, dst)
+        shutil.rmtree(src)
 
 # ───────────── existing tag reader ──────────────────────────────────────────
 def tags_from_track(track:Path)->Optional[Meta]:
@@ -407,7 +425,7 @@ def dest_path(lib: Path, meta: Meta) -> Path:
     return dest
 
 # ───────────── process one folder ────────────────────────────────────────────
-def process(folder: Path, lib: Path, dry: bool, yes: bool, summary: dict):
+def process(folder: Path, lib: Path, dry: bool, yes: bool, copy: bool, summary: dict):
     summary["total"] += 1
 
     # 1) Gather all audio files in this folder
@@ -444,10 +462,11 @@ def process(folder: Path, lib: Path, dry: bool, yes: bool, summary: dict):
     # 4) At this point 'meta' is guaranteed to contain author/title, etc.
     #    We can flatten / rename / move as before.
 
-    if FLATTEN_DISCS:
-        flatten(folder, dry)
-    if RENAME_TRACKS and not FLATTEN_DISCS:
-        rename_tracks(folder)
+    if dry:
+        if FLATTEN_DISCS:
+            flatten(folder, True)
+        if RENAME_TRACKS and not FLATTEN_DISCS:
+            rename_tracks(folder)
 
     dest = dest_path(lib, meta)
     if dest.exists():
@@ -463,21 +482,32 @@ def process(folder: Path, lib: Path, dry: bool, yes: bool, summary: dict):
             summary["exists"] += 1
             return
 
-    rprint(f"{'mv' if not dry else '↪'} {folder.relative_to(SRC)} → {dest.relative_to(lib)}")
-    if not dry:
-        shutil.move(str(folder), str(dest))
-        summary["moved"] += 1
-    else:
+    action = 'cp' if copy else 'mv'
+    rprint(f"{action if not dry else '↪'} {folder.relative_to(SRC)} → {dest.relative_to(lib)}")
+    if dry:
         summary["would_move"] += 1
+        return
+
+    safe_move(folder, dest, copy=copy)
+    if FLATTEN_DISCS:
+        flatten(dest, False)
+    if RENAME_TRACKS and not FLATTEN_DISCS:
+        rename_tracks(dest)
+    summary["moved"] += 1
 
 
 # ───────────── CLI driver ────────────────────────────────────────────────────
-def main(src:Path, lib:Path, commit:bool, yes:bool):
+def main(src:Path, lib:Path, commit:bool, yes:bool, copy: bool):
     summary=defaultdict(int)
     for leaf in leaf_dirs(src):
-        process(leaf,lib,dry=not commit,yes=yes,summary=summary)
+        process(leaf,lib,dry=not commit,yes=yes,copy=copy,summary=summary)
     rprint("\n[bold]summary[/]")
-    for k in ("total","moved","would_move","exists","skip"):
+    action_word = "copied" if copy else "moved"
+    rprint(f"  total        : {summary['total']}")
+    rprint(f"  {action_word:12}: {summary['moved']}")
+    if not commit:
+        rprint(f"  would_move   : {summary['would_move']}")
+    for k in ("exists","skip"):
         rprint(f"  {k:12}: {summary[k]}")
 
 if __name__=="__main__":
@@ -494,9 +524,10 @@ if __name__=="__main__":
     ap.add_argument("library_root", type=Path)
     ap.add_argument("--commit", action="store_true")
     ap.add_argument("--yes",    action="store_true")
+    ap.add_argument("--copy",   action="store_true", help="Copy instead of move when used with --commit")
     args=ap.parse_args()
     SRC=args.source_root.resolve(); LIB=args.library_root.resolve()
     if not SRC.is_dir(): sys.exit("source_root not found")
     LIB.mkdir(exist_ok=True, parents=True)
     AUTO_YES=args.yes
-    main(SRC,LIB,args.commit,args.yes)
+    main(SRC,LIB,args.commit,args.yes,args.copy)

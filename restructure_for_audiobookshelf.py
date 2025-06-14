@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/restructure_for_audiobookshelf.py – v3.9  (2025-05-27)
+ABtools/restructure_for_audiobookshelf.py – v4.0  (2025-06-14)
 Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --commit 
 • Recursively scans source_root; every directory that *contains* audio but whose
   sub-directories don’t is treated as one “book”.
@@ -11,6 +11,7 @@ Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --com
 • Moves/renames into Audiobookshelf layout:
 
       <library_root>/Author/Series?/Vol # - YYYY - Title {Narrator}/
+• Add --copy to duplicate folders instead of moving them
 """
 
 from __future__ import annotations
@@ -51,7 +52,11 @@ def leaf_audio_dirs(root: Path) -> List[Path]:
         and not any(c.is_dir() and has_audio(c) for c in p.iterdir())
     ]
 
-def safe_move(src: Path, dst: Path) -> None:
+def safe_move(src: Path, dst: Path, copy: bool = False) -> None:
+    """Move ``src`` to ``dst`` (or copy when ``copy`` is True)."""
+    if copy:
+        shutil.copytree(src, dst)
+        return
     try:
         shutil.move(src, dst)
     except (PermissionError, OSError) as e:
@@ -241,7 +246,7 @@ def rename_tracks(folder: Path):
             p.rename(new)
 
 # ───────── process one book ─────────
-def process(book: Path, library: Path, dry: bool, st: defaultdict):
+def process(book: Path, library: Path, dry: bool, copy: bool, st: defaultdict):
     st["total"] += 1
     first = next((p for p in book.iterdir() if p.suffix.lower() in AUDIO_EXTS), None)
     if not first:
@@ -287,7 +292,8 @@ def process(book: Path, library: Path, dry: bool, st: defaultdict):
         st["exists"] += 1
         return
 
-    print(f"{'mv' if not dry else '↪'} {book} → {dest}")
+    action = 'cp' if copy else 'mv'
+    print(f"{action if not dry else '↪'} {book} → {dest}")
     if dry:
         flatten_discs(book, dry=True)
         if RENAME_TRACKS:
@@ -295,24 +301,25 @@ def process(book: Path, library: Path, dry: bool, st: defaultdict):
         st["would_move"] += 1
         return
 
-    safe_move(book, dest)
+    safe_move(book, dest, copy=copy)
     flatten_discs(dest, dry=False)
     if RENAME_TRACKS:
         rename_tracks(dest)
     st["moved"] += 1
 
 # ───────── main driver ─────────
-def main(src: Path, library: Path, commit: bool):
+def main(src: Path, library: Path, commit: bool, copy: bool):
     if not src.is_dir():
         sys.exit(f"✗ Source folder not found: {src}")
 
     stats: defaultdict[str, int] = defaultdict(int)
     for bd in leaf_audio_dirs(src):
-        process(bd, library, dry=not commit, st=stats)
+        process(bd, library, dry=not commit, copy=copy, st=stats)
 
     print("\n──── Summary ────")
     print(f" Books scanned            : {stats['total']}")
-    print(f" Books moved              : {stats['moved']}")
+    action_word = 'copied' if copy else 'moved'
+    print(f" Books {action_word:20}: {stats['moved']}")
     if not commit:
         print(f" Books that would move    : {stats['would_move']}")
     for k, label in (
@@ -336,5 +343,10 @@ if __name__ == "__main__":
         action="store_true",
         help="Actually move/rename (omit for preview)",
     )
+    ap.add_argument(
+        "--copy",
+        action="store_true",
+        help="Copy instead of move when --commit is used",
+    )
     args = ap.parse_args()
-    main(args.source_root, args.library_root, args.commit)
+    main(args.source_root, args.library_root, args.commit, args.copy)
