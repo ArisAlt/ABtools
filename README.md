@@ -9,7 +9,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 
 | `combobook.py` | v1.3 | `ABtools/combobook.py` |
 | `flatten_discs.py` | v1.2 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v3.9 | `ABtools/restructure_for_audiobookshelf.py` |
+| `restructure_for_audiobookshelf.py` | v4.0 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.0 | `ABtools/search_and_tag.py` |
 
 ## `combobook.py`
@@ -30,4 +30,6 @@ python combobook.py "source_folder" "library_folder" --commit --yes
 ```
 
 Folders are moved to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`.
+
+The `restructure_for_audiobookshelf.py` script can also copy books when run with `--copy` alongside `--commit`.
 
