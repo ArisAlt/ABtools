@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-flatten_discs.py  –  v1.2  (2025-05-28)
+ABtools/flatten_discs.py  –  v1.2  (2025-05-28)
 
 Flatten audiobook rips that live in
     Book Name (Disc 01)  /  Book Name (Disc 02)  …

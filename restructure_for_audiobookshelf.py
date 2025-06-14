@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-restructure_for_audiobookshelf.py – v3.9  (2025-05-27)
+ABtools/restructure_for_audiobookshelf.py – v3.9  (2025-05-27)
 Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --commit 
 • Recursively scans source_root; every directory that *contains* audio but whose
   sub-directories don’t is treated as one “book”.
