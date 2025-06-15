@@ -13,6 +13,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - Provides preview and logging
 - Optionally prompts for confirmation or proceeds automatically
 - Fetches metadata in parallel for faster tagging
+- Preserves part numbers like `(1 of 6)` when reorganizing files
 
 ## Requirements
 
@@ -37,7 +38,7 @@ pip install -r requirements.txt
 
 | `combobook.py` | v1.6 | `ABtools/combobook.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v4.3 | `ABtools/restructure_for_audiobookshelf.py` |
+| `restructure_for_audiobookshelf.py` | v4.4 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.11 | `ABtools/search_and_tag.py` |
 
 Run any script with `--version` to print its version and file location.
@@ -109,6 +110,6 @@ details.
 `flatten_discs.py` merges disc-numbered rips into one folder with sequential track names. Preview changes by default; use `--commit` to apply them and `--yes` to auto-confirm.
 
 ## `restructure_for_audiobookshelf.py`
-`restructure_for_audiobookshelf.py` reorganizes a source collection into Audiobookshelf layout. It reads tags from the audio files first, then `book.nfo`, and finally falls back to folder names. Disc folders are flattened and books are moved or copied to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`. Metadata matching is handled by `search_and_tag.py`.
+`restructure_for_audiobookshelf.py` reorganizes a source collection into Audiobookshelf layout. It reads tags from the audio files first, then `book.nfo`, and finally falls back to folder names. Disc folders are flattened and books are moved or copied to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`. Part suffixes like `(1 of 6)` or `Part 1` are preserved when moving files. Metadata matching is handled by `search_and_tag.py`.
 
 
