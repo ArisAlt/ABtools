@@ -44,7 +44,29 @@ Run any script with `--version` to print its version and file location.
 
 It now also collapses folders named like `Book Title (1 of 5)` into a single directory and names each file `Part 01`, `Part 02`, etc.
 
+"""
 
+Tag (or strip) audiobook files using multiple metadata providers.
+
+The script queries Audible, Open Library and Google Books, ranks the
+results using fuzzy title matching and automatically tags files with the
+best match. Low scoring hits will prompt for confirmation unless you
+run with ``--yes``. When prompted, the default answer is "No" so low
+confidence matches won't be accepted accidentally. Log files are written
+next to the chosen root as ``tag_log.txt`` and ``review_log.txt``.
+Use ``--version`` to print the script version and file location.
+
+examples
+--------
+# preview everything
+python search_and_tag.py "E:\\Audio Books" --recurse
+
+# tag automatically
+python search_and_tag.py "E:\\Audio Books" --recurse --commit --yes
+
+# strip all tags
+python search_and_tag.py "E:\\Audio Books" --recurse --striptags --commit
+"""
 ```
 # Preview only (no changes made)
 python combobook.py "source_folder" "library_folder"
