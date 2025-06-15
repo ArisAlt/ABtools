@@ -26,6 +26,10 @@ from typing import List, Optional
 from difflib import SequenceMatcher
 import errno
 
+VERSION = "1.5"
+FILE_PATH = Path(__file__).resolve()
+VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
+
 # ───────────── configuration ────────────────────────────────────────────────
 AUDIO_EXTS   = {".mp3", ".m4b", ".m4a", ".flac", ".ogg", ".opus"}
 FLATTEN_DISCS = True
@@ -137,7 +141,7 @@ def safe_move(src: Path, dst: Path, copy: bool = False) -> None:
 # ───────────── existing tag reader ──────────────────────────────────────────
 def tags_from_track(track:Path)->Optional[Meta]:
     try:
-        au = MFile(track, easy=True)
+        au = MFile(str(track), easy=True)
     except mutagen.MutagenError:
         return None
     if not au or "artist" not in au or "album" not in au:
@@ -536,6 +540,7 @@ if __name__=="__main__":
     ap.add_argument("--commit", action="store_true")
     ap.add_argument("--yes",    action="store_true")
     ap.add_argument("--copy",   action="store_true", help="Copy instead of move when used with --commit")
+    ap.add_argument("--version", action="version", version=VERSION_INFO)
     args=ap.parse_args()
     SRC=args.source_root.resolve(); LIB=args.library_root.resolve()
     if not SRC.is_dir(): sys.exit("source_root not found")

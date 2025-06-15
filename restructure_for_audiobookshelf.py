@@ -21,6 +21,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
+VERSION = "4.1"
+FILE_PATH = Path(__file__).resolve()
+VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
+
 # ───────── configuration ─────────
 AUDIO_EXTS: set[str]       = {".mp3", ".m4b", ".m4a", ".flac", ".ogg", ".opus"}
 RENAME_TRACKS              = True       # rename Track 001.* … inside each book?
@@ -99,7 +103,7 @@ TAG_MAP = {
 
 def read_tags(track: Path) -> Optional[BookMeta]:
     try:
-        audio = MFile(track, easy=True)
+        audio = MFile(str(track), easy=True)
     except MutagenError:
         return None
     if not audio:
@@ -359,5 +363,6 @@ if __name__ == "__main__":
         action="store_true",
         help="Copy instead of move when --commit is used",
     )
+    ap.add_argument("--version", action="version", version=VERSION_INFO)
     args = ap.parse_args()
     main(args.source_root, args.library_root, args.commit, args.copy)
