@@ -31,6 +31,7 @@ file path.
   - `book.nfo`
   - `--debug` prints tracebacks on errors
   - `--no` auto-declines metadata suggestions
+  - fetches metadata in parallel for faster processing
 
 ### `flatten_discs.py`
 
@@ -71,5 +72,5 @@ file path.
 | `combobook.py` | v1.6 | `ABtools/combobook.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v4.3 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.10 | `ABtools/search_and_tag.py` |
+| `search_and_tag.py` | v2.11 | `ABtools/search_and_tag.py` |
 

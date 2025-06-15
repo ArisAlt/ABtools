@@ -12,6 +12,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - Writes metadata to both `metadata.json` and `book.nfo` (for Kodi-style readers)
 - Provides preview and logging
 - Optionally prompts for confirmation or proceeds automatically
+- Fetches metadata in parallel for faster tagging
 
 ## Requirements
 
@@ -37,7 +38,7 @@ pip install -r requirements.txt
 | `combobook.py` | v1.6 | `ABtools/combobook.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v4.3 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.10 | `ABtools/search_and_tag.py` |
+| `search_and_tag.py` | v2.11 | `ABtools/search_and_tag.py` |
 
 Run any script with `--version` to print its version and file location.
 
@@ -89,7 +90,7 @@ Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when 
 
 ## `search_and_tag.py`
 `search_and_tag.py` tags or strips audiobook files. It queries Audible,
-Open Library and Google Books, chooses the best match via fuzzy scoring
+Open Library and Google Books in parallel, chooses the best match via fuzzy scoring
 and automatically applies it. Matches with a low score will ask for
 confirmation unless you pass `--yes`. Use `--no` to decline
 automatically. The prompt defaults to `no` so low-confidence matches
