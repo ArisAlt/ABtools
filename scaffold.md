@@ -1,22 +1,60 @@
-# ABtools Scaffold
+# Audiobook Tagging & Organization – Scaffold
 
-This repository holds a few standalone scripts for preparing and tagging audiobooks. Each script embeds a version number and file location so you can check exactly which copy you are running.
+## Project Structure
 
-## Scripts
-
-| Script | Version | Path |
-|-------|---------|------|
-| `combobook.py` | v1.6 | `ABtools/combobook.py` |
-| `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v4.2 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.5 | `ABtools/search_and_tag.py` |
-
-Run any script with `--version` to print something like:
-
-```bash
-python combobook.py --version
-# combobook.py v1.6 (/full/path/to/ABtools/combobook.py)
+```
+Audiobooks/
+│
+├── search_and_tag.py       # Tags files using metadata providers
+├── flatten_discs.py        # Merges "Disc" folders into one
+├── combobook.py            # Combines tagging and restructuring
+├── metadata.json           # Optional: sample metadata format
+├── requirements.txt        # Pip requirements
+├── README.md
+└── SCAFFOLD.md
 ```
 
-The files live directly in the `ABtools` directory alongside this document and the main `README.md`.
+## Scripts Overview
 
+### `search_and_tag.py`
+
+- Tags audio files using best match from:
+  - Audible
+  - OpenLibrary
+  - Google Books
+- Writes:
+  - ID3 or MP4 tags
+  - `metadata.json`
+  - `book.nfo`
+
+### `flatten_discs.py`
+
+- Flattens multi-disc folders (e.g., `Disc 01`, `CD1`)
+- Renames all tracks sequentially
+- Merges into a single clean folder
+
+### `combobook.py`
+
+- Combines the functionality of both scripts:
+  - Detects audio files
+  - Tags them using `search_and_tag.py` logic
+  - Creates cleaned-up `Author/Year - Title` folder
+  - Moves and renames content
+
+## Regex Patterns Used
+
+- `^(\d{4})\s*[-_]\s*`: extracts leading year
+- `\(Disc \d+\)`, `CD\d+`, etc.: disc recognition
+- Removes `{size}`, `bitrate`, timestamps like `12.56.09`
+
+## Metadata JSON Format
+
+```json
+{
+  "title": "Book Title",
+  "author": "Author Name",
+  "year": "2005",
+  "series": "Optional Series Title",
+  "source": "audible | openlib | gbooks"
+}
+```

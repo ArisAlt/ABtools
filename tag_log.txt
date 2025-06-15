@@ -1,0 +1,590 @@
+2025-06-15 10:16:34  ERR      tag D:\AudioBooksCheck\Brandon Sanderson\2010 - The Way of Kings\The Way of Kings The Stormlight Archive, Book 1 (Unabridged).m4b
+2025-06-15 10:16:34  ERR      D:\AudioBooksCheck\Brandon Sanderson\2010 - The Way of Kings  (0/1)
+2025-06-15 10:16:40  OK       D:\AudioBooksCheck\Brandon Sanderson\2016 - Cosmere Stormlight Archive 1 The Way of Kin  (5/5)
+2025-06-15 10:16:43  ERR      D:\AudioBooksCheck\Brandon Sanderson\2017 - Cosmere Stormlight Archive 3 Oathbringer – TypeError
+2025-06-15 10:16:48  ERR      D:\AudioBooksCheck\Brandon Sanderson\2018 - Cosmere Stormlight Archive 2.5 Edgedancer ( – TypeError
+2025-06-15 10:16:51  ERR      D:\AudioBooksCheck\Brandon Sanderson\2018 - Cosmere Stormlight Archive 3 Oathbringer (G – TypeError
+2025-06-15 10:16:59  ERR      D:\AudioBooksCheck\Brandon Sanderson\2020 - Cosmere Stormlight Archive 4 Rhythm of War – TypeError
+2025-06-15 10:17:01  ERR      D:\AudioBooksCheck\Brandon Sanderson\2021 - Cosmere Stormlight Archive 4 Rhythm of War – TypeError
+2025-06-15 10:17:06  OK       D:\AudioBooksCheck\Brandon Sanderson\2022 - Cosmere Stormlight Archive 3.5 Dawnshard  (1/1)
+2025-06-15 10:17:09  OK       D:\AudioBooksCheck\Brandon Sanderson\2024 - Cosmere Stormlight Archive 3.5 Dawnshard (G  (1/1)
+2025-06-15 10:17:14  OK       D:\AudioBooksCheck\Brandon Sanderson\2024 - Cosmere Stormlight Archive 5 Wind and Truth  (1/1)
+2025-06-15 10:17:17  ERR      tag D:\AudioBooksCheck\Brandon Sanderson\Edgedancer\The Stormlight Archive Book 2.5 - Edgedancer.m4b
+2025-06-15 10:17:17  ERR      D:\AudioBooksCheck\Brandon Sanderson\Edgedancer  (0/1)
+2025-06-15 10:17:21  ERR      tag D:\AudioBooksCheck\Brandon Sanderson\Words of Radiance\Words of Radiance The Stormlight Archive, Book 2 (Unabridged).m4b
+2025-06-15 10:17:21  ERR      D:\AudioBooksCheck\Brandon Sanderson\Words of Radiance  (0/1)
+2025-06-15 10:17:25  OK       D:\AudioBooksCheck\Dan Simmons\1989 - Hyperion  (28/28)
+2025-06-15 10:17:28  OK       D:\AudioBooksCheck\Dan Simmons\1990 - The Fall of Hyperion  (46/46)
+2025-06-15 10:17:32  OK       D:\AudioBooksCheck\Dan Simmons\1996 - Endymion  (60/60)
+2025-06-15 10:17:35  OK       D:\AudioBooksCheck\Dan Simmons\1997 - The Rise of Endymion  (35/35)
+2025-06-15 10:17:38  ERR      D:\AudioBooksCheck\Frank Herbert\1965 - Dune – TypeError
+2025-06-15 10:17:45  ERR      D:\AudioBooksCheck\GraphicAudio\2016 - The Stormlight Archive 2 Words of Radiance – TypeError
+2025-06-15 10:17:47  OK       D:\AudioBooksCheck\Neal Stephenson\1999 - Cryptonomicon  (104/104)
+2025-06-15 10:17:49  OK       D:\AudioBooksCheck\Neal Stephenson\2003 - Quicksilver  (67/67)
+2025-06-15 10:17:55  OK       D:\AudioBooksCheck\Top 100 Sci-Fi Books\1992 - 75 - Doomsday Book - Connie Willis - 1992  (36/36)
+2025-06-15 10:18:11  SKIP     D:\AudioBooksCheck\Top 100 Sci-Fi Books\1995 - 55 - The Diamond Age - Neal Stephenson - 1995
+2025-06-15 10:18:21  SKIP     D:\AudioBooksCheck\Top 100 Sci-Fi Books\1999 - 61 - Ender's Shadow - Orson Scott Card - 1999
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Top 100 Sci-Fi Books\2000 - 73 - Revelation Space - Alastair Reynolds - 2000
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\.unwanted
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\01 - In The Balance
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\03 - Upsetting the Balance
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\06 - Down to Earth
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\07 - Aftershocks
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\2000 - Revelation Space
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\2001 - Chasm City
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\2002 - Redemption Ark
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\2003 - 1 Diamond Dogs, Turquoise Days
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\2003 - 2 Absolution Gap
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\2006 - Cheater
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\2006 - Galactic North
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\2007 - The Prefect
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\2200 - Arkady Martine - A Desolation Called Peace
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\A Scanner darkly
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\Earth Afire Part 1
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\Other
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\Shadow of the Giant
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\Shadow Puppets
+2025-06-15 10:18:29  SKIP     D:\AudioBooksCheck\Unknown Author\Ubik
+2025-06-15 10:19:00  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1818 - 52 - Frankenstein - Mary Shelley - 1818  (9/9)
+2025-06-15 10:19:10  SKIP     D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1864 - 53 - Journey to the Center of the Earth - Jules Verne - 1864
+2025-06-15 10:19:17  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1870 - 35 - 20,000 Leagues Under the Sea - Jules Verne - 1870  (15/15)
+2025-06-15 10:19:20  NOMATCH  D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1884 - 86 - Flatland - Edwin A Abbott - 1884
+2025-06-15 10:19:25  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1895 - 17 - The Time Machine - H.G. Wells - 1895  (4/4)
+2025-06-15 10:19:34  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1897 - 77 - The Invisible Man - H G Wells - 1897  (13/13)
+2025-06-15 10:19:37  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1898 - 20 - The War Of The Worlds - H.G. Wells - 1898  (124/124)
+2025-06-15 10:19:42  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1912 - 81 - A Princess of Mars - Edgar Rice Burroughs - 1912  (135/135)
+2025-06-15 10:19:50  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1912 - 96 - The Lost World - Arthur Conan Doyle - 1912  (165/165)
+2025-06-15 10:19:58  SKIP     D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1932 - 16 - Brave New World - Aldous Huxley - 1932
+2025-06-15 10:20:04  SKIP     D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1940 - 98 - Gray Lensman
+2025-06-15 10:39:53  ERR      tag D:\AudioBooksCheck\Brandon Sanderson\2010 - The Way of Kings\The Way of Kings The Stormlight Archive, Book 1 (Unabridged).m4b
+2025-06-15 10:39:53  ERR      D:\AudioBooksCheck\Brandon Sanderson\2010 - The Way of Kings  (0/1)
+2025-06-15 10:39:56  OK       D:\AudioBooksCheck\Brandon Sanderson\2016 - Cosmere Stormlight Archive 1 The Way of Kin  (5/5)
+2025-06-15 10:39:59  ERR      D:\AudioBooksCheck\Brandon Sanderson\2017 - Cosmere Stormlight Archive 3 Oathbringer – TypeError
+2025-06-15 10:40:02  ERR      D:\AudioBooksCheck\Brandon Sanderson\2018 - Cosmere Stormlight Archive 2.5 Edgedancer ( – TypeError
+2025-06-15 10:40:06  ERR      D:\AudioBooksCheck\Brandon Sanderson\2018 - Cosmere Stormlight Archive 3 Oathbringer (G – TypeError
+2025-06-15 10:40:09  ERR      D:\AudioBooksCheck\Brandon Sanderson\2020 - Cosmere Stormlight Archive 4 Rhythm of War – TypeError
+2025-06-15 10:40:12  ERR      D:\AudioBooksCheck\Brandon Sanderson\2021 - Cosmere Stormlight Archive 4 Rhythm of War – TypeError
+2025-06-15 10:40:16  OK       D:\AudioBooksCheck\Brandon Sanderson\2022 - Cosmere Stormlight Archive 3.5 Dawnshard  (1/1)
+2025-06-15 10:40:19  OK       D:\AudioBooksCheck\Brandon Sanderson\2024 - Cosmere Stormlight Archive 3.5 Dawnshard (G  (1/1)
+2025-06-15 10:40:23  OK       D:\AudioBooksCheck\Brandon Sanderson\2024 - Cosmere Stormlight Archive 5 Wind and Truth  (1/1)
+2025-06-15 10:40:26  ERR      tag D:\AudioBooksCheck\Brandon Sanderson\Edgedancer\The Stormlight Archive Book 2.5 - Edgedancer.m4b
+2025-06-15 10:40:26  ERR      D:\AudioBooksCheck\Brandon Sanderson\Edgedancer  (0/1)
+2025-06-15 10:40:29  ERR      tag D:\AudioBooksCheck\Brandon Sanderson\Words of Radiance\Words of Radiance The Stormlight Archive, Book 2 (Unabridged).m4b
+2025-06-15 10:40:29  ERR      D:\AudioBooksCheck\Brandon Sanderson\Words of Radiance  (0/1)
+2025-06-15 10:40:32  OK       D:\AudioBooksCheck\Dan Simmons\1989 - Hyperion  (28/28)
+2025-06-15 10:40:35  OK       D:\AudioBooksCheck\Dan Simmons\1990 - The Fall of Hyperion  (46/46)
+2025-06-15 10:40:38  OK       D:\AudioBooksCheck\Dan Simmons\1996 - Endymion  (60/60)
+2025-06-15 10:40:41  OK       D:\AudioBooksCheck\Dan Simmons\1997 - The Rise of Endymion  (35/35)
+2025-06-15 10:40:44  ERR      D:\AudioBooksCheck\Frank Herbert\1965 - Dune – TypeError
+2025-06-15 10:40:47  ERR      D:\AudioBooksCheck\GraphicAudio\2016 - The Stormlight Archive 2 Words of Radiance – TypeError
+2025-06-15 10:40:50  OK       D:\AudioBooksCheck\Neal Stephenson\1999 - Cryptonomicon  (104/104)
+2025-06-15 10:40:53  OK       D:\AudioBooksCheck\Neal Stephenson\2003 - Quicksilver  (67/67)
+2025-06-15 10:40:56  OK       D:\AudioBooksCheck\Top 100 Sci-Fi Books\1992 - 75 - Doomsday Book - Connie Willis - 1992  (36/36)
+2025-06-15 11:40:39  SKIP     D:\AudioBooksCheck\Top 100 Sci-Fi Books\1995 - 55 - The Diamond Age - Neal Stephenson - 1995
+2025-06-15 11:40:43  OK       D:\AudioBooksCheck\Top 100 Sci-Fi Books\1999 - 61 - Ender's Shadow - Orson Scott Card - 1999  (138/138)
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Top 100 Sci-Fi Books\2000 - 73 - Revelation Space - Alastair Reynolds - 2000
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\.unwanted
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\01 - In The Balance
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\03 - Upsetting the Balance
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\06 - Down to Earth
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\07 - Aftershocks
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\2000 - Revelation Space
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\2001 - Chasm City
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\2002 - Redemption Ark
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\2003 - 1 Diamond Dogs, Turquoise Days
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\2003 - 2 Absolution Gap
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\2006 - Cheater
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\2006 - Galactic North
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\2007 - The Prefect
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\2200 - Arkady Martine - A Desolation Called Peace
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\A Scanner darkly
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\Earth Afire Part 1
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\Other
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\Shadow of the Giant
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\Shadow Puppets
+2025-06-15 11:40:52  SKIP     D:\AudioBooksCheck\Unknown Author\Ubik
+2025-06-15 11:40:55  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1818 - 52 - Frankenstein - Mary Shelley - 1818  (9/9)
+2025-06-15 11:40:57  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1864 - 53 - Journey to the Center of the Earth - Jules Verne - 1864  (41/41)
+2025-06-15 11:41:01  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1870 - 35 - 20,000 Leagues Under the Sea - Jules Verne - 1870  (15/15)
+2025-06-15 11:41:04  NOMATCH  D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1884 - 86 - Flatland - Edwin A Abbott - 1884
+2025-06-15 11:41:07  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1895 - 17 - The Time Machine - H.G. Wells - 1895  (4/4)
+2025-06-15 11:41:10  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1897 - 77 - The Invisible Man - H G Wells - 1897  (13/13)
+2025-06-15 11:41:13  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1898 - 20 - The War Of The Worlds - H.G. Wells - 1898  (124/124)
+2025-06-15 11:41:17  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1912 - 81 - A Princess of Mars - Edgar Rice Burroughs - 1912  (135/135)
+2025-06-15 11:41:20  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1912 - 96 - The Lost World - Arthur Conan Doyle - 1912  (165/165)
+2025-06-15 11:41:22  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1932 - 16 - Brave New World - Aldous Huxley - 1932  (18/18)
+2025-06-15 11:41:44  SKIP     D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1940 - 98 - Gray Lensman
+2025-06-15 11:41:48  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1949 - 05 - 1984 - George Orwell - 1949  (26/26)
+2025-06-15 11:41:51  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1950 - 10 - I, Robot - Isaac Asimov - 1950  (78/78)
+2025-06-15 11:41:54  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1950 - 22 - The Martian Chronicles - Ray Bradbury - 1950  (27/27)
+2025-06-15 11:41:58  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1951 - 03 - Book 1 - Foundation - Isaac Asimov - 1951  (164/164)
+2025-06-15 11:42:01  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1951 - 43 - The Day of the Triffids - John Wyndham - 1951  (8/8)
+2025-06-15 11:42:04  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1951 - 79 - The Puppet Masters - Robert A Heinlein - 1951  (17/17)
+2025-06-15 11:42:07  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1953 - 07 - Fahrenheit 451 - Ray Bradbury - 1954  (42/42)
+2025-06-15 11:42:10  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1953 - 68 - The Demolished Man - Alfred Bester - 1953  (14/14)
+2025-06-15 11:42:13  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1954 - 18 - Childhood's End - Arthur C. Clarke - 1954  (16/16)
+2025-06-15 11:42:15  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1954 - 30 - The Caves of Steel - Isaac Asimov - 1954  (6/6)
+2025-06-15 11:42:19  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1955 - 50 - The End of Eternity - Isaac Asimov - 1955  (7/7)
+2025-06-15 11:42:22  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1955 - 84 - The Chrysalids - John Wyndham - 1955  (6/6)
+2025-06-15 11:42:25  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1956 - 31 - The Stars My Destination - Alfred Bester - 1956  (6/6)
+2025-06-15 11:42:28  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1956 - 66 - The City and the Stars - Arthur C Clarke - 1956  (13/13)
+2025-06-15 11:42:31  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1956 - 71 - The Door Into Summer - Robert A Heinlein - 1956  (12/12)
+2025-06-15 11:42:34  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1957 - 74 - Citizen of the Galaxy - Robert A Heinlein - 1957  (23/23)
+2025-06-15 11:42:37  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1957 - 80 - Out of the Silent Planet - C S Lewis - 1938  (13/13)
+2025-06-15 11:42:41  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1958 - 48 - Flowers for Algernon - Daniel Keyes  (147/147)
+2025-06-15 11:42:44  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1958 - 78 - Have Space-Suit Will Travel - Robert A Heinlein - 1958  (12/12)
+2025-06-15 11:42:47  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1959 - 09 - Starship Troopers - Robert A. Heinlein - 1959  (14/14)
+2025-06-15 11:42:50  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1959 - 49 - A Canticle for Leibowitz - Walter M Miller - 1959  (16/16)
+2025-06-15 11:42:54  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1959 - 59 - The Sirens of Titan - Kurt Vonnegut - 1959  (20/20)
+2025-06-15 11:42:57  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1961 - 06 - Stranger in a Strange Land - Robert A. Heinlein - 1961  (23/23)
+2025-06-15 11:43:00  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1961 - 34 - Solaris - Lem Stanislaw - 1961  (8/8)
+2025-06-15 11:43:03  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1961 - 67 - The Stainless Steel Rat - Harry Harrison - 1961  (66/66)
+2025-06-15 11:43:05  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1962 - 02 - Dune - Frank Herbert - 1965  (22/22)
+2025-06-15 11:43:08  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1962 - 29 - The Man in the High Castle - Philip K.Dick - 1962  (10/10)
+2025-06-15 11:43:21  SKIP     D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1962 - 36 - A Wrinkle in Time - Madelein L'Engle - 1962
+2025-06-15 11:43:24  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1962 - 46 - A Clockwork Orange - Anthony Burgess - 1962  (22/22)
+2025-06-15 11:43:27  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1963 - 85 - Way Station - Clifford Simak - 1963  (10/10)
+2025-06-15 11:43:30  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1964 - 72 - The Three Stigmata of Palmer Eldritch - Philip K Dick - 1964  (13/13)
+2025-06-15 11:43:33  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1966 - 12 - Do Androids Dream of Electric Sheep - Philip K. Dick - 1968  (8/8)
+2025-06-15 11:43:36  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1966 - 19 - The Moon Is a Harsh Mistress - Robert A Heinlein - 1966  (12/12)
+2025-06-15 11:43:39  NOMATCH  D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1967 - 33 - Lord of Light - Roger Zelazny - 1967
+2025-06-15 11:43:42  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1968 - 08 - 2001 A Space Odyssey - Arthur C. Clarke - 1968  (6/6)
+2025-06-15 11:43:45  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1969 - 23 - Slaughterhouse-Five - Kurt Vonnegut - 1969  (34/34)
+2025-06-15 11:43:48  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1969 - 26 - The Left Hand of Darkness - Ursula K Le Guin - 1969  (15/15)
+2025-06-15 11:43:51  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1969 - 44 - Ubik - Philip K. Dick - 1969  (17/17)
+2025-06-15 11:44:09  SKIP     D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1971 - 62 - To Your Scattered Bodies Go - Philip Jose Farmer - 1971
+2025-06-15 11:44:11  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1971 - 82 - The Lathe of Heaven - Ursula K Le Guin - 1971  (10/10)
+2025-06-15 11:44:14  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1972 - 40 - The Gods Themselves - Isaac Asimov - 1972  (7/7)
+2025-06-15 11:44:17  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1973 - 14 - Rendezvous With Rama - Arthur C Clarke - 1973  (64/64)
+2025-06-15 11:44:20  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1973 - 37 - Cat's Cradle - Kurt Vonnegut - 1963  (127/127)
+2025-06-15 11:44:24  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1973 - 45 - Time Enough for Love - Robert Heinlein - 1973  (26/26)
+2025-06-15 11:44:26  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1973 - 63 - A Scanner Darkly - Philip K Dick - 1977  (8/8)
+2025-06-15 11:44:29  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1974 - 54 - The Dispossessed - Ursula K Le Guin - 1974  (6/6)
+2025-06-15 11:44:34  NOMATCH  D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1975 - 25 - The Mote in God's Eye - Niven & Pournelle - 1975
+2025-06-15 11:44:44  SKIP     D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1977 - 32 - Gateway - Frederik Pohl - 1977
+2025-06-15 11:45:08  SKIP     D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1977 - 64 - Lucifer's Hammer - Niven & Pournelle - 1977
+2025-06-15 11:45:12  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1979 - 04 - Hitchhiker's Guide to the Galaxy - Douglas Adams - 1979  (5/5)
+2025-06-15 11:45:14  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1979 - 39 - The Andromeda Strain - Michael Crichton - 1969  (45/45)
+2025-06-15 11:45:18  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1980 - 69 - The Shadow of the Torturer - Gene Wolfe - 1980  (33/33)
+2025-06-15 11:45:35  SKIP     D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1981 - 93 - VALIS - Philip K Dick - 1981
+2025-06-15 11:45:38  NOMATCH  D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1981 - 97 - The Many-Colored Land - Julian May - 1981
+2025-06-15 11:45:41  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1982 - 51 - Battlefield Earth - L Ron Hubbard - 1982  (177/177)
+2025-06-15 11:45:44  NOMATCH  D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1983 - 58 - Startide Rising - David Brin - 1983
+2025-06-15 11:45:47  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1984 - 11 - Neuromancer - William Gibson - 1984  (12/12)
+2025-06-15 11:45:50  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1985 - 38 - Contact - Carl Sagan - 1985  (20/20)
+2025-06-15 11:45:53  NOMATCH  D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1985 - 60 - Eon - Greg Bear - 1985
+2025-06-15 11:45:56  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1985 - 65 - The Handmaid's Tale - Margaret Atwood - 1985  (16/16)
+2025-06-15 11:45:59  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1985 - 91 - The Postman - David Brin - 1985  (16/16)
+2025-06-15 11:46:02  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1986 - 27 - Speaker for the Dead - Orson Scott Card - 1986  (9/9)
+2025-06-15 11:46:05  NOMATCH  D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1987 - 70 - Sphere - Michael Crichton - 1987
+2025-06-15 11:46:08  NOMATCH  D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1987 - 99 - The Uplift War - David Brin - 1987
+2025-06-15 11:46:11  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1988 - 56 - The Player of Games - Iain M Banks - 1988  (1/1)
+2025-06-15 11:46:14  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1989 - 15 - Hyperion - Dan Simmons - 1989  (149/149)
+2025-06-15 11:46:18  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1990 - 28 - Jurassic Park - Michael Crichton - 1990  (166/166)
+2025-06-15 11:46:21  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1990 - 83 - Use of Weapons - Iain M Banks - 1990  (40/40)
+2025-06-15 11:46:24  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1991 - 41 - A Fire Upon the Deep - Vernor Vinge - 1991  (17/17)
+2025-06-15 11:46:27  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1992 - 24 - Snow Crash - Neal Stephenson - 1992  (24/24)
+2025-06-15 11:46:30  NOMATCH  D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1992 - 47 - Red Mars - Kim Stanley Robinson - 1992
+2025-06-15 11:46:33  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1992 - 75 - Doomsday Book - Connie Willis - 1992  (36/36)
+2025-06-15 11:46:43  SKIP     D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1995 - 55 - The Diamond Age - Neal Stephenson - 1995
+2025-06-15 11:46:47  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1996 - 57 - The Reality Dysfunction - Peter F Hamilton - 1996  (498/498)
+2025-06-15 11:46:50  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1999 - 21 - The Forever War - Joe Haldeman - 1974  (8/8)
+2025-06-15 11:46:53  NOMATCH  D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1999 - 42 - Cryptonomicon - Neal Stephenson - 1999
+2025-06-15 11:46:56  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1999 - 61 - Ender's Shadow - Orson Scott Card - 1999  (138/138)
+2025-06-15 11:47:16  SKIP     D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2000 - 73 - Revelation Space - Alastair Reynolds - 2000
+2025-06-15 11:47:19  NOMATCH  D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2002 - 87 - Altered Carbon - Richard Morgan - 2002
+2025-06-15 11:47:23  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2003 - 76 - Ilium - Dan Simmons - 2003  (18/18)
+2025-06-15 11:47:25  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2004 - 01 - Ender's Game - Orson Scott Card - 1985  (107/107)
+2025-06-15 11:47:29  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2005 - 88 - Old Man's War - John Scalzi - 2005  (20/20)
+2025-06-15 11:47:32  NOMATCH  D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2006 - 90 - The Road - Cormac McCarthy - 2006
+2025-06-15 11:58:12  ERR      tag D:\AudioBooksCheck\Brandon Sanderson\2010 - The Way of Kings\The Way of Kings The Stormlight Archive, Book 1 (Unabridged).m4b
+2025-06-15 11:58:12  ERR      D:\AudioBooksCheck\Brandon Sanderson\2010 - The Way of Kings  (0/1)
+2025-06-15 11:58:15  OK       D:\AudioBooksCheck\Brandon Sanderson\2016 - Cosmere Stormlight Archive 1 The Way of Kin  (5/5)
+2025-06-15 11:58:18  ERR      D:\AudioBooksCheck\Brandon Sanderson\2017 - Cosmere Stormlight Archive 3 Oathbringer – TypeError
+2025-06-15 11:58:21  ERR      D:\AudioBooksCheck\Brandon Sanderson\2018 - Cosmere Stormlight Archive 2.5 Edgedancer ( – TypeError
+2025-06-15 12:06:32  ERR      tag D:\AudioBooksCheck\Brandon Sanderson\2010 - The Way of Kings\The Way of Kings The Stormlight Archive, Book 1 (Unabridged).m4b
+2025-06-15 12:06:32  ERR      D:\AudioBooksCheck\Brandon Sanderson\2010 - The Way of Kings  (0/1)
+2025-06-15 12:06:35  OK       D:\AudioBooksCheck\Brandon Sanderson\2016 - Cosmere Stormlight Archive 1 The Way of Kin  (5/5)
+2025-06-15 12:06:37  ERR      D:\AudioBooksCheck\Brandon Sanderson\2017 - Cosmere Stormlight Archive 3 Oathbringer – TypeError
+2025-06-15 12:06:40  ERR      D:\AudioBooksCheck\Brandon Sanderson\2018 - Cosmere Stormlight Archive 2.5 Edgedancer ( – TypeError
+2025-06-15 12:06:42  ERR      D:\AudioBooksCheck\Brandon Sanderson\2018 - Cosmere Stormlight Archive 3 Oathbringer (G – TypeError
+2025-06-15 12:06:44  ERR      D:\AudioBooksCheck\Brandon Sanderson\2020 - Cosmere Stormlight Archive 4 Rhythm of War – TypeError
+2025-06-15 12:06:47  ERR      D:\AudioBooksCheck\Brandon Sanderson\2021 - Cosmere Stormlight Archive 4 Rhythm of War – TypeError
+2025-06-15 12:06:50  OK       D:\AudioBooksCheck\Brandon Sanderson\2022 - Cosmere Stormlight Archive 3.5 Dawnshard  (1/1)
+2025-06-15 12:06:53  OK       D:\AudioBooksCheck\Brandon Sanderson\2024 - Cosmere Stormlight Archive 3.5 Dawnshard (G  (1/1)
+2025-06-15 12:06:56  OK       D:\AudioBooksCheck\Brandon Sanderson\2024 - Cosmere Stormlight Archive 5 Wind and Truth  (1/1)
+2025-06-15 12:06:59  ERR      tag D:\AudioBooksCheck\Brandon Sanderson\Edgedancer\The Stormlight Archive Book 2.5 - Edgedancer.m4b
+2025-06-15 12:06:59  ERR      D:\AudioBooksCheck\Brandon Sanderson\Edgedancer  (0/1)
+2025-06-15 12:07:02  ERR      tag D:\AudioBooksCheck\Brandon Sanderson\Words of Radiance\Words of Radiance The Stormlight Archive, Book 2 (Unabridged).m4b
+2025-06-15 12:07:02  ERR      D:\AudioBooksCheck\Brandon Sanderson\Words of Radiance  (0/1)
+2025-06-15 12:07:06  OK       D:\AudioBooksCheck\Dan Simmons\1989 - Hyperion  (28/28)
+2025-06-15 12:07:09  OK       D:\AudioBooksCheck\Dan Simmons\1990 - The Fall of Hyperion  (46/46)
+2025-06-15 12:07:12  OK       D:\AudioBooksCheck\Dan Simmons\1996 - Endymion  (60/60)
+2025-06-15 12:07:15  OK       D:\AudioBooksCheck\Dan Simmons\1997 - The Rise of Endymion  (35/35)
+2025-06-15 12:07:18  ERR      D:\AudioBooksCheck\Frank Herbert\1965 - Dune – TypeError
+2025-06-15 12:07:20  ERR      D:\AudioBooksCheck\GraphicAudio\2016 - The Stormlight Archive 2 Words of Radiance – TypeError
+2025-06-15 12:07:23  OK       D:\AudioBooksCheck\Neal Stephenson\1999 - Cryptonomicon  (104/104)
+2025-06-15 12:07:28  OK       D:\AudioBooksCheck\Neal Stephenson\2003 - Quicksilver  (67/67)
+2025-06-15 12:08:00  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2010 - The Way of Kings  (1/1)
+2025-06-15 12:08:03  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2016 - Cosmere Stormlight Archive 1 The Way of Kin  (5/5)
+2025-06-15 12:08:04  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2017 - Cosmere Stormlight Archive 3 Oathbringer  (1/1)
+2025-06-15 12:08:04  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2018 - Cosmere Stormlight Archive 2.5 Edgedancer (  (1/1)
+2025-06-15 12:08:05  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2018 - Cosmere Stormlight Archive 3 Oathbringer (G  (1/1)
+2025-06-15 12:08:06  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2020 - Cosmere Stormlight Archive 4 Rhythm of War  (1/1)
+2025-06-15 12:08:07  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2021 - Cosmere Stormlight Archive 4 Rhythm of War  (1/1)
+2025-06-15 12:08:07  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2022 - Cosmere Stormlight Archive 3.5 Dawnshard  (1/1)
+2025-06-15 12:08:08  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2024 - Cosmere Stormlight Archive 3.5 Dawnshard (G  (1/1)
+2025-06-15 12:08:08  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2024 - Cosmere Stormlight Archive 5 Wind and Truth  (1/1)
+2025-06-15 12:08:08  STRIP    D:\AudioBooksCheck\Brandon Sanderson\Edgedancer  (1/1)
+2025-06-15 12:08:08  STRIP    D:\AudioBooksCheck\Brandon Sanderson\Words of Radiance  (1/1)
+2025-06-15 12:08:09  STRIP    D:\AudioBooksCheck\Dan Simmons\1989 - Hyperion  (28/28)
+2025-06-15 12:08:09  STRIP    D:\AudioBooksCheck\Dan Simmons\1990 - The Fall of Hyperion  (46/46)
+2025-06-15 12:08:10  STRIP    D:\AudioBooksCheck\Dan Simmons\1996 - Endymion  (60/60)
+2025-06-15 12:08:11  STRIP    D:\AudioBooksCheck\Dan Simmons\1997 - The Rise of Endymion  (35/35)
+2025-06-15 12:08:11  STRIP    D:\AudioBooksCheck\Frank Herbert\1965 - Dune  (4/4)
+2025-06-15 12:08:13  STRIP    D:\AudioBooksCheck\GraphicAudio\2016 - The Stormlight Archive 2 Words of Radiance  (3/3)
+2025-06-15 12:08:14  STRIP    D:\AudioBooksCheck\Neal Stephenson\1999 - Cryptonomicon  (104/104)
+2025-06-15 12:08:16  STRIP    D:\AudioBooksCheck\Neal Stephenson\2003 - Quicksilver  (67/67)
+2025-06-15 12:08:16  STRIP    D:\AudioBooksCheck\Top 100 Sci-Fi Books\1992 - 75 - Doomsday Book - Connie Willis - 1992  (36/36)
+2025-06-15 12:08:16  STRIP    D:\AudioBooksCheck\Top 100 Sci-Fi Books\1995 - 55 - The Diamond Age - Neal Stephenson - 1995  (24/24)
+2025-06-15 12:08:16  STRIP    D:\AudioBooksCheck\Top 100 Sci-Fi Books\1999 - 61 - Ender's Shadow - Orson Scott Card - 1999  (138/138)
+2025-06-15 12:08:16  STRIP    D:\AudioBooksCheck\Top 100 Sci-Fi Books\2000 - 73 - Revelation Space - Alastair Reynolds - 2000  (44/44)
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\.unwanted
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\01 - In The Balance
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\03 - Upsetting the Balance
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\06 - Down to Earth
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\07 - Aftershocks
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\2000 - Revelation Space
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\2001 - Chasm City
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\2002 - Redemption Ark
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\2003 - 1 Diamond Dogs, Turquoise Days
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\2003 - 2 Absolution Gap
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\2006 - Cheater
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\2006 - Galactic North
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\2007 - The Prefect
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\2200 - Arkady Martine - A Desolation Called Peace
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\A Scanner darkly
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\Earth Afire Part 1
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\Other
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\Shadow of the Giant
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\Shadow Puppets
+2025-06-15 12:08:16  SKIP     D:\AudioBooksCheck\Unknown Author\Ubik
+2025-06-15 12:08:17  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1818 - 52 - Frankenstein - Mary Shelley - 1818  (9/9)
+2025-06-15 12:08:17  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1864 - 53 - Journey to the Center of the Earth - Jules Verne - 1864  (41/41)
+2025-06-15 12:08:17  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1870 - 35 - 20,000 Leagues Under the Sea - Jules Verne - 1870  (15/15)
+2025-06-15 12:08:17  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1884 - 86 - Flatland - Edwin A Abbott - 1884  (12/12)
+2025-06-15 12:08:17  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1895 - 17 - The Time Machine - H.G. Wells - 1895  (4/4)
+2025-06-15 12:08:17  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1897 - 77 - The Invisible Man - H G Wells - 1897  (13/13)
+2025-06-15 12:08:17  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1898 - 20 - The War Of The Worlds - H.G. Wells - 1898  (124/124)
+2025-06-15 12:08:18  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1912 - 81 - A Princess of Mars - Edgar Rice Burroughs - 1912  (135/135)
+2025-06-15 12:08:18  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1912 - 96 - The Lost World - Arthur Conan Doyle - 1912  (165/165)
+2025-06-15 12:08:18  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1932 - 16 - Brave New World - Aldous Huxley - 1932  (18/18)
+2025-06-15 12:08:19  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1940 - 98 - Gray Lensman  (209/209)
+2025-06-15 12:08:19  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1949 - 05 - 1984 - George Orwell - 1949  (26/26)
+2025-06-15 12:08:19  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1950 - 10 - I, Robot - Isaac Asimov - 1950  (78/78)
+2025-06-15 12:08:19  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1950 - 22 - The Martian Chronicles - Ray Bradbury - 1950  (27/27)
+2025-06-15 12:08:20  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1951 - 03 - Book 1 - Foundation - Isaac Asimov - 1951  (164/164)
+2025-06-15 12:08:20  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1951 - 43 - The Day of the Triffids - John Wyndham - 1951  (8/8)
+2025-06-15 12:08:20  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1951 - 79 - The Puppet Masters - Robert A Heinlein - 1951  (17/17)
+2025-06-15 12:08:20  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1953 - 07 - Fahrenheit 451 - Ray Bradbury - 1954  (42/42)
+2025-06-15 12:08:21  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1953 - 68 - The Demolished Man - Alfred Bester - 1953  (14/14)
+2025-06-15 12:08:21  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1954 - 18 - Childhood's End - Arthur C. Clarke - 1954  (16/16)
+2025-06-15 12:08:21  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1954 - 30 - The Caves of Steel - Isaac Asimov - 1954  (6/6)
+2025-06-15 12:08:21  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1955 - 50 - The End of Eternity - Isaac Asimov - 1955  (7/7)
+2025-06-15 12:08:21  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1955 - 84 - The Chrysalids - John Wyndham - 1955  (6/6)
+2025-06-15 12:08:21  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1956 - 31 - The Stars My Destination - Alfred Bester - 1956  (6/6)
+2025-06-15 12:08:21  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1956 - 66 - The City and the Stars - Arthur C Clarke - 1956  (13/13)
+2025-06-15 12:08:21  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1956 - 71 - The Door Into Summer - Robert A Heinlein - 1956  (12/12)
+2025-06-15 12:08:22  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1957 - 74 - Citizen of the Galaxy - Robert A Heinlein - 1957  (23/23)
+2025-06-15 12:08:22  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1957 - 80 - Out of the Silent Planet - C S Lewis - 1938  (13/13)
+2025-06-15 12:08:22  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1958 - 48 - Flowers for Algernon - Daniel Keyes  (147/147)
+2025-06-15 12:08:22  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1958 - 78 - Have Space-Suit Will Travel - Robert A Heinlein - 1958  (12/12)
+2025-06-15 12:08:22  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1959 - 09 - Starship Troopers - Robert A. Heinlein - 1959  (14/14)
+2025-06-15 12:08:23  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1959 - 49 - A Canticle for Leibowitz - Walter M Miller - 1959  (16/16)
+2025-06-15 12:08:23  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1959 - 59 - The Sirens of Titan - Kurt Vonnegut - 1959  (20/20)
+2025-06-15 12:08:23  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1961 - 06 - Stranger in a Strange Land - Robert A. Heinlein - 1961  (23/23)
+2025-06-15 12:08:23  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1961 - 34 - Solaris - Lem Stanislaw - 1961  (8/8)
+2025-06-15 12:08:24  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1961 - 67 - The Stainless Steel Rat - Harry Harrison - 1961  (66/66)
+2025-06-15 12:08:24  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1962 - 02 - Dune - Frank Herbert - 1965  (22/22)
+2025-06-15 12:08:25  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1962 - 29 - The Man in the High Castle - Philip K.Dick - 1962  (10/10)
+2025-06-15 12:08:25  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1962 - 36 - A Wrinkle in Time - Madelein L'Engle - 1962  (72/72)
+2025-06-15 12:08:25  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1962 - 46 - A Clockwork Orange - Anthony Burgess - 1962  (22/22)
+2025-06-15 12:08:25  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1963 - 85 - Way Station - Clifford Simak - 1963  (10/10)
+2025-06-15 12:08:25  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1964 - 72 - The Three Stigmata of Palmer Eldritch - Philip K Dick - 1964  (13/13)
+2025-06-15 12:08:26  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1966 - 12 - Do Androids Dream of Electric Sheep - Philip K. Dick - 1968  (8/8)
+2025-06-15 12:08:26  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1966 - 19 - The Moon Is a Harsh Mistress - Robert A Heinlein - 1966  (12/12)
+2025-06-15 12:08:27  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1967 - 33 - Lord of Light - Roger Zelazny - 1967  (91/91)
+2025-06-15 12:08:27  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1968 - 08 - 2001 A Space Odyssey - Arthur C. Clarke - 1968  (6/6)
+2025-06-15 12:08:27  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1969 - 23 - Slaughterhouse-Five - Kurt Vonnegut - 1969  (34/34)
+2025-06-15 12:08:27  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1969 - 26 - The Left Hand of Darkness - Ursula K Le Guin - 1969  (15/15)
+2025-06-15 12:08:27  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1969 - 44 - Ubik - Philip K. Dick - 1969  (17/17)
+2025-06-15 12:08:27  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1971 - 62 - To Your Scattered Bodies Go - Philip Jose Farmer - 1971  (90/90)
+2025-06-15 12:08:28  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1971 - 82 - The Lathe of Heaven - Ursula K Le Guin - 1971  (10/10)
+2025-06-15 12:08:28  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1972 - 40 - The Gods Themselves - Isaac Asimov - 1972  (7/7)
+2025-06-15 12:08:28  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1973 - 14 - Rendezvous With Rama - Arthur C Clarke - 1973  (64/64)
+2025-06-15 12:08:28  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1973 - 37 - Cat's Cradle - Kurt Vonnegut - 1963  (127/127)
+2025-06-15 12:08:29  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1973 - 45 - Time Enough for Love - Robert Heinlein - 1973  (26/26)
+2025-06-15 12:08:29  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1973 - 63 - A Scanner Darkly - Philip K Dick - 1977  (8/8)
+2025-06-15 12:08:29  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1974 - 54 - The Dispossessed - Ursula K Le Guin - 1974  (6/6)
+2025-06-15 12:08:30  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1975 - 25 - The Mote in God's Eye - Niven & Pournelle - 1975  (42/42)
+2025-06-15 12:08:30  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1977 - 32 - Gateway - Frederik Pohl - 1977  (6/6)
+2025-06-15 12:08:30  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1977 - 64 - Lucifer's Hammer - Niven & Pournelle - 1977  (3/3)
+2025-06-15 12:08:30  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1979 - 04 - Hitchhiker's Guide to the Galaxy - Douglas Adams - 1979  (5/5)
+2025-06-15 12:08:30  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1979 - 39 - The Andromeda Strain - Michael Crichton - 1969  (45/45)
+2025-06-15 12:08:30  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1980 - 69 - The Shadow of the Torturer - Gene Wolfe - 1980  (33/33)
+2025-06-15 12:08:30  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1981 - 93 - VALIS - Philip K Dick - 1981  (15/15)
+2025-06-15 12:08:31  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1981 - 97 - The Many-Colored Land - Julian May - 1981  (14/14)
+2025-06-15 12:08:31  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1982 - 51 - Battlefield Earth - L Ron Hubbard - 1982  (177/177)
+2025-06-15 12:08:31  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1983 - 58 - Startide Rising - David Brin - 1983  (94/94)
+2025-06-15 12:08:32  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1984 - 11 - Neuromancer - William Gibson - 1984  (12/12)
+2025-06-15 12:08:32  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1985 - 38 - Contact - Carl Sagan - 1985  (20/20)
+2025-06-15 12:08:32  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1985 - 60 - Eon - Greg Bear - 1985  (12/12)
+2025-06-15 12:08:32  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1985 - 65 - The Handmaid's Tale - Margaret Atwood - 1985  (16/16)
+2025-06-15 12:08:32  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1985 - 91 - The Postman - David Brin - 1985  (16/16)
+2025-06-15 12:08:33  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1986 - 27 - Speaker for the Dead - Orson Scott Card - 1986  (9/9)
+2025-06-15 12:08:33  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1987 - 70 - Sphere - Michael Crichton - 1987  (16/16)
+2025-06-15 12:08:33  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1987 - 99 - The Uplift War - David Brin - 1987  (38/38)
+2025-06-15 12:08:33  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1988 - 56 - The Player of Games - Iain M Banks - 1988  (1/1)
+2025-06-15 12:08:34  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1989 - 15 - Hyperion - Dan Simmons - 1989  (149/149)
+2025-06-15 12:08:34  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1990 - 28 - Jurassic Park - Michael Crichton - 1990  (166/166)
+2025-06-15 12:08:35  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1990 - 83 - Use of Weapons - Iain M Banks - 1990  (40/40)
+2025-06-15 12:08:35  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1991 - 41 - A Fire Upon the Deep - Vernor Vinge - 1991  (17/17)
+2025-06-15 12:08:36  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1992 - 24 - Snow Crash - Neal Stephenson - 1992  (24/24)
+2025-06-15 12:08:36  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1992 - 47 - Red Mars - Kim Stanley Robinson - 1992  (34/34)
+2025-06-15 12:08:36  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1992 - 75 - Doomsday Book - Connie Willis - 1992  (36/36)
+2025-06-15 12:08:36  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1995 - 55 - The Diamond Age - Neal Stephenson - 1995  (24/24)
+2025-06-15 12:08:38  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1996 - 57 - The Reality Dysfunction - Peter F Hamilton - 1996  (498/498)
+2025-06-15 12:08:38  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1999 - 21 - The Forever War - Joe Haldeman - 1974  (8/8)
+2025-06-15 12:08:39  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1999 - 42 - Cryptonomicon - Neal Stephenson - 1999  (34/34)
+2025-06-15 12:08:39  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1999 - 61 - Ender's Shadow - Orson Scott Card - 1999  (138/138)
+2025-06-15 12:08:40  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2000 - 73 - Revelation Space - Alastair Reynolds - 2000  (44/44)
+2025-06-15 12:08:40  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2002 - 87 - Altered Carbon - Richard Morgan - 2002  (14/14)
+2025-06-15 12:08:40  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2003 - 76 - Ilium - Dan Simmons - 2003  (18/18)
+2025-06-15 12:08:41  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2004 - 01 - Ender's Game - Orson Scott Card - 1985  (107/107)
+2025-06-15 12:08:41  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2005 - 88 - Old Man's War - John Scalzi - 2005  (20/20)
+2025-06-15 12:08:41  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2006 - 90 - The Road - Cormac McCarthy - 2006  (102/102)
+2025-06-15 12:08:41  STRIP    D:\AudioBooksCheck\Kim Stanley Robinson\Mars Trilogy\Vol 3 - Blue Mars  (15/15)
+2025-06-15 12:17:04  ERR      tag D:\AudioBooksCheck\Brandon Sanderson\2010 - The Way of Kings\The Way of Kings The Stormlight Archive, Book 1 (Unabridged).m4b
+2025-06-15 12:17:04  ERR      D:\AudioBooksCheck\Brandon Sanderson\2010 - The Way of Kings  (0/1)
+2025-06-15 12:17:11  OK       D:\AudioBooksCheck\Brandon Sanderson\2016 - Cosmere Stormlight Archive 1 The Way of Kin  (5/5)
+2025-06-15 12:17:15  ERR      D:\AudioBooksCheck\Brandon Sanderson\2017 - Cosmere Stormlight Archive 3 Oathbringer – TypeError
+2025-06-15 12:17:18  ERR      D:\AudioBooksCheck\Brandon Sanderson\2018 - Cosmere Stormlight Archive 2.5 Edgedancer ( – TypeError
+2025-06-15 12:17:20  ERR      D:\AudioBooksCheck\Brandon Sanderson\2018 - Cosmere Stormlight Archive 3 Oathbringer (G – TypeError
+2025-06-15 12:17:23  ERR      D:\AudioBooksCheck\Brandon Sanderson\2020 - Cosmere Stormlight Archive 4 Rhythm of War – TypeError
+2025-06-15 12:17:26  ERR      D:\AudioBooksCheck\Brandon Sanderson\2021 - Cosmere Stormlight Archive 4 Rhythm of War – TypeError
+2025-06-15 12:17:29  OK       D:\AudioBooksCheck\Brandon Sanderson\2022 - Cosmere Stormlight Archive 3.5 Dawnshard  (1/1)
+2025-06-15 12:17:33  OK       D:\AudioBooksCheck\Brandon Sanderson\2024 - Cosmere Stormlight Archive 3.5 Dawnshard (G  (1/1)
+2025-06-15 12:17:36  OK       D:\AudioBooksCheck\Brandon Sanderson\2024 - Cosmere Stormlight Archive 5 Wind and Truth  (1/1)
+2025-06-15 12:17:39  ERR      tag D:\AudioBooksCheck\Brandon Sanderson\Edgedancer\The Stormlight Archive Book 2.5 - Edgedancer.m4b
+2025-06-15 12:17:39  ERR      D:\AudioBooksCheck\Brandon Sanderson\Edgedancer  (0/1)
+2025-06-15 12:17:42  ERR      tag D:\AudioBooksCheck\Brandon Sanderson\Words of Radiance\Words of Radiance The Stormlight Archive, Book 2 (Unabridged).m4b
+2025-06-15 12:17:42  ERR      D:\AudioBooksCheck\Brandon Sanderson\Words of Radiance  (0/1)
+2025-06-15 12:17:46  OK       D:\AudioBooksCheck\Dan Simmons\1989 - Hyperion  (28/28)
+2025-06-15 12:17:51  OK       D:\AudioBooksCheck\Dan Simmons\1990 - The Fall of Hyperion  (46/46)
+2025-06-15 12:17:54  OK       D:\AudioBooksCheck\Dan Simmons\1996 - Endymion  (60/60)
+2025-06-15 12:17:57  OK       D:\AudioBooksCheck\Dan Simmons\1997 - The Rise of Endymion  (35/35)
+2025-06-15 12:18:01  ERR      D:\AudioBooksCheck\Frank Herbert\1965 - Dune – TypeError
+2025-06-15 12:18:04  ERR      D:\AudioBooksCheck\GraphicAudio\2016 - The Stormlight Archive 2 Words of Radiance – TypeError
+2025-06-15 12:18:07  OK       D:\AudioBooksCheck\Neal Stephenson\1999 - Cryptonomicon  (104/104)
+2025-06-15 12:18:10  OK       D:\AudioBooksCheck\Neal Stephenson\2003 - Quicksilver  (67/67)
+2025-06-15 12:18:13  OK       D:\AudioBooksCheck\Top 100 Sci-Fi Books\1992 - 75 - Doomsday Book - Connie Willis - 1992  (36/36)
+2025-06-15 12:20:51  SKIP     D:\AudioBooksCheck\Top 100 Sci-Fi Books\1995 - 55 - The Diamond Age - Neal Stephenson - 1995
+2025-06-15 12:20:58  OK       D:\AudioBooksCheck\Top 100 Sci-Fi Books\1999 - 61 - Ender's Shadow - Orson Scott Card - 1999  (138/138)
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Top 100 Sci-Fi Books\2000 - 73 - Revelation Space - Alastair Reynolds - 2000
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\.unwanted
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\01 - In The Balance
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\03 - Upsetting the Balance
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\06 - Down to Earth
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\07 - Aftershocks
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\2000 - Revelation Space
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\2001 - Chasm City
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\2002 - Redemption Ark
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\2003 - 1 Diamond Dogs, Turquoise Days
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\2003 - 2 Absolution Gap
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\2006 - Cheater
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\2006 - Galactic North
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\2007 - The Prefect
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\2200 - Arkady Martine - A Desolation Called Peace
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\A Scanner darkly
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\Earth Afire Part 1
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\Other
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\Shadow of the Giant
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\Shadow Puppets
+2025-06-15 12:21:06  SKIP     D:\AudioBooksCheck\Unknown Author\Ubik
+2025-06-15 12:21:08  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1818 - 52 - Frankenstein - Mary Shelley - 1818  (9/9)
+2025-06-15 12:21:11  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1864 - 53 - Journey to the Center of the Earth - Jules Verne - 1864  (41/41)
+2025-06-15 12:21:14  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1870 - 35 - 20,000 Leagues Under the Sea - Jules Verne - 1870  (15/15)
+2025-06-15 12:21:17  NOMATCH  D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1884 - 86 - Flatland - Edwin A Abbott - 1884
+2025-06-15 12:21:21  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1895 - 17 - The Time Machine - H.G. Wells - 1895  (4/4)
+2025-06-15 12:21:24  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1897 - 77 - The Invisible Man - H G Wells - 1897  (13/13)
+2025-06-15 12:21:26  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1898 - 20 - The War Of The Worlds - H.G. Wells - 1898  (124/124)
+2025-06-15 12:21:30  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1912 - 81 - A Princess of Mars - Edgar Rice Burroughs - 1912  (135/135)
+2025-06-15 12:21:33  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1912 - 96 - The Lost World - Arthur Conan Doyle - 1912  (165/165)
+2025-06-15 12:21:36  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1932 - 16 - Brave New World - Aldous Huxley - 1932  (18/18)
+2025-06-15 12:22:08  SKIP     D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1940 - 98 - Gray Lensman
+2025-06-15 12:22:12  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1949 - 05 - 1984 - George Orwell - 1949  (26/26)
+2025-06-15 12:22:15  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1950 - 10 - I, Robot - Isaac Asimov - 1950  (78/78)
+2025-06-15 12:22:18  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1950 - 22 - The Martian Chronicles - Ray Bradbury - 1950  (27/27)
+2025-06-15 12:22:22  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1951 - 03 - Book 1 - Foundation - Isaac Asimov - 1951  (164/164)
+2025-06-15 12:22:25  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1951 - 43 - The Day of the Triffids - John Wyndham - 1951  (8/8)
+2025-06-15 12:22:28  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1951 - 79 - The Puppet Masters - Robert A Heinlein - 1951  (17/17)
+2025-06-15 12:22:32  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1953 - 07 - Fahrenheit 451 - Ray Bradbury - 1954  (42/42)
+2025-06-15 12:22:35  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1953 - 68 - The Demolished Man - Alfred Bester - 1953  (14/14)
+2025-06-15 12:22:38  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1954 - 18 - Childhood's End - Arthur C. Clarke - 1954  (16/16)
+2025-06-15 12:22:41  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1954 - 30 - The Caves of Steel - Isaac Asimov - 1954  (6/6)
+2025-06-15 12:22:44  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1955 - 50 - The End of Eternity - Isaac Asimov - 1955  (7/7)
+2025-06-15 12:22:48  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1955 - 84 - The Chrysalids - John Wyndham - 1955  (6/6)
+2025-06-15 12:22:51  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1956 - 31 - The Stars My Destination - Alfred Bester - 1956  (6/6)
+2025-06-15 12:22:54  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1956 - 66 - The City and the Stars - Arthur C Clarke - 1956  (13/13)
+2025-06-15 12:22:58  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1956 - 71 - The Door Into Summer - Robert A Heinlein - 1956  (12/12)
+2025-06-15 12:23:01  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1957 - 74 - Citizen of the Galaxy - Robert A Heinlein - 1957  (23/23)
+2025-06-15 12:23:05  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1957 - 80 - Out of the Silent Planet - C S Lewis - 1938  (13/13)
+2025-06-15 12:23:08  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1958 - 48 - Flowers for Algernon - Daniel Keyes  (147/147)
+2025-06-15 12:23:11  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1958 - 78 - Have Space-Suit Will Travel - Robert A Heinlein - 1958  (12/12)
+2025-06-15 12:23:14  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1959 - 09 - Starship Troopers - Robert A. Heinlein - 1959  (14/14)
+2025-06-15 12:23:17  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1959 - 49 - A Canticle for Leibowitz - Walter M Miller - 1959  (16/16)
+2025-06-15 12:23:21  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1959 - 59 - The Sirens of Titan - Kurt Vonnegut - 1959  (20/20)
+2025-06-15 12:23:24  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1961 - 06 - Stranger in a Strange Land - Robert A. Heinlein - 1961  (23/23)
+2025-06-15 12:23:27  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1961 - 34 - Solaris - Lem Stanislaw - 1961  (8/8)
+2025-06-15 12:23:30  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1961 - 67 - The Stainless Steel Rat - Harry Harrison - 1961  (66/66)
+2025-06-15 12:23:33  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1962 - 02 - Dune - Frank Herbert - 1965  (22/22)
+2025-06-15 12:23:38  OK       D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1962 - 29 - The Man in the High Castle - Philip K.Dick - 1962  (10/10)
+2025-06-15 12:25:56  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2010 - The Way of Kings  (1/1)
+2025-06-15 12:25:57  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2016 - Cosmere Stormlight Archive 1 The Way of Kin  (5/5)
+2025-06-15 12:25:57  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2017 - Cosmere Stormlight Archive 3 Oathbringer  (1/1)
+2025-06-15 12:25:57  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2018 - Cosmere Stormlight Archive 2.5 Edgedancer (  (1/1)
+2025-06-15 12:25:57  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2018 - Cosmere Stormlight Archive 3 Oathbringer (G  (1/1)
+2025-06-15 12:25:57  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2020 - Cosmere Stormlight Archive 4 Rhythm of War  (1/1)
+2025-06-15 12:25:57  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2021 - Cosmere Stormlight Archive 4 Rhythm of War  (1/1)
+2025-06-15 12:25:57  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2022 - Cosmere Stormlight Archive 3.5 Dawnshard  (1/1)
+2025-06-15 12:25:57  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2024 - Cosmere Stormlight Archive 3.5 Dawnshard (G  (1/1)
+2025-06-15 12:25:59  STRIP    D:\AudioBooksCheck\Brandon Sanderson\2024 - Cosmere Stormlight Archive 5 Wind and Truth  (1/1)
+2025-06-15 12:25:59  STRIP    D:\AudioBooksCheck\Brandon Sanderson\Edgedancer  (1/1)
+2025-06-15 12:25:59  STRIP    D:\AudioBooksCheck\Brandon Sanderson\Words of Radiance  (1/1)
+2025-06-15 12:25:59  STRIP    D:\AudioBooksCheck\Dan Simmons\1989 - Hyperion  (28/28)
+2025-06-15 12:26:00  STRIP    D:\AudioBooksCheck\Dan Simmons\1990 - The Fall of Hyperion  (46/46)
+2025-06-15 12:26:00  STRIP    D:\AudioBooksCheck\Dan Simmons\1996 - Endymion  (60/60)
+2025-06-15 12:26:01  STRIP    D:\AudioBooksCheck\Dan Simmons\1997 - The Rise of Endymion  (35/35)
+2025-06-15 12:26:01  STRIP    D:\AudioBooksCheck\Frank Herbert\1965 - Dune  (4/4)
+2025-06-15 12:26:01  STRIP    D:\AudioBooksCheck\GraphicAudio\2016 - The Stormlight Archive 2 Words of Radiance  (3/3)
+2025-06-15 12:26:01  STRIP    D:\AudioBooksCheck\Neal Stephenson\1999 - Cryptonomicon  (104/104)
+2025-06-15 12:26:02  STRIP    D:\AudioBooksCheck\Neal Stephenson\2003 - Quicksilver  (67/67)
+2025-06-15 12:26:02  STRIP    D:\AudioBooksCheck\Top 100 Sci-Fi Books\1992 - 75 - Doomsday Book - Connie Willis - 1992  (36/36)
+2025-06-15 12:26:02  STRIP    D:\AudioBooksCheck\Top 100 Sci-Fi Books\1995 - 55 - The Diamond Age - Neal Stephenson - 1995  (24/24)
+2025-06-15 12:26:03  STRIP    D:\AudioBooksCheck\Top 100 Sci-Fi Books\1999 - 61 - Ender's Shadow - Orson Scott Card - 1999  (138/138)
+2025-06-15 12:26:03  STRIP    D:\AudioBooksCheck\Top 100 Sci-Fi Books\2000 - 73 - Revelation Space - Alastair Reynolds - 2000  (44/44)
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\.unwanted
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\01 - In The Balance
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\03 - Upsetting the Balance
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\06 - Down to Earth
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\07 - Aftershocks
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\2000 - Revelation Space
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\2001 - Chasm City
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\2002 - Redemption Ark
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\2003 - 1 Diamond Dogs, Turquoise Days
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\2003 - 2 Absolution Gap
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\2006 - Cheater
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\2006 - Galactic North
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\2007 - The Prefect
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\2200 - Arkady Martine - A Desolation Called Peace
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\A Scanner darkly
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\Earth Afire Part 1
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\Other
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\Shadow of the Giant
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\Shadow Puppets
+2025-06-15 12:26:03  SKIP     D:\AudioBooksCheck\Unknown Author\Ubik
+2025-06-15 12:26:03  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1818 - 52 - Frankenstein - Mary Shelley - 1818  (9/9)
+2025-06-15 12:26:03  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1864 - 53 - Journey to the Center of the Earth - Jules Verne - 1864  (41/41)
+2025-06-15 12:26:03  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1870 - 35 - 20,000 Leagues Under the Sea - Jules Verne - 1870  (15/15)
+2025-06-15 12:26:03  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1884 - 86 - Flatland - Edwin A Abbott - 1884  (12/12)
+2025-06-15 12:26:03  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1895 - 17 - The Time Machine - H.G. Wells - 1895  (4/4)
+2025-06-15 12:26:03  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1897 - 77 - The Invisible Man - H G Wells - 1897  (13/13)
+2025-06-15 12:26:03  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1898 - 20 - The War Of The Worlds - H.G. Wells - 1898  (124/124)
+2025-06-15 12:26:03  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1912 - 81 - A Princess of Mars - Edgar Rice Burroughs - 1912  (135/135)
+2025-06-15 12:26:04  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1912 - 96 - The Lost World - Arthur Conan Doyle - 1912  (165/165)
+2025-06-15 12:26:04  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1932 - 16 - Brave New World - Aldous Huxley - 1932  (18/18)
+2025-06-15 12:26:04  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1940 - 98 - Gray Lensman  (209/209)
+2025-06-15 12:26:04  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1949 - 05 - 1984 - George Orwell - 1949  (26/26)
+2025-06-15 12:26:04  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1950 - 10 - I, Robot - Isaac Asimov - 1950  (78/78)
+2025-06-15 12:26:04  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1950 - 22 - The Martian Chronicles - Ray Bradbury - 1950  (27/27)
+2025-06-15 12:26:04  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1951 - 03 - Book 1 - Foundation - Isaac Asimov - 1951  (164/164)
+2025-06-15 12:26:05  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1951 - 43 - The Day of the Triffids - John Wyndham - 1951  (8/8)
+2025-06-15 12:26:05  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1951 - 79 - The Puppet Masters - Robert A Heinlein - 1951  (17/17)
+2025-06-15 12:26:05  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1953 - 07 - Fahrenheit 451 - Ray Bradbury - 1954  (42/42)
+2025-06-15 12:26:05  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1953 - 68 - The Demolished Man - Alfred Bester - 1953  (14/14)
+2025-06-15 12:26:05  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1954 - 18 - Childhood's End - Arthur C. Clarke - 1954  (16/16)
+2025-06-15 12:26:05  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1954 - 30 - The Caves of Steel - Isaac Asimov - 1954  (6/6)
+2025-06-15 12:26:05  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1955 - 50 - The End of Eternity - Isaac Asimov - 1955  (7/7)
+2025-06-15 12:26:05  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1955 - 84 - The Chrysalids - John Wyndham - 1955  (6/6)
+2025-06-15 12:26:05  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1956 - 31 - The Stars My Destination - Alfred Bester - 1956  (6/6)
+2025-06-15 12:26:05  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1956 - 66 - The City and the Stars - Arthur C Clarke - 1956  (13/13)
+2025-06-15 12:26:05  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1956 - 71 - The Door Into Summer - Robert A Heinlein - 1956  (12/12)
+2025-06-15 12:26:05  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1957 - 74 - Citizen of the Galaxy - Robert A Heinlein - 1957  (23/23)
+2025-06-15 12:26:05  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1957 - 80 - Out of the Silent Planet - C S Lewis - 1938  (13/13)
+2025-06-15 12:26:06  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1958 - 48 - Flowers for Algernon - Daniel Keyes  (147/147)
+2025-06-15 12:26:06  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1958 - 78 - Have Space-Suit Will Travel - Robert A Heinlein - 1958  (12/12)
+2025-06-15 12:26:06  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1959 - 09 - Starship Troopers - Robert A. Heinlein - 1959  (14/14)
+2025-06-15 12:26:06  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1959 - 49 - A Canticle for Leibowitz - Walter M Miller - 1959  (16/16)
+2025-06-15 12:26:06  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1959 - 59 - The Sirens of Titan - Kurt Vonnegut - 1959  (20/20)
+2025-06-15 12:26:06  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1961 - 06 - Stranger in a Strange Land - Robert A. Heinlein - 1961  (23/23)
+2025-06-15 12:26:06  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1961 - 34 - Solaris - Lem Stanislaw - 1961  (8/8)
+2025-06-15 12:26:06  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1961 - 67 - The Stainless Steel Rat - Harry Harrison - 1961  (66/66)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1962 - 02 - Dune - Frank Herbert - 1965  (22/22)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1962 - 29 - The Man in the High Castle - Philip K.Dick - 1962  (10/10)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1962 - 36 - A Wrinkle in Time - Madelein L'Engle - 1962  (72/72)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1962 - 46 - A Clockwork Orange - Anthony Burgess - 1962  (22/22)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1963 - 85 - Way Station - Clifford Simak - 1963  (10/10)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1964 - 72 - The Three Stigmata of Palmer Eldritch - Philip K Dick - 1964  (13/13)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1966 - 12 - Do Androids Dream of Electric Sheep - Philip K. Dick - 1968  (8/8)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1966 - 19 - The Moon Is a Harsh Mistress - Robert A Heinlein - 1966  (12/12)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1967 - 33 - Lord of Light - Roger Zelazny - 1967  (91/91)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1968 - 08 - 2001 A Space Odyssey - Arthur C. Clarke - 1968  (6/6)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1969 - 23 - Slaughterhouse-Five - Kurt Vonnegut - 1969  (34/34)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1969 - 26 - The Left Hand of Darkness - Ursula K Le Guin - 1969  (15/15)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1969 - 44 - Ubik - Philip K. Dick - 1969  (17/17)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1971 - 62 - To Your Scattered Bodies Go - Philip Jose Farmer - 1971  (90/90)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1971 - 82 - The Lathe of Heaven - Ursula K Le Guin - 1971  (10/10)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1972 - 40 - The Gods Themselves - Isaac Asimov - 1972  (7/7)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1973 - 14 - Rendezvous With Rama - Arthur C Clarke - 1973  (64/64)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1973 - 37 - Cat's Cradle - Kurt Vonnegut - 1963  (127/127)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1973 - 45 - Time Enough for Love - Robert Heinlein - 1973  (26/26)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1973 - 63 - A Scanner Darkly - Philip K Dick - 1977  (8/8)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1974 - 54 - The Dispossessed - Ursula K Le Guin - 1974  (6/6)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1975 - 25 - The Mote in God's Eye - Niven & Pournelle - 1975  (42/42)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1977 - 32 - Gateway - Frederik Pohl - 1977  (6/6)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1977 - 64 - Lucifer's Hammer - Niven & Pournelle - 1977  (3/3)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1979 - 04 - Hitchhiker's Guide to the Galaxy - Douglas Adams - 1979  (5/5)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1979 - 39 - The Andromeda Strain - Michael Crichton - 1969  (45/45)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1980 - 69 - The Shadow of the Torturer - Gene Wolfe - 1980  (33/33)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1981 - 93 - VALIS - Philip K Dick - 1981  (15/15)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1981 - 97 - The Many-Colored Land - Julian May - 1981  (14/14)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1982 - 51 - Battlefield Earth - L Ron Hubbard - 1982  (177/177)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1983 - 58 - Startide Rising - David Brin - 1983  (94/94)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1984 - 11 - Neuromancer - William Gibson - 1984  (12/12)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1985 - 38 - Contact - Carl Sagan - 1985  (20/20)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1985 - 60 - Eon - Greg Bear - 1985  (12/12)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1985 - 65 - The Handmaid's Tale - Margaret Atwood - 1985  (16/16)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1985 - 91 - The Postman - David Brin - 1985  (16/16)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1986 - 27 - Speaker for the Dead - Orson Scott Card - 1986  (9/9)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1987 - 70 - Sphere - Michael Crichton - 1987  (16/16)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1987 - 99 - The Uplift War - David Brin - 1987  (38/38)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1988 - 56 - The Player of Games - Iain M Banks - 1988  (1/1)
+2025-06-15 12:26:07  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1989 - 15 - Hyperion - Dan Simmons - 1989  (149/149)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1990 - 28 - Jurassic Park - Michael Crichton - 1990  (166/166)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1990 - 83 - Use of Weapons - Iain M Banks - 1990  (40/40)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1991 - 41 - A Fire Upon the Deep - Vernor Vinge - 1991  (17/17)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1992 - 24 - Snow Crash - Neal Stephenson - 1992  (24/24)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1992 - 47 - Red Mars - Kim Stanley Robinson - 1992  (34/34)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1992 - 75 - Doomsday Book - Connie Willis - 1992  (36/36)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1995 - 55 - The Diamond Age - Neal Stephenson - 1995  (24/24)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1996 - 57 - The Reality Dysfunction - Peter F Hamilton - 1996  (498/498)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1999 - 21 - The Forever War - Joe Haldeman - 1974  (8/8)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1999 - 42 - Cryptonomicon - Neal Stephenson - 1999  (34/34)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\1999 - 61 - Ender's Shadow - Orson Scott Card - 1999  (138/138)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2000 - 73 - Revelation Space - Alastair Reynolds - 2000  (44/44)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2002 - 87 - Altered Carbon - Richard Morgan - 2002  (14/14)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2003 - 76 - Ilium - Dan Simmons - 2003  (18/18)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2004 - 01 - Ender's Game - Orson Scott Card - 1985  (107/107)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2005 - 88 - Old Man's War - John Scalzi - 2005  (20/20)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Unknown Author\Top 100 Sci-Fi Books\2006 - 90 - The Road - Cormac McCarthy - 2006  (102/102)
+2025-06-15 12:26:08  STRIP    D:\AudioBooksCheck\Kim Stanley Robinson\Mars Trilogy\Vol 3 - Blue Mars  (15/15)

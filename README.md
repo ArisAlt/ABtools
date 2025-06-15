@@ -2,25 +2,42 @@
 
 This repository contains small utilities for preparing audiobook folders for [Audiobookshelf](https://www.audiobookshelf.org/).
 
+
+## Features
+
+- Automatically tags `.mp3`, `.m4a`, and `.m4b` files with metadata
+- Uses data from Audible, OpenLibrary, and Google Books
+- Reorganizes folders into a clean structure: `Author/Year - Title`
+- Strips old or broken tags if needed
+- Writes metadata to both `metadata.json` and `book.nfo` (for Kodi-style readers)
+- Provides preview and logging
+- Optionally prompts for confirmation or proceeds automatically
+
+## Requirements
+
+- Python 3.8+
+- Dependencies:
+  - `mutagen`
+  - `requests`
+  - `beautifulsoup4`
+  - `rapidfuzz`
+  - `rich` (optional, for prettier output)
+
+Install all dependencies with:
+
+```bash
+pip install -r requirements.txt
 ## Scripts
 
 | Script | Version | Path |
 |-------|---------|------|
 
-| `combobook.py` | v1.6 | `ABtools/combobook.py` |
-| `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v4.2 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.5 | `ABtools/search_and_tag.py` |
+| `combobook.py` | v1.5 | `ABtools/combobook.py` |
+| `flatten_discs.py` | v1.3 | `ABtools/flatten_discs.py` |
+| `restructure_for_audiobookshelf.py` | v4.1 | `ABtools/restructure_for_audiobookshelf.py` |
+| `search_and_tag.py` | v2.4 | `ABtools/search_and_tag.py` |
 
 Run any script with `--version` to print its version and file location.
-For example:
-
-```bash
-python search_and_tag.py --version
-# search_and_tag.py v2.5 (/path/to/ABtools/search_and_tag.py)
-```
-
-See [scaffold.md](scaffold.md) for a quick reference to all scripts and their versions.
 
 ## `combobook.py`
 `combobook.py` tags, flattens and moves audiobook folders in a single pass. It searches Open Library, Google Books and Audible, ranks potential matches using fuzzy similarity and asks you to confirm before tagging and moving files.
@@ -65,4 +82,5 @@ details.
 
 ## `restructure_for_audiobookshelf.py`
 `restructure_for_audiobookshelf.py` reorganizes a source collection into Audiobookshelf layout. It injects basic tags from folder names when needed, flattens disc folders, and moves or copies books to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`. Run with `--commit` to perform the move and `--copy` to duplicate instead.
+
 
