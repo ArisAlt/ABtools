@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-ABtools/restructure_for_audiobookshelf.py – v4.5  (2025-09-01)
+ABtools/restructure_for_audiobookshelf.py – v4.6  (2025-09-01)
 Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --commit 
 • Recursively scans source_root; every directory that *contains* audio but whose
   sub-directories don’t is treated as one “book”.
-• Reads tags with mutagen; if tags are missing yet the folder name matches one
-  of seven patterns (see REGEX_PATTERNS), injects minimal tags with FFmpeg.
+• Reads tags with mutagen. If ``metadata.json`` or ``book.nfo`` files are
+  present, those values are used as well. If tags are missing yet the folder
+  name matches one of seven patterns (see REGEX_PATTERNS), injects minimal tags
+  with FFmpeg.
 • Flattens sub-folders named “Disc 01 / Disc-02 …” into the main folder and
   (optionally) renames every track sequentially: Track 001.*, Track 002.* …
 • Moves/renames into Audiobookshelf layout:
@@ -17,14 +19,14 @@ Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --com
 """
 
 from __future__ import annotations
-import argparse, errno, os, re, shutil, subprocess, sys
+import argparse, errno, os, re, shutil, subprocess, sys, json
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 import xml.etree.ElementTree as ET
 
-VERSION = "4.5"
+VERSION = "4.6"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -138,6 +140,27 @@ def read_nfo(folder: Path) -> Optional[BookMeta]:
         year=txt("year"),
         title=txt("title") or folder.name,
         narr=txt("narr"),
+    )
+    if not meta.author and not meta.title:
+        return None
+    return meta
+
+def read_json(folder: Path) -> Optional[BookMeta]:
+    js = folder / "metadata.json"
+    if not js.is_file():
+        return None
+    try:
+        with js.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception:
+        return None
+    meta = BookMeta(
+        author=data.get("author") or "Unknown Author",
+        series=data.get("series"),
+        seq=data.get("seq"),
+        year=data.get("year"),
+        title=data.get("title") or folder.name,
+        narr=data.get("narr") or data.get("narrator"),
     )
     if not meta.author and not meta.title:
         return None
@@ -307,7 +330,8 @@ def process(book: Path, library: Path, dry: bool, copy: bool, st: defaultdict):
         st["no_audio"] += 1
         return
 
-    meta = merge_meta(read_tags(first), read_nfo(book))
+    meta = merge_meta(read_tags(first), read_json(book))
+    meta = merge_meta(meta, read_nfo(book))
     meta = merge_meta(meta, parse_folder(book))
     if not meta:
         meta = BookMeta(
@@ -324,7 +348,8 @@ def process(book: Path, library: Path, dry: bool, copy: bool, st: defaultdict):
     
 
     # inject tags when original files lacked metadata
-    if WRITE_TAGS_WITH_FFMPEG and not dry and not read_tags(first) and not read_nfo(book):
+    if (WRITE_TAGS_WITH_FFMPEG and not dry and not read_tags(first)
+            and not read_json(book) and not read_nfo(book)):
         tracks = sorted(p for p in book.iterdir() if p.suffix.lower() in AUDIO_EXTS)
         for idx, t in enumerate(tracks, 1):
             inject_tags(t, meta, idx, len(tracks))

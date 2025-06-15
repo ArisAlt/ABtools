@@ -47,7 +47,8 @@ Audiobooks/
 
 ### `restructure_for_audiobookshelf.py`
 
-- Reorganizes existing folders into Audiobookshelf layout
+- Reorganizes existing folders into Audiobookshelf layout using metadata from
+  tags, `metadata.json` or `book.nfo`
 - Keeps numeric part suffixes like `(1 of 6)` or `Part 1` when moving files
 - Writes `track` or `trkn` tags so players keep the right order
 
@@ -75,6 +76,6 @@ Audiobooks/
 |-------|---------|------|
 | `combobook.py` | v1.7 | `ABtools/combobook.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v4.5 | `ABtools/restructure_for_audiobookshelf.py` |
+| `restructure_for_audiobookshelf.py` | v4.6 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.12 | `ABtools/search_and_tag.py` |
 
