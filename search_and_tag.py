@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-ABtools/search_and_tag.py – v2.6  (2025-07-22)
+ABtools/search_and_tag.py – v2.8  (2025-07-22)
 Tag (or strip) audiobook files using multiple metadata providers.
 
-The script queries Audible, Open Library and Google Books, ranks the
-results using fuzzy title matching and automatically tags files with the
-best match. Low scoring hits will prompt for confirmation unless you
-run with ``--yes``. When prompted, the default answer is "No" so low
-confidence matches won't be accepted accidentally. Log files are written
+    The script queries Audible, Open Library and Google Books, ranks the
+    results using fuzzy title matching and automatically tags files with the
+    best match. Low scoring hits will prompt for confirmation unless you
+    run with ``--yes``. Use ``--no`` to automatically decline low-scoring
+    matches. When prompted, the default answer is "No" so low confidence
+    matches won't be accepted accidentally. Log files are written
 next to the chosen root as ``tag_log.txt`` and ``review_log.txt``.
 Use ``--version`` to print the script version and file location.
 
@@ -19,6 +20,9 @@ python search_and_tag.py "E:\\Audio Books" --recurse
 # tag automatically
 python search_and_tag.py "E:\\Audio Books" --recurse --commit --yes
 
+# skip tagging automatically
+python search_and_tag.py "E:\\Audio Books" --recurse --no
+
 # strip all tags
 python search_and_tag.py "E:\\Audio Books" --recurse --striptags --commit
 """
@@ -28,9 +32,11 @@ import argparse, datetime, re, sys, textwrap
 from pathlib import Path
 from typing import Optional, Tuple, List
 
-VERSION = "2.6"
+VERSION = "2.8"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
+
+DEBUG = False
 
 import requests
 from rapidfuzz import fuzz
@@ -268,7 +274,9 @@ def process_leaf(path: Path, args):
     if score < 60:
         rprint("  [yellow]⚠ low confidence – double-check[/]")
     if score < 70 and not args.yes:
-        if hasattr(Confirm, "ask"):
+        if args.no:
+            proceed = False
+        elif hasattr(Confirm, "ask"):
             proceed = Confirm.ask("  tag with this metadata?", default=False)
         else:
             proceed = Confirm("tag with this metadata?", default=False)
@@ -318,17 +326,22 @@ def main():
               --recurse     walk sub-folders that hold audio
               --commit      actually write changes
               --yes         auto-accept matches (tag mode)
+              --no          auto-decline matches (tag mode)
               --striptags   delete *all* tags instead of adding
             """))
     ap.add_argument("root", type=Path, help="file or folder")
+    ap.add_argument("--debug", action="store_true",
+                    help="print full tracebacks on errors")
     ap.add_argument("--recurse",   action="store_true")
     ap.add_argument("--commit",    action="store_true")
     ap.add_argument("--yes",       action="store_true")
+    ap.add_argument("--no",        action="store_true")
     ap.add_argument("--striptags", action="store_true")
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args = ap.parse_args()
 
-    global LOG_PATH, REVIEW_PATH
+    global LOG_PATH, REVIEW_PATH, DEBUG
+    DEBUG = args.debug
     base = args.root if args.root.is_dir() else args.root.parent
     LOG_PATH = base / "tag_log.txt"
     REVIEW_PATH = base / "review_log.txt"
@@ -345,7 +358,13 @@ def main():
             process_leaf(leaf, args)
         except Exception as e:
             rprint(f"[red]ERR:[/] {leaf} – {e}")
-            log("ERR", f"{leaf} – {type(e).__name__}")
+            if DEBUG:
+                import traceback
+                tb = traceback.format_exc()
+                rprint(tb)
+                log("ERR", f"{leaf} – {type(e).__name__}: {tb.strip()}")
+            else:
+                log("ERR", f"{leaf} – {type(e).__name__}")
 
 if __name__ == "__main__":
     main()
