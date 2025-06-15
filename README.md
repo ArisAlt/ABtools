@@ -10,7 +10,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 | `combobook.py` | v1.5 | `ABtools/combobook.py` |
 | `flatten_discs.py` | v1.3 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v4.1 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.1 | `ABtools/search_and_tag.py` |
+| `search_and_tag.py` | v2.2 | `ABtools/search_and_tag.py` |
 
 ## `combobook.py`
 `combobook.py` tags, flattens and moves audiobook folders in a single pass. It searches Open Library, Google Books and Audible, ranks potential matches using fuzzy similarity and asks you to confirm before tagging and moving files.
@@ -35,4 +35,10 @@ python combobook.py "source_folder" "library_folder" --commit --copy
 Folders are moved to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`.
 
 Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when run with `--copy` alongside `--commit`.
+
+## `search_and_tag.py`
+`search_and_tag.py` tags or strips audiobook files. It queries Audible,
+Open Library and Google Books, chooses the best match via fuzzy scoring
+and automatically applies it. Matches with a low score will ask for
+confirmation unless you pass `--yes`.
 
