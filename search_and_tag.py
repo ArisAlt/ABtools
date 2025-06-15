@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-ABtools/search_and_tag.py  ·  v2.0  ·  2025-05-27
-Tag (or strip) audiobook files using Open Library / Google Books.
+ABtools/search_and_tag.py  ·  v2.1  ·  2025-06-20
+Tag (or strip) audiobook files using Audible ▸ Open Library ▸ Google Books.
 
 examples
 --------
@@ -23,8 +23,9 @@ from typing import Optional, Tuple, List
 import requests
 from rapidfuzz import fuzz
 from mutagen import File as MFile, MutagenError
-from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TALB, TPE1, TDRC
+from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TALB, TPE1, TDRC, TXXX
 from mutagen.mp4 import MP4, MP4StreamInfoError
+from bs4 import BeautifulSoup
 
 # ───── colour (rich) or plain text ─────
 try:
@@ -113,6 +114,39 @@ def gbooks(author: Optional[str], title: str) -> Optional[dict]:
     except Exception:
         return None
 
+def audible(author: Optional[str], title: str) -> Optional[dict]:
+    try:
+        q = f"{title} {author}" if author else title
+        html = requests.get(
+            "https://www.audible.com/search",
+            params={"keywords": q},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10,
+        ).text
+        soup = BeautifulSoup(html, "html.parser")
+        item = soup.select_one("li.bc-list-item.productListItem")
+        if not item:
+            return None
+        title_el = item.select_one("h3")
+        author_el = item.select_one(".authorLabel a")
+        series_el = item.select_one(".seriesLabel a")
+        year_el = item.select_one(".releaseDateLabel+span")
+        if not title_el or not author_el:
+            return None
+        year = None
+        if year_el:
+            m = re.search(r"\d{4}", year_el.get_text())
+            if m:
+                year = m.group(0)
+        return {
+            "title": title_el.get_text(strip=True),
+            "authors": [author_el.get_text(strip=True)],
+            "year": year,
+            "series": series_el.get_text(strip=True) if series_el else None,
+        }
+    except Exception:
+        return None
+
 # ───── tag / strip functions ─────
 def strip_tags(file: Path):
     audio = MFile(file)
@@ -132,6 +166,8 @@ def write_tags(file: Path, meta: dict):
         audio["TPE1"] = TPE1(3, meta["author"])
         if meta["year"]:
             audio["TDRC"] = TDRC(3, meta["year"])
+        if meta.get("series"):
+            audio.add(TXXX(3, desc="series", text=meta["series"]))
         audio.save(file)
     elif ext in {".m4a", ".m4b"}:
         mp4 = MP4(file)
@@ -141,6 +177,8 @@ def write_tags(file: Path, meta: dict):
         mp4["©ART"] = meta["author"]
         if meta["year"]:
             mp4["©day"] = meta["year"]
+        if meta.get("series"):
+            mp4["----:com.apple.iTunes:series"] = [meta["series"]]
         mp4.save()
 
 # ───── process one leaf ─────
@@ -168,13 +206,17 @@ def process_leaf(path: Path, args):
     rprint(f"[cyan]→[/] {path}")
     rprint(f"  guess: [italic]{t_guess}[/] by {a_guess or '?'} ({y_guess or '?'})")
 
-    hit = openlib(a_guess, t_guess) or gbooks(a_guess, t_guess)
+    hit = (audible(a_guess, t_guess)
+           or openlib(a_guess, t_guess)
+           or gbooks(a_guess, t_guess))
     if not hit:
         rprint("  [red] • no match[/]")
         log("NOMATCH", str(path)); return
 
     author_hit = ", ".join(hit["authors"]) or a_guess or "Unknown"
     rprint(f"  match: [bold]{hit['title']}[/] by {author_hit} ({hit['year'] or '?'})")
+    if hit.get("series"):
+        rprint(f"  series: {hit['series']}")
 
     score = fuzz.token_set_ratio(t_guess.lower(), hit["title"].lower())
     if score < 60:
@@ -191,7 +233,12 @@ def process_leaf(path: Path, args):
             log("SKIP", str(path))
             return
 
-    meta = {"title": hit["title"], "author": author_hit, "year": hit["year"]}
+    meta = {
+        "title": hit["title"],
+        "author": author_hit,
+        "year": hit["year"],
+        "series": hit.get("series"),
+    }
     targets = [path] if path.is_file() else [f for f in path.rglob("*") if f.suffix.lower() in AUDIO_EXTS]
     ok = 0
     for f in targets:
