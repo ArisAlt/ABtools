@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/restructure_for_audiobookshelf.py – v4.2  (2025-06-15)
+ABtools/restructure_for_audiobookshelf.py – v4.3  (2025-06-15)
 Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --commit 
 • Recursively scans source_root; every directory that *contains* audio but whose
   sub-directories don’t is treated as one “book”.
@@ -21,8 +21,9 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
+import xml.etree.ElementTree as ET
 
-VERSION = "4.2"
+VERSION = "4.3"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -117,6 +118,39 @@ def read_tags(track: Path) -> Optional[BookMeta]:
     yr   = m["year"][:4] if m["year"] else None
     return BookMeta(m["author"] or "Unknown Author", m["series"], seq, yr,
                     m["title"] or track.stem, m["narr"])
+
+def read_nfo(folder: Path) -> Optional[BookMeta]:
+    nfo = folder / "book.nfo"
+    if not nfo.is_file():
+        return None
+    try:
+        root = ET.parse(str(nfo)).getroot()
+    except ET.ParseError:
+        return None
+    def txt(tag: str) -> Optional[str]:
+        el = root.find(tag)
+        return el.text.strip() if el is not None and el.text else None
+    meta = BookMeta(
+        author=txt("author") or "Unknown Author",
+        series=txt("series"),
+        seq=txt("seq"),
+        year=txt("year"),
+        title=txt("title") or folder.name,
+        narr=txt("narr"),
+    )
+    if not meta.author and not meta.title:
+        return None
+    return meta
+
+def merge_meta(primary: Optional[BookMeta], secondary: Optional[BookMeta]) -> Optional[BookMeta]:
+    if not secondary:
+        return primary
+    if not primary:
+        return secondary
+    for field in primary.__dataclass_fields__:
+        if not getattr(primary, field):
+            setattr(primary, field, getattr(secondary, field))
+    return primary
 
 # ───────── folder-name patterns ─────────
 REGEX_PATTERNS: list[re.Pattern[str]] = [
@@ -270,21 +304,24 @@ def process(book: Path, library: Path, dry: bool, copy: bool, st: defaultdict):
         st["no_audio"] += 1
         return
 
-    meta = read_tags(first) or parse_folder(book)
+    meta = merge_meta(read_tags(first), read_nfo(book))
+    meta = merge_meta(meta, parse_folder(book))
     if not meta:
-      meta = BookMeta(
-        author="Unknown Author",
-        series=None,
-        seq=None,
-        year=None,
-        title=clean_title(book.name, None),
-        narr=None,
-    )
-    print(f"  · No tags / pattern: falling back to raw title “{meta.title}”")
+        meta = BookMeta(
+            author="Unknown Author",
+            series=None,
+            seq=None,
+            year=None,
+            title=clean_title(book.name, None),
+            narr=None,
+        )
+        print(f"  · No metadata found: using folder name “{meta.title}”")
+    elif not read_tags(first):
+        print(f"  · Tags missing – derived metadata “{meta.title}”")
     
 
-    # inject tags if we only had folder info
-    if WRITE_TAGS_WITH_FFMPEG and not dry and not read_tags(first):
+    # inject tags when original files lacked metadata
+    if WRITE_TAGS_WITH_FFMPEG and not dry and not read_tags(first) and not read_nfo(book):
         for t in book.iterdir():
             if t.suffix.lower() in AUDIO_EXTS:
                 inject_tags(t, meta)
