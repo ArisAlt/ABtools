@@ -32,10 +32,10 @@ pip install -r requirements.txt
 | Script | Version | Path |
 |-------|---------|------|
 
-| `combobook.py` | v1.5 | `ABtools/combobook.py` |
-| `flatten_discs.py` | v1.3 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v4.1 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.4 | `ABtools/search_and_tag.py` |
+| `combobook.py` | v1.6 | `ABtools/combobook.py` |
+| `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
+| `restructure_for_audiobookshelf.py` | v4.2 | `ABtools/restructure_for_audiobookshelf.py` |
+| `search_and_tag.py` | v2.6 | `ABtools/search_and_tag.py` |
 
 Run any script with `--version` to print its version and file location.
 
@@ -67,7 +67,8 @@ Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when 
 `search_and_tag.py` tags or strips audiobook files. It queries Audible,
 Open Library and Google Books, chooses the best match via fuzzy scoring
 and automatically applies it. Matches with a low score will ask for
-confirmation unless you pass `--yes`.
+confirmation unless you pass `--yes`. The prompt defaults to `no` so
+low-confidence matches aren't accepted accidentally.
 
 When a book has no match or you decline the suggested metadata, the
 folder path is written to `review_log.txt` in the chosen root folder for
