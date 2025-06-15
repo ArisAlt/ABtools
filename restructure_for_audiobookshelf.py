@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/restructure_for_audiobookshelf.py – v4.6  (2025-09-01)
+ABtools/restructure_for_audiobookshelf.py – v4.8  (2025-09-01)
 Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --commit 
 • Recursively scans source_root; every directory that *contains* audio but whose
   sub-directories don’t is treated as one “book”.
@@ -15,6 +15,8 @@ Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --com
       <library_root>/Author/Series?/Vol # - YYYY - Title {Narrator}/
 • Add --copy to duplicate folders instead of moving them
 • ``--version`` prints the script version and file path
+• Fuzzy series matching ("Book 3", "#3", "Volume III", etc.)
+• ``--interactive`` prompts for series info when uncertain
 • Part suffixes like “(1 of 6)” or “Part 1” are preserved when moving
 """
 
@@ -26,7 +28,7 @@ from pathlib import Path
 from typing import List, Optional
 import xml.etree.ElementTree as ET
 
-VERSION = "4.7"
+VERSION = "4.8"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -86,6 +88,46 @@ def safe_move(src: Path, dst: Path, copy: bool = False) -> None:
         else:
             shutil.copy2(str(src), str(dst))
             src.unlink()
+
+# ───────── fuzzy series helpers ─────────
+ROMAN_MAP = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
+
+def roman_to_int(s: str) -> Optional[int]:
+    """Return integer for Roman numeral ``s`` or ``None``."""
+    total = 0
+    prev = 0
+    for ch in reversed(s.upper()):
+        val = ROMAN_MAP.get(ch)
+        if not val:
+            return None
+        if val < prev:
+            total -= val
+        else:
+            total += val
+            prev = val
+    return total or None
+
+FUZZY_RX = re.compile(
+    r"(?P<series>[^#(]+?)\s*(?:\(|\[)?(?:#|(?:book|bk|vol(?:ume)?)\s*)"
+    r"(?P<num>\d+|[IVXLCDM]+)(?:\)|\])?",
+    re.I,
+)
+SEQ_PREFIX_RX = re.compile(r"^\s*(?P<num>\d+)\s*[-_.]")
+
+def fuzzy_series(text: str) -> tuple[Optional[str], Optional[str]]:
+    """Return (series, seq) if found in ``text`` via fuzzy patterns."""
+    m = FUZZY_RX.search(text)
+    if m:
+        series = m.group("series").strip()
+        num = m.group("num")
+        if num.isdigit():
+            return series, num
+        n = roman_to_int(num)
+        return series, str(n) if n else None
+    m = SEQ_PREFIX_RX.match(text)
+    if m:
+        return None, m.group("num")
+    return None, None
 
 # ───────── metadata ─────────
 @dataclass
@@ -329,7 +371,8 @@ def rename_tracks(folder: Path):
         tmp.rename(final)
 
 # ───────── process one book ─────────
-def process(book: Path, library: Path, dry: bool, copy: bool, st: defaultdict):
+def process(book: Path, library: Path, dry: bool, copy: bool, st: defaultdict,
+            interactive: bool = False):
     st["total"] += 1
     first = next((p for p in book.iterdir() if p.suffix.lower() in AUDIO_EXTS), None)
     if not first:
@@ -340,6 +383,18 @@ def process(book: Path, library: Path, dry: bool, copy: bool, st: defaultdict):
     meta = merge_meta(read_tags(first), read_json(book))
     meta = merge_meta(meta, read_nfo(book))
     meta = merge_meta(meta, parse_folder(book))
+    if not meta or not meta.series or not meta.seq:
+        fs, fq = fuzzy_series(book.name)
+        if fs and (not meta or not meta.series):
+            meta = meta or BookMeta("Unknown Author", None, None, None,
+                                   clean_title(book.name, None), None)
+            if not meta.series:
+                meta.series = fs
+        if fq and (not meta or not meta.seq):
+            meta = meta or BookMeta("Unknown Author", None, None, None,
+                                   clean_title(book.name, None), None)
+            if not meta.seq:
+                meta.seq = fq
     if not meta:
         meta = BookMeta(
             author="Unknown Author",
@@ -352,6 +407,17 @@ def process(book: Path, library: Path, dry: bool, copy: bool, st: defaultdict):
         print(f"  · No metadata found: using folder name “{meta.title}”")
     elif not read_tags(first):
         print(f"  · Tags missing – derived metadata “{meta.title}”")
+
+    if interactive and (not meta.series or not meta.seq):
+        print(f"  · Missing series info for {book.name}")
+        if not meta.series:
+            ans = input("    Series name (blank to skip): ").strip()
+            if ans:
+                meta.series = ans
+        if meta.series and not meta.seq:
+            ans = input("    Sequence number: ").strip()
+            if ans:
+                meta.seq = ans
     
 
     # inject tags when original files lacked metadata
@@ -396,13 +462,14 @@ def process(book: Path, library: Path, dry: bool, copy: bool, st: defaultdict):
     st["moved"] += 1
 
 # ───────── main driver ─────────
-def main(src: Path, library: Path, commit: bool, copy: bool):
+def main(src: Path, library: Path, commit: bool, copy: bool, interactive: bool):
     if not src.is_dir():
         sys.exit(f"✗ Source folder not found: {src}")
 
     stats: defaultdict[str, int] = defaultdict(int)
     for bd in leaf_audio_dirs(src):
-        process(bd, library, dry=not commit, copy=copy, st=stats)
+        process(bd, library, dry=not commit, copy=copy, st=stats,
+                interactive=interactive)
 
     print("\n──── Summary ────")
     print(f" Books scanned            : {stats['total']}")
@@ -436,6 +503,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Copy instead of move when --commit is used",
     )
+    ap.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Prompt for series info when not detected",
+    )
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args = ap.parse_args()
-    main(args.source_root, args.library_root, args.commit, args.copy)
+    main(args.source_root, args.library_root, args.commit, args.copy,
+         args.interactive)
