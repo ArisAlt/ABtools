@@ -25,6 +25,10 @@ import argparse, datetime, re, sys, textwrap
 from pathlib import Path
 from typing import Optional, Tuple, List
 
+VERSION = "2.3"
+FILE_PATH = Path(__file__).resolve()
+VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
+
 import requests
 from rapidfuzz import fuzz
 import json
@@ -175,7 +179,7 @@ def best_match(author: Optional[str], title: str) -> Optional[tuple[int, dict]]:
 
 # ───── tag / strip functions ─────
 def strip_tags(file: Path):
-    audio = MFile(file)
+    audio = MFile(str(file))
     if audio:
         audio.delete(); audio.save()
 
@@ -183,7 +187,7 @@ def write_tags(file: Path, meta: dict):
     ext = file.suffix.lower()
     if ext == ".mp3":
         try:
-            audio = ID3(file)
+            audio = ID3(str(file))
         except ID3NoHeaderError:
             audio = ID3()
         audio.clear()
@@ -194,9 +198,9 @@ def write_tags(file: Path, meta: dict):
             audio["TDRC"] = TDRC(3, meta["year"])
         if meta.get("series"):
             audio.add(TXXX(3, desc="series", text=meta["series"]))
-        audio.save(file)
+        audio.save(str(file))
     elif ext in {".m4a", ".m4b"}:
-        mp4 = MP4(file)
+        mp4 = MP4(str(file))
         mp4.clear()
         mp4["©nam"] = meta["title"]
         mp4["©alb"] = meta["title"]
@@ -318,6 +322,7 @@ def main():
     ap.add_argument("--commit",    action="store_true")
     ap.add_argument("--yes",       action="store_true")
     ap.add_argument("--striptags", action="store_true")
+    ap.add_argument("--version", action="version", version=VERSION_INFO)
     args = ap.parse_args()
 
     if not args.root.exists():
