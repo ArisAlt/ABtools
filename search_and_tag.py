@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
-ABtools/search_and_tag.py  ·  v2.1  ·  2025-06-20
-Tag (or strip) audiobook files using Audible ▸ Open Library ▸ Google Books.
+ABtools/search_and_tag.py – v2.2  (2025-06-22)
+Tag (or strip) audiobook files using multiple metadata providers.
+
+The script queries Audible, Open Library and Google Books, ranks the
+results using fuzzy title matching and automatically tags files with the
+best match. Low scoring hits will prompt for confirmation unless you
+run with ``--yes``.
 
 examples
 --------
@@ -147,6 +152,19 @@ def audible(author: Optional[str], title: str) -> Optional[dict]:
     except Exception:
         return None
 
+def best_match(author: Optional[str], title: str) -> Optional[tuple[int, dict]]:
+    """Query all providers and return (score, metadata) for the best hit."""
+    candidates = []
+    for provider in (audible, openlib, gbooks):
+        meta = provider(author, title)
+        if meta and meta.get("title"):
+            score = fuzz.token_set_ratio(title.lower(), meta["title"].lower())
+            meta["source"] = provider.__name__
+            candidates.append((score, meta))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda x: x[0])
+
 # ───── tag / strip functions ─────
 def strip_tags(file: Path):
     audio = MFile(file)
@@ -206,28 +224,24 @@ def process_leaf(path: Path, args):
     rprint(f"[cyan]→[/] {path}")
     rprint(f"  guess: [italic]{t_guess}[/] by {a_guess or '?'} ({y_guess or '?'})")
 
-    hit = (audible(a_guess, t_guess)
-           or openlib(a_guess, t_guess)
-           or gbooks(a_guess, t_guess))
-    if not hit:
+    result = best_match(a_guess, t_guess)
+    if not result:
         rprint("  [red] • no match[/]")
         log("NOMATCH", str(path)); return
+    score, hit = result
 
     author_hit = ", ".join(hit["authors"]) or a_guess or "Unknown"
     rprint(f"  match: [bold]{hit['title']}[/] by {author_hit} ({hit['year'] or '?'})")
     if hit.get("series"):
         rprint(f"  series: {hit['series']}")
+    rprint(f"  provider: {hit['source']}")
 
-    score = fuzz.token_set_ratio(t_guess.lower(), hit["title"].lower())
     if score < 60:
         rprint("  [yellow]⚠ low confidence – double-check[/]")
-    if not args.yes:
-        # If Rich is available, Confirm.ask(...) should be used (no 'default=' here).
+    if score < 70 and not args.yes:
         if hasattr(Confirm, "ask"):
-            # (omit the default parameter when calling ask)
             proceed = Confirm.ask("  tag with this metadata?")
         else:
-            # fallback Confirm(prompt) returns True/False
             proceed = Confirm("tag with this metadata?")
         if not proceed:
             log("SKIP", str(path))
