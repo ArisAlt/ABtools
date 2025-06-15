@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/search_and_tag.py – v2.2  (2025-06-22)
+ABtools/search_and_tag.py – v2.3  (2025-07-01)
 Tag (or strip) audiobook files using multiple metadata providers.
 
 The script queries Audible, Open Library and Google Books, ranks the
@@ -27,6 +27,8 @@ from typing import Optional, Tuple, List
 
 import requests
 from rapidfuzz import fuzz
+import json
+import xml.etree.ElementTree as ET
 from mutagen import File as MFile, MutagenError
 from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TALB, TPE1, TDRC, TXXX
 from mutagen.mp4 import MP4, MP4StreamInfoError
@@ -49,12 +51,18 @@ TAIL_RX    = re.compile(r"(?:\{[^}]*\})?(?:\s*\d+\.\d{2}\.\d{2})?(?:\s*\d+\s*[kK
 PAREN_RX   = re.compile(r"\([^)]*\)")
 YEAR_RX    = re.compile(r"^(\d{4})\s*[-_]\s*")
 LOG_PATH   = Path("tag_log.txt")
+REVIEW_PATH = Path("review_log.txt")
 
 # ───── logging helper ─────
 def log(status: str, message: str):
     LOG_PATH.parent.mkdir(exist_ok=True)
     with LOG_PATH.open("a", encoding="utf-8") as fh:
         fh.write(f"{datetime.datetime.now():%F %T}  {status:<7}  {message}\n")
+
+def review_log(path: Path, reason: str):
+    REVIEW_PATH.parent.mkdir(exist_ok=True)
+    with REVIEW_PATH.open("a", encoding="utf-8") as fh:
+        fh.write(f"{datetime.datetime.now():%F %T}  {reason:<9}  {path}\n")
 
 # ───── tiny helpers ─────
 def clean_tail(s: str) -> str:
@@ -199,6 +207,18 @@ def write_tags(file: Path, meta: dict):
             mp4["----:com.apple.iTunes:series"] = [meta["series"]]
         mp4.save()
 
+def export_metadata(path: Path, meta: dict):
+    target = path if path.is_dir() else path.parent
+    target.mkdir(exist_ok=True)
+    with (target / "metadata.json").open("w", encoding="utf-8") as fh:
+        json.dump(meta, fh, ensure_ascii=False, indent=2)
+    root = ET.Element("audiobook")
+    for k, v in meta.items():
+        if v:
+            child = ET.SubElement(root, k)
+            child.text = v
+    ET.ElementTree(root).write(target / "book.nfo", encoding="utf-8", xml_declaration=True)
+
 # ───── process one leaf ─────
 def process_leaf(path: Path, args):
     # skip Unknown Author
@@ -227,7 +247,9 @@ def process_leaf(path: Path, args):
     result = best_match(a_guess, t_guess)
     if not result:
         rprint("  [red] • no match[/]")
-        log("NOMATCH", str(path)); return
+        log("NOMATCH", str(path))
+        review_log(path, "no_match")
+        return
     score, hit = result
 
     author_hit = ", ".join(hit["authors"]) or a_guess or "Unknown"
@@ -245,6 +267,7 @@ def process_leaf(path: Path, args):
             proceed = Confirm("tag with this metadata?")
         if not proceed:
             log("SKIP", str(path))
+            review_log(path, "user_skip")
             return
 
     meta = {
@@ -263,6 +286,8 @@ def process_leaf(path: Path, args):
     label = "OK" if ok == len(targets) else "ERR"
     rprint(f"  [green]tagged {ok}/{len(targets)} file(s)[/]")
     log(label, f"{path}  ({ok}/{len(targets)})")
+    if label == "OK":
+        export_metadata(path, meta)
 
 # ───── leaf finder ─────
 def walk_leaves(root: Path) -> List[Path]:
