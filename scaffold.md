@@ -16,8 +16,6 @@ Audiobooks/
 
 ## Scripts Overview
 
-All scripts support `--version` which prints their version number and
-file path.
 
 ### `search_and_tag.py`
 

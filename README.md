@@ -58,7 +58,7 @@ best match. Low scoring hits will prompt for confirmation unless you
 run with ``--yes``. When prompted, the default answer is "No" so low
 confidence matches won't be accepted accidentally. Log files are written
 next to the chosen root as ``tag_log.txt`` and ``review_log.txt``.
-Use ``--version`` to print the script version and file location.
+
 
 examples
 --------
