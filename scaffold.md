@@ -52,6 +52,8 @@ Audiobooks/
 - Keeps numeric part suffixes like `(1 of 6)` or `Part 1` when moving files
 - Writes `track` or `trkn` tags so players keep the right order
 - Renames tracks safely to avoid name collisions
+- Detects fuzzy series numbering ("Book 2", "#2", "Volume II")
+- `--interactive` prompts for series info when unclear
 
 ## Regex Patterns Used
 
@@ -77,6 +79,6 @@ Audiobooks/
 |-------|---------|------|
 | `combobook.py` | v1.7 | `ABtools/combobook.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v4.7 | `ABtools/restructure_for_audiobookshelf.py` |
+| `restructure_for_audiobookshelf.py` | v4.8 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.12 | `ABtools/search_and_tag.py` |
 
