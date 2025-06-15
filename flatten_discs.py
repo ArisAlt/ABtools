@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-ABtools/flatten_discs.py  –  v1.3  (2025-06-15)
+ABtools/flatten_discs.py  –  v1.4  (2025-06-15)
 
 Flatten audiobook rips that live in
     Book Name (Disc 01)  /  Book Name (Disc 02)  …
 creating one folder called  Book Name/Track 001.* …
 
 • Preview by default.  Add  --commit  to do it,  --yes  to skip prompts.
+• ``--version`` prints the script version and file path.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import argparse, re, shutil, sys
 from pathlib import Path
 from typing import List, Tuple
 
-VERSION = "1.3"
+VERSION = "1.4"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
