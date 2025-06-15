@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/search_and_tag.py – v2.11  (2025-08-01)
+ABtools/search_and_tag.py – v2.12  (2025-09-01)
 Tag (or strip) audiobook files using multiple metadata providers.
 
     The script queries Audible, Open Library and Google Books, ranks the
@@ -32,7 +32,7 @@ import argparse, datetime, re, sys, textwrap
 from pathlib import Path
 from typing import Optional, Tuple, List
 
-VERSION = "2.11"
+VERSION = "2.12"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -202,7 +202,7 @@ def strip_tags(file: Path):
     if audio:
         audio.delete(); audio.save()
 
-def write_tags(file: Path, meta: dict):
+def write_tags(file: Path, meta: dict, index: int = 0, total: int = 0):
     ext = file.suffix.lower()
     if ext == ".mp3":
         try:
@@ -217,6 +217,8 @@ def write_tags(file: Path, meta: dict):
             audio["TDRC"] = TDRC(3, meta["year"])
         if meta.get("series"):
             audio.add(TXXX(3, desc="series", text=meta["series"]))
+        if index:
+            audio["TRCK"] = TRCK(3, f"{index}/{total or index}")
         audio.save(str(file))
     elif ext in {".m4a", ".m4b"}:
         mp4 = MP4(str(file))
@@ -228,6 +230,8 @@ def write_tags(file: Path, meta: dict):
             mp4["©day"] = meta["year"]
         if meta.get("series"):
             mp4["----:com.apple.iTunes:series"] = [meta["series"].encode("utf-8")]
+        if index:
+            mp4["trkn"] = [(index, total or 0)]
         mp4.save()
 
 def export_metadata(path: Path, meta: dict):
@@ -301,11 +305,13 @@ def process_leaf(path: Path, args):
         "year": hit["year"],
         "series": hit.get("series"),
     }
-    targets = [path] if path.is_file() else [f for f in path.rglob("*") if f.suffix.lower() in AUDIO_EXTS]
+    targets = [path] if path.is_file() else sorted(
+        [f for f in path.rglob("*") if f.suffix.lower() in AUDIO_EXTS]
+    )
     ok = 0
-    for f in targets:
+    for idx, f in enumerate(targets, 1):
         try:
-            write_tags(f, meta); ok += 1
+            write_tags(f, meta, idx, len(targets)); ok += 1
         except (MutagenError, MP4StreamInfoError):
             log("ERR", f"tag {f}")
     label = "OK" if ok == len(targets) else "ERR"

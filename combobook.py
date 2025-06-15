@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/combobook.py  ·  v1.6  ·  2025-06-15
+ABtools/combobook.py  ·  v1.7  ·  2025-09-01
 
 USAGE
 -----
@@ -30,7 +30,7 @@ from typing import List, Optional
 from difflib import SequenceMatcher
 import errno
 
-VERSION = "1.6"
+VERSION = "1.7"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -323,7 +323,7 @@ def choose_meta(guess: Meta) -> Optional[Meta]:
     return None
 
 # ───────────── FFmpeg tag writer (title / artist / year) ─────────────────────
-def write_tags(track:Path, meta:Meta):
+def write_tags(track:Path, meta:Meta, index:int=0, total:int=0):
     if not WRITE_TAGS: return
     tmp = track.with_suffix(track.suffix+".tmp")
     cmd=[FFMPEG,"-nostdin","-loglevel","error","-y","-i",str(track),"-codec","copy",
@@ -335,6 +335,7 @@ def write_tags(track:Path, meta:Meta):
     if meta.seq:
         cmd += ["-metadata", f"series-part={meta.seq}"]
     if meta.year: cmd+=["-metadata",f"date={meta.year}"]
+    if index: cmd += ["-metadata", f"track={index}/{total or index}"]
     subprocess.run(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     if tmp.exists(): tmp.replace(track)
 
@@ -448,7 +449,9 @@ def process(folder: Path, lib: Path, dry: bool, yes: bool, copy: bool, summary: 
     summary["total"] += 1
 
     # 1) Gather all audio files in this folder
-    audio_files = [p for p in folder.iterdir() if p.suffix.lower() in AUDIO_EXTS]
+    audio_files = sorted(
+        p for p in folder.iterdir() if p.suffix.lower() in AUDIO_EXTS
+    )
     if not audio_files:
         rprint("• no audio:", folder)
         summary["skip"] += 1
@@ -474,8 +477,8 @@ def process(folder: Path, lib: Path, dry: bool, yes: bool, copy: bool, summary: 
             return
 
         # Write tags to all tracks in this folder
-        for t in audio_files:
-            write_tags(t, hit)
+        for idx, t in enumerate(audio_files, 1):
+            write_tags(t, hit, idx, len(audio_files))
         meta = hit
 
     # 4) At this point 'meta' is guaranteed to contain author/title, etc.

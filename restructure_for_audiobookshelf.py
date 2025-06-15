@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/restructure_for_audiobookshelf.py – v4.4  (2025-06-15)
+ABtools/restructure_for_audiobookshelf.py – v4.5  (2025-09-01)
 Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --commit 
 • Recursively scans source_root; every directory that *contains* audio but whose
   sub-directories don’t is treated as one “book”.
@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import List, Optional
 import xml.etree.ElementTree as ET
 
-VERSION = "4.4"
+VERSION = "4.5"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -235,7 +235,7 @@ def parse_folder(folder: Path) -> Optional[BookMeta]:
         
     return None
 
-def inject_tags(track: Path, meta: BookMeta):
+def inject_tags(track: Path, meta: BookMeta, index: int = 0, total: int = 0):
     if not (WRITE_TAGS_WITH_FFMPEG and FFMPEG):
         return
     tmp = track.with_suffix(track.suffix + ".tmp")
@@ -254,6 +254,8 @@ def inject_tags(track: Path, meta: BookMeta):
     if meta.series:
         comment = f"Series: {meta.series}" + (f" #{meta.seq}" if meta.seq else "")
         cmd += ["-metadata", f"comment={comment}"]
+    if index:
+        cmd += ["-metadata", f"track={index}/{total or index}"]
     cmd.append(str(tmp))
     if subprocess.run(cmd, stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode == 0 and tmp.exists():
@@ -323,9 +325,9 @@ def process(book: Path, library: Path, dry: bool, copy: bool, st: defaultdict):
 
     # inject tags when original files lacked metadata
     if WRITE_TAGS_WITH_FFMPEG and not dry and not read_tags(first) and not read_nfo(book):
-        for t in book.iterdir():
-            if t.suffix.lower() in AUDIO_EXTS:
-                inject_tags(t, meta)
+        tracks = sorted(p for p in book.iterdir() if p.suffix.lower() in AUDIO_EXTS)
+        for idx, t in enumerate(tracks, 1):
+            inject_tags(t, meta, idx, len(tracks))
 
     author_dir = slug(meta.author)
     title_parts = [

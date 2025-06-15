@@ -14,6 +14,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - Optionally prompts for confirmation or proceeds automatically
 - Fetches metadata in parallel for faster tagging
 - Preserves part numbers like `(1 of 6)` when reorganizing files
+- Adds track numbers so multi-part books play in order
 
 ## Requirements
 
@@ -36,10 +37,10 @@ pip install -r requirements.txt
 | Script | Version | Path |
 |-------|---------|------|
 
-| `combobook.py` | v1.6 | `ABtools/combobook.py` |
+| `combobook.py` | v1.7 | `ABtools/combobook.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v4.4 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.11 | `ABtools/search_and_tag.py` |
+| `restructure_for_audiobookshelf.py` | v4.5 | `ABtools/restructure_for_audiobookshelf.py` |
+| `search_and_tag.py` | v2.12 | `ABtools/search_and_tag.py` |
 
 Run any script with `--version` to print its version and file location.
 
