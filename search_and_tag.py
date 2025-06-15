@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-ABtools/search_and_tag.py – v2.3  (2025-07-01)
+ABtools/search_and_tag.py – v2.4  (2025-07-15)
 Tag (or strip) audiobook files using multiple metadata providers.
 
 The script queries Audible, Open Library and Google Books, ranks the
 results using fuzzy title matching and automatically tags files with the
 best match. Low scoring hits will prompt for confirmation unless you
-run with ``--yes``.
+run with ``--yes``. Log files are written next to the chosen root as
+``tag_log.txt`` and ``review_log.txt``.
 
 examples
 --------
@@ -25,7 +26,7 @@ import argparse, datetime, re, sys, textwrap
 from pathlib import Path
 from typing import Optional, Tuple, List
 
-VERSION = "2.3"
+VERSION = "2.4"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -324,6 +325,11 @@ def main():
     ap.add_argument("--striptags", action="store_true")
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args = ap.parse_args()
+
+    global LOG_PATH, REVIEW_PATH
+    base = args.root if args.root.is_dir() else args.root.parent
+    LOG_PATH = base / "tag_log.txt"
+    REVIEW_PATH = base / "review_log.txt"
 
     if not args.root.exists():
         sys.exit("path not found")

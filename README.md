@@ -10,7 +10,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 | `combobook.py` | v1.5 | `ABtools/combobook.py` |
 | `flatten_discs.py` | v1.3 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v4.1 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.3 | `ABtools/search_and_tag.py` |
+| `search_and_tag.py` | v2.4 | `ABtools/search_and_tag.py` |
 
 Run any script with `--version` to print its version and file location.
 
@@ -45,7 +45,8 @@ and automatically applies it. Matches with a low score will ask for
 confirmation unless you pass `--yes`.
 
 When a book has no match or you decline the suggested metadata, the
-folder path is written to `review_log.txt` for later inspection. On
+folder path is written to `review_log.txt` in the chosen root folder for
+later inspection. All actions are logged to `tag_log.txt` beside it. On
 successful tagging, the metadata is exported to `metadata.json` and
 `book.nfo` so other players (including Audiobookshelf) can read the
 details.
