@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/search_and_tag.py – v2.10  (2025-08-01)
+ABtools/search_and_tag.py – v2.11  (2025-08-01)
 Tag (or strip) audiobook files using multiple metadata providers.
 
     The script queries Audible, Open Library and Google Books, ranks the
@@ -32,13 +32,15 @@ import argparse, datetime, re, sys, textwrap
 from pathlib import Path
 from typing import Optional, Tuple, List
 
-VERSION = "2.10"
+VERSION = "2.11"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
 DEBUG = False
 
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
+SESSION = requests.Session()
 from rapidfuzz import fuzz
 import json
 import xml.etree.ElementTree as ET
@@ -111,8 +113,8 @@ def guess_from_path(p: Path) -> Tuple[Optional[str], str, Optional[str]]:
 def openlib(author: Optional[str], title: str) -> Optional[dict]:
     try:
         q = f"title:{title}" + (f" author:{author}" if author else "")
-        r = requests.get("https://openlibrary.org/search.json",
-                         params={"q": q, "limit": 5}, timeout=10)
+        r = SESSION.get("https://openlibrary.org/search.json",
+                        params={"q": q, "limit": 5}, timeout=10)
         r.raise_for_status()
         docs = r.json().get("docs", [])
         best = max(docs, key=lambda d: fuzz.token_set_ratio(
@@ -129,8 +131,8 @@ def openlib(author: Optional[str], title: str) -> Optional[dict]:
 def gbooks(author: Optional[str], title: str) -> Optional[dict]:
     try:
         q = f'intitle:"{title}"' + (f'+inauthor:"{author}"' if author else "")
-        r = requests.get("https://www.googleapis.com/books/v1/volumes",
-                         params={"q": q, "maxResults": 5}, timeout=10)
+        r = SESSION.get("https://www.googleapis.com/books/v1/volumes",
+                        params={"q": q, "maxResults": 5}, timeout=10)
         r.raise_for_status()
         items = r.json().get("items", [])
         info = max(items, key=lambda i: fuzz.token_set_ratio(
@@ -148,7 +150,7 @@ def gbooks(author: Optional[str], title: str) -> Optional[dict]:
 def audible(author: Optional[str], title: str) -> Optional[dict]:
     try:
         q = f"{title} {author}" if author else title
-        html = requests.get(
+        html = SESSION.get(
             "https://www.audible.com/search",
             params={"keywords": q},
             headers={"User-Agent": "Mozilla/5.0"},
@@ -179,14 +181,17 @@ def audible(author: Optional[str], title: str) -> Optional[dict]:
         return None
 
 def best_match(author: Optional[str], title: str) -> Optional[tuple[int, dict]]:
-    """Query all providers and return (score, metadata) for the best hit."""
+    """Query all providers concurrently and return (score, metadata) for the best hit."""
     candidates = []
-    for provider in (audible, openlib, gbooks):
-        meta = provider(author, title)
-        if meta and meta.get("title"):
-            score = fuzz.token_set_ratio(title.lower(), meta["title"].lower())
-            meta["source"] = provider.__name__
-            candidates.append((score, meta))
+    providers = (audible, openlib, gbooks)
+    with ThreadPoolExecutor(max_workers=len(providers)) as ex:
+        future_map = {ex.submit(p, author, title): p.__name__ for p in providers}
+        for fut in as_completed(future_map):
+            meta = fut.result()
+            if meta and meta.get("title"):
+                score = fuzz.token_set_ratio(title.lower(), meta["title"].lower())
+                meta["source"] = future_map[fut]
+                candidates.append((score, meta))
     if not candidates:
         return None
     return max(candidates, key=lambda x: x[0])
