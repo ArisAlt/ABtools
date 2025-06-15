@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/search_and_tag.py – v2.4  (2025-07-15)
+ABtools/search_and_tag.py – v2.5  (2025-07-15)
 Tag (or strip) audiobook files using multiple metadata providers.
 
 The script queries Audible, Open Library and Google Books, ranks the
@@ -8,6 +8,7 @@ results using fuzzy title matching and automatically tags files with the
 best match. Low scoring hits will prompt for confirmation unless you
 run with ``--yes``. Log files are written next to the chosen root as
 ``tag_log.txt`` and ``review_log.txt``.
+Use ``--version`` to print the script version and file location.
 
 examples
 --------
@@ -26,7 +27,7 @@ import argparse, datetime, re, sys, textwrap
 from pathlib import Path
 from typing import Optional, Tuple, List
 
-VERSION = "2.4"
+VERSION = "2.5"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 

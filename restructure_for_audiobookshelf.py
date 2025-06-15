@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/restructure_for_audiobookshelf.py – v4.1  (2025-06-15)
+ABtools/restructure_for_audiobookshelf.py – v4.2  (2025-06-15)
 Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --commit 
 • Recursively scans source_root; every directory that *contains* audio but whose
   sub-directories don’t is treated as one “book”.
@@ -12,6 +12,7 @@ Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --com
 
       <library_root>/Author/Series?/Vol # - YYYY - Title {Narrator}/
 • Add --copy to duplicate folders instead of moving them
+• ``--version`` prints the script version and file path
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-VERSION = "4.1"
+VERSION = "4.2"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -64,22 +65,22 @@ def safe_move(src: Path, dst: Path, copy: bool = False) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     if copy:
         if src.is_dir():
-            shutil.copytree(src, dst)
+            shutil.copytree(str(src), str(dst))
         else:
-            shutil.copy2(src, dst)
+            shutil.copy2(str(src), str(dst))
         return
     try:
-        shutil.move(src, dst)
+        shutil.move(str(src), str(dst))
     except (PermissionError, OSError) as e:
         # Windows “access denied / file in use” or cross-device rename → copy
         if isinstance(e, OSError) and e.errno not in (errno.EXDEV, errno.EACCES):
             raise
         print("  ! rename failed – copying …")
         if src.is_dir():
-            shutil.copytree(src, dst)
+            shutil.copytree(str(src), str(dst))
             shutil.rmtree(src)
         else:
-            shutil.copy2(src, dst)
+            shutil.copy2(str(src), str(dst))
             src.unlink()
 
 # ───────── metadata ─────────
