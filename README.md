@@ -40,7 +40,7 @@ pip install -r requirements.txt
 
 | `combobook.py` | v1.7 | `ABtools/combobook.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v4.6 | `ABtools/restructure_for_audiobookshelf.py` |
+| `restructure_for_audiobookshelf.py` | v4.7 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.12 | `ABtools/search_and_tag.py` |
 
 Run any script with `--version` to print its version and file location.
@@ -112,6 +112,6 @@ details.
 `flatten_discs.py` merges disc-numbered rips into one folder with sequential track names. Preview changes by default; use `--commit` to apply them and `--yes` to auto-confirm.
 
 ## `restructure_for_audiobookshelf.py`
-`restructure_for_audiobookshelf.py` reorganizes a source collection into Audiobookshelf layout. It reads tags from the audio files first, then `metadata.json` or `book.nfo`, and finally falls back to folder names. Disc folders are flattened and books are moved or copied to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`. Part suffixes like `(1 of 6)` or `Part 1` are preserved when moving files. Metadata matching is handled by `search_and_tag.py`.
+`restructure_for_audiobookshelf.py` reorganizes a source collection into Audiobookshelf layout. It reads tags from the audio files first, then `metadata.json` or `book.nfo`, and finally falls back to folder names. Disc folders are flattened and books are moved or copied to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`. Part suffixes like `(1 of 6)` or `Part 1` are preserved when moving files. Metadata matching is handled by `search_and_tag.py`. Track renaming now avoids collisions by staging files with temporary names first.
 
 

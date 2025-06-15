@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import List, Optional
 import xml.etree.ElementTree as ET
 
-VERSION = "4.6"
+VERSION = "4.7"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -314,12 +314,19 @@ def flatten_discs(book_dir: Path, dry: bool):
 def rename_tracks(folder: Path):
     if not RENAME_TRACKS:
         return
-    tracks = [p for p in folder.iterdir() if p.suffix.lower() in AUDIO_EXTS]
+    tracks = sorted(p for p in folder.iterdir()
+                    if p.suffix.lower() in AUDIO_EXTS)
     digits = len(str(len(tracks)))
-    for i, p in enumerate(sorted(tracks), 1):
-        new = p.with_name(f"Track {i:0{digits}d}{p.suffix.lower()}")
-        if new != p:
-            p.rename(new)
+    tmp_files: list[Path] = []
+    # first rename to temporary names to avoid collisions
+    for idx, p in enumerate(tracks):
+        tmp = folder / f".tmp_{idx:0{digits}d}{p.suffix.lower()}"
+        p.rename(tmp)
+        tmp_files.append(tmp)
+    # now rename sequentially to final names
+    for i, tmp in enumerate(tmp_files, 1):
+        final = folder / f"Track {i:0{digits}d}{tmp.suffix.lower()}"
+        tmp.rename(final)
 
 # ───────── process one book ─────────
 def process(book: Path, library: Path, dry: bool, copy: bool, st: defaultdict):
