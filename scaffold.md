@@ -29,6 +29,8 @@ file path.
   - ID3 or MP4 tags
   - `metadata.json`
   - `book.nfo`
+  - `--debug` prints tracebacks on errors
+  - `--no` auto-declines metadata suggestions
 
 ### `flatten_discs.py`
 
@@ -61,3 +63,13 @@ file path.
   "source": "audible | openlib | gbooks"
 }
 ```
+
+## Script Versions
+
+| Script | Version | Path |
+|-------|---------|------|
+| `combobook.py` | v1.6 | `ABtools/combobook.py` |
+| `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
+| `restructure_for_audiobookshelf.py` | v4.2 | `ABtools/restructure_for_audiobookshelf.py` |
+| `search_and_tag.py` | v2.8 | `ABtools/search_and_tag.py` |
+
