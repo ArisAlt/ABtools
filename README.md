@@ -6,7 +6,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 ## Features
 
 - Automatically tags `.mp3`, `.m4a`, and `.m4b` files with metadata
-- Uses data from Audible, OpenLibrary, and Google Books
+- Uses data from Audible, Goodreads, OpenLibrary, and Google Books
 - Reorganizes folders into a clean structure using metadata from tags,
   `metadata.json` or `book.nfo`: `Author/Year - Title`
 - Strips old or broken tags if needed
@@ -19,6 +19,8 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - Detects series and volume numbers with fuzzy matching
   and prompts for confirmation when run with `--interactive`
 - Each script reports its version and location with `--version`
+- Experimental features are toggled via `~/.abclient.json` using `AbClient`
+- Prints the score from each metadata provider during tagging
 
 ## Requirements
 
@@ -44,7 +46,8 @@ pip install -r requirements.txt
 | `combobook.py` | v1.7 | `ABtools/combobook.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v4.8 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.13 | `ABtools/search_and_tag.py` |
+| `search_and_tag.py` | v2.15 | `ABtools/search_and_tag.py` |
+| `abclient.py` | v0.2 | `ABtools/abclient.py` |
 
 Run any script with `--version` to print its version and file location.
 
@@ -96,12 +99,13 @@ Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when 
 
 ## `search_and_tag.py`
 `search_and_tag.py` tags or strips audiobook files. It queries Audible,
-Open Library and Google Books in parallel, chooses the best match via fuzzy scoring
-and automatically applies it. Matches with a low score will ask for
-confirmation unless you pass `--yes`. Use `--no` to decline
-automatically. The prompt defaults to `no` so low-confidence matches
-aren't accepted accidentally. Use `--debug` to print full tracebacks on
-unexpected errors.
+Goodreads (optional), Open Library and Google Books. The score from each
+provider is printed so you can see which source matched best. Audible is
+queried first when enabled via `abclient.json`. Matches with a low score
+will ask for confirmation unless you pass `--yes`. Use `--no` to
+decline automatically. The prompt defaults to `no` so low-confidence
+matches aren't accepted accidentally. Use `--debug` to print full
+tracebacks on unexpected errors.
 
 When a book has no match or you decline the suggested metadata, the
 folder path is written to `review_log.txt` in the chosen root folder for
@@ -118,3 +122,15 @@ details.
 `restructure_for_audiobookshelf.py` reorganizes a source collection into Audiobookshelf layout. It reads tags from the audio files first, then `metadata.json` or `book.nfo`, and finally falls back to folder names. Disc folders are flattened and books are moved or copied to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`. Series names and volume numbers are detected with fuzzy matching (e.g. `Book 3`, `#3`, `Volume III`). When run with `--interactive`, the script prompts for missing series info. Metadata matching is handled by `search_and_tag.py`. Track renaming now avoids collisions by staging files with temporary names first.
 
 
+
+## `abclient.py`
+`abclient.py` provides simple A/B switch management. Switch states are loaded from the JSON file `~/.abclient.json`. For example:
+
+```json
+{
+  "use_goodreads": true,
+  "audible_first": false
+}
+```
+
+Edit this file to enable or disable experimental features.

@@ -21,6 +21,7 @@ Audiobooks/
 
 - Tags audio files using best match from:
   - Audible
+  - Goodreads
   - OpenLibrary
   - Google Books
 - Writes:
@@ -31,6 +32,8 @@ Audiobooks/
 - `--no` auto-declines metadata suggestions
 - fetches metadata in parallel for faster processing
 - `--version` prints the script version and file path
+- Experimental switches stored in `~/.abclient.json` (used by `AbClient`)
+- Prints scores from all metadata providers
 
 ### `flatten_discs.py`
 
@@ -81,5 +84,6 @@ Audiobooks/
 | `combobook.py` | v1.7 | `ABtools/combobook.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v4.8 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.13 | `ABtools/search_and_tag.py` |
+| `search_and_tag.py` | v2.15 | `ABtools/search_and_tag.py` |
+| `abclient.py` | v0.2 | `ABtools/abclient.py` |
 

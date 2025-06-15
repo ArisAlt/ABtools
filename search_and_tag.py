@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/search_and_tag.py – v2.13  (2025-09-01)
+ABtools/search_and_tag.py – v2.15  (2025-09-01)
 Tag (or strip) audiobook files using multiple metadata providers.
 
     The script queries Audible, Open Library and Google Books, ranks the
@@ -31,12 +31,14 @@ from __future__ import annotations
 import argparse, datetime, re, sys, textwrap
 from pathlib import Path
 from typing import Optional, Tuple, List
+from abclient import AbClient
 
-VERSION = "2.13"
+VERSION = "2.15"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
 DEBUG = False
+AB = AbClient()
 
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -147,6 +149,36 @@ def gbooks(author: Optional[str], title: str) -> Optional[dict]:
     except Exception:
         return None
 
+def goodreads(author: Optional[str], title: str) -> Optional[dict]:
+    try:
+        q = f"{title} {author}" if author else title
+        html = SESSION.get(
+            "https://www.goodreads.com/search",
+            params={"q": q},
+            timeout=10,
+        ).text
+        soup = BeautifulSoup(html, "html.parser")
+        row = soup.select_one("table.tableList tr")
+        if not row:
+            return None
+        title_el = row.select_one("a.bookTitle span")
+        author_el = row.select_one("a.authorName span")
+        year_el = row.select_one("span.minirating")
+        if not title_el or not author_el:
+            return None
+        year = None
+        if year_el:
+            m = re.search(r"(\d{4})", year_el.get_text())
+            if m:
+                year = m.group(1)
+        return {
+            "title": title_el.get_text(strip=True),
+            "authors": [author_el.get_text(strip=True)],
+            "year": year,
+        }
+    except Exception:
+        return None
+
 def audible(author: Optional[str], title: str) -> Optional[dict]:
     try:
         q = f"{title} {author}" if author else title
@@ -180,21 +212,37 @@ def audible(author: Optional[str], title: str) -> Optional[dict]:
     except Exception:
         return None
 
-def best_match(author: Optional[str], title: str) -> Optional[tuple[int, dict]]:
-    """Query all providers concurrently and return (score, metadata) for the best hit."""
-    candidates = []
-    providers = (audible, openlib, gbooks)
+def best_match(author: Optional[str], title: str, client: AbClient = AB) -> tuple[Optional[tuple[int, dict]], dict[str, tuple[int, dict]]]:
+    """Query metadata providers and return the best hit along with all scores."""
+    candidates: list[tuple[int, dict]] = []
+    results: dict[str, tuple[int, dict]] = {}
+
+    def add_result(name: str, meta: Optional[dict]):
+        if meta and meta.get("title"):
+            score = fuzz.token_set_ratio(title.lower(), meta["title"].lower())
+            meta["source"] = name
+            pair = (score, meta)
+            candidates.append(pair)
+            results[name] = pair
+
+    # audible first when enabled (internal switch)
+    if client.is_on("audible_first", default=True, internal=True):
+        add_result("audible", audible(author, title))
+        if "audible" in results and results["audible"][0] >= 80:
+            return results["audible"], results
+
+    providers = [("openlib", openlib), ("gbooks", gbooks)]
+    if client.is_on("use_goodreads"):
+        providers.append(("goodreads", goodreads))
+
     with ThreadPoolExecutor(max_workers=len(providers)) as ex:
-        future_map = {ex.submit(p, author, title): p.__name__ for p in providers}
+        future_map = {ex.submit(fn, author, title): name for name, fn in providers}
         for fut in as_completed(future_map):
-            meta = fut.result()
-            if meta and meta.get("title"):
-                score = fuzz.token_set_ratio(title.lower(), meta["title"].lower())
-                meta["source"] = future_map[fut]
-                candidates.append((score, meta))
+            add_result(future_map[fut], fut.result())
+
     if not candidates:
-        return None
-    return max(candidates, key=lambda x: x[0])
+        return None, results
+    return max(candidates, key=lambda x: x[0]), results
 
 # ───── tag / strip functions ─────
 def strip_tags(file: Path):
@@ -271,13 +319,16 @@ def process_leaf(path: Path, args):
     rprint(f"[cyan]→[/] {path}")
     rprint(f"  guess: [italic]{t_guess}[/] by {a_guess or '?'} ({y_guess or '?'})")
 
-    result = best_match(a_guess, t_guess)
+    result, scores = best_match(a_guess, t_guess)
     if not result:
         rprint("  [red] • no match[/]")
         log("NOMATCH", str(path))
         review_log(path, "no_match")
         return
     score, hit = result
+
+    for name, (sc, _) in sorted(scores.items(), key=lambda x: -x[1][0]):
+        rprint(f"  {name:>9}: {sc}")
 
     author_hit = ", ".join(hit["authors"]) or a_guess or "Unknown"
     rprint(f"  match: [bold]{hit['title']}[/] by {author_hit} ({hit['year'] or '?'})")
