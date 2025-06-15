@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/restructure_for_audiobookshelf.py – v4.3  (2025-06-15)
+ABtools/restructure_for_audiobookshelf.py – v4.4  (2025-06-15)
 Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --commit 
 • Recursively scans source_root; every directory that *contains* audio but whose
   sub-directories don’t is treated as one “book”.
@@ -13,6 +13,7 @@ Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --com
       <library_root>/Author/Series?/Vol # - YYYY - Title {Narrator}/
 • Add --copy to duplicate folders instead of moving them
 • ``--version`` prints the script version and file path
+• Part suffixes like “(1 of 6)” or “Part 1” are preserved when moving
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from pathlib import Path
 from typing import List, Optional
 import xml.etree.ElementTree as ET
 
-VERSION = "4.3"
+VERSION = "4.4"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -191,7 +192,7 @@ REGEX_PATTERNS: list[re.Pattern[str]] = [
 ]
 CLEAN_TAIL_RX = re.compile(
     r"""                      # strip from the right end:
-        (?:\s*\([^)]*\))?         #  (Lee)  or any (...) narrator
+        (?:\s*\((?!(?:\d+\s*of\s*\d+|[Pp]art\s*\d+))[^)]*\))?  #  (Lee) but keep (1 of 6) / (Part 1)
         (?:\s*\d+\s*[kK])?        #  64k / 128K  bitrate
         (?:\s*\d+\.\d{2}\.\d{2})? #  12.56.09  (h.mm.ss)
         (?:\s*\{[^}]*\})?         #  {303mb}

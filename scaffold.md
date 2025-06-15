@@ -47,6 +47,11 @@ file path.
   - Creates cleaned-up `Author/Year - Title` folder
   - Moves and renames content
 
+### `restructure_for_audiobookshelf.py`
+
+- Reorganizes existing folders into Audiobookshelf layout
+- Keeps numeric part suffixes like `(1 of 6)` or `Part 1` when moving files
+
 ## Regex Patterns Used
 
 - `^(\d{4})\s*[-_]\s*`: extracts leading year
@@ -71,6 +76,6 @@ file path.
 |-------|---------|------|
 | `combobook.py` | v1.6 | `ABtools/combobook.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v4.3 | `ABtools/restructure_for_audiobookshelf.py` |
+| `restructure_for_audiobookshelf.py` | v4.4 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.11 | `ABtools/search_and_tag.py` |
 
