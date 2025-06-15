@@ -14,6 +14,10 @@ import argparse, re, shutil, sys
 from pathlib import Path
 from typing import List, Tuple
 
+VERSION = "1.3"
+FILE_PATH = Path(__file__).resolve()
+VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
+
 def safe_move(src: Path, dst: Path) -> None:
     """Move ``src`` to ``dst`` ensuring ``dst`` does not exist."""
     if dst.exists():
@@ -115,6 +119,7 @@ if __name__ == "__main__":
     ap.add_argument("root", type=Path, help="Top-level audiobook folder")
     ap.add_argument("--commit", action="store_true", help="Actually move/rename (default: preview)")
     ap.add_argument("--yes",    action="store_true", help="Auto-confirm every book")
+    ap.add_argument("--version", action="version", version=VERSION_INFO)
     args = ap.parse_args()
     ROOT = args.root.resolve()
     if not ROOT.is_dir():

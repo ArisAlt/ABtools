@@ -12,6 +12,8 @@ This repository contains small utilities for preparing audiobook folders for [Au
 | `restructure_for_audiobookshelf.py` | v4.1 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.3 | `ABtools/search_and_tag.py` |
 
+Run any script with `--version` to print its version and file location.
+
 ## `combobook.py`
 `combobook.py` tags, flattens and moves audiobook folders in a single pass. It searches Open Library, Google Books and Audible, ranks potential matches using fuzzy similarity and asks you to confirm before tagging and moving files.
 
@@ -47,4 +49,11 @@ folder path is written to `review_log.txt` for later inspection. On
 successful tagging, the metadata is exported to `metadata.json` and
 `book.nfo` so other players (including Audiobookshelf) can read the
 details.
+
+
+## `flatten_discs.py`
+`flatten_discs.py` merges disc-numbered rips into one folder with sequential track names. Preview changes by default; use `--commit` to apply them and `--yes` to auto-confirm.
+
+## `restructure_for_audiobookshelf.py`
+`restructure_for_audiobookshelf.py` reorganizes a source collection into Audiobookshelf layout. It injects basic tags from folder names when needed, flattens disc folders, and moves or copies books to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`. Run with `--commit` to perform the move and `--copy` to duplicate instead.
 
