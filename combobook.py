@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/combobook.py  ·  v1.5  ·  2025-06-15
+ABtools/combobook.py  ·  v1.6  ·  2025-06-15
 
 USAGE
 -----
@@ -16,6 +16,9 @@ python combo_abooks.py  "E:\\Audio Books"  "G:\\AudiobookShelf"  --commit  --cop
 
 # tag + move, auto-accept every hit
 python combo_abooks.py  "E:\\Audio Books"  "G:\\AudiobookShelf"  --commit  --yes
+
+# show version and file location
+python combo_abooks.py --version
 """
 
 from __future__ import annotations
@@ -27,7 +30,7 @@ from typing import List, Optional
 from difflib import SequenceMatcher
 import errno
 
-VERSION = "1.5"
+VERSION = "1.6"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -366,7 +369,7 @@ def flatten(folder: Path, dry: bool):
             rprint(f"    {'mv' if not dry else '↪'} {src.name} → {dest.name}")
             if not dry:
                 dest.parent.mkdir(exist_ok=True)
-                shutil.move(src, dest)
+                shutil.move(str(src), str(dest))
     else:
         digits = len(str(len(tracks)))
         for i, (num, src) in enumerate(tracks, 1):
@@ -374,7 +377,7 @@ def flatten(folder: Path, dry: bool):
             rprint(f"    {'mv' if not dry else '↪'} {src.name} → {dest.name}")
             if not dry:
                 dest.parent.mkdir(exist_ok=True)
-                shutil.move(src, dest)
+                shutil.move(str(src), str(dest))
 
     if not dry:
         for _, d in discs:

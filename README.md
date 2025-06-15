@@ -7,12 +7,20 @@ This repository contains small utilities for preparing audiobook folders for [Au
 | Script | Version | Path |
 |-------|---------|------|
 
-| `combobook.py` | v1.5 | `ABtools/combobook.py` |
-| `flatten_discs.py` | v1.3 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v4.1 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.4 | `ABtools/search_and_tag.py` |
+| `combobook.py` | v1.6 | `ABtools/combobook.py` |
+| `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
+| `restructure_for_audiobookshelf.py` | v4.2 | `ABtools/restructure_for_audiobookshelf.py` |
+| `search_and_tag.py` | v2.5 | `ABtools/search_and_tag.py` |
 
 Run any script with `--version` to print its version and file location.
+For example:
+
+```bash
+python search_and_tag.py --version
+# search_and_tag.py v2.5 (/path/to/ABtools/search_and_tag.py)
+```
+
+See [scaffold.md](scaffold.md) for a quick reference to all scripts and their versions.
 
 ## `combobook.py`
 `combobook.py` tags, flattens and moves audiobook folders in a single pass. It searches Open Library, Google Books and Audible, ranks potential matches using fuzzy similarity and asks you to confirm before tagging and moving files.
