@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/search_and_tag.py – v2.9  (2025-07-31)
+ABtools/search_and_tag.py – v2.10  (2025-08-01)
 Tag (or strip) audiobook files using multiple metadata providers.
 
     The script queries Audible, Open Library and Google Books, ranks the
@@ -32,7 +32,7 @@ import argparse, datetime, re, sys, textwrap
 from pathlib import Path
 from typing import Optional, Tuple, List
 
-VERSION = "2.9"
+VERSION = "2.10"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -92,8 +92,13 @@ def guess_from_path(p: Path) -> Tuple[Optional[str], str, Optional[str]]:
     if (m := YEAR_RX.match(leaf)):
         year, leaf = m.group(1), leaf[m.end():].lstrip(" -_")
     parts = [x.strip() for x in leaf.split(" - ")]
-    if len(parts) == 2 and " " in parts[1]:
-        title, author = parts
+    if parts and re.fullmatch(r"\d+", parts[0]):
+        parts = parts[1:]
+    if parts and re.fullmatch(r"\d{4}", parts[-1]) and year is None:
+        year = parts.pop()
+    if len(parts) >= 2:
+        title = " - ".join(parts[:-1])
+        author = parts[-1] if " " in parts[-1] else None
     else:
         title, author = leaf, None
     if not author:
