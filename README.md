@@ -27,6 +27,8 @@ Install all dependencies with:
 
 ```bash
 pip install -r requirements.txt
+```
+
 ## Scripts
 
 | Script | Version | Path |
@@ -35,7 +37,7 @@ pip install -r requirements.txt
 | `combobook.py` | v1.6 | `ABtools/combobook.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v4.2 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.8 | `ABtools/search_and_tag.py` |
+| `search_and_tag.py` | v2.9 | `ABtools/search_and_tag.py` |
 
 Run any script with `--version` to print its version and file location.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/search_and_tag.py – v2.8  (2025-07-22)
+ABtools/search_and_tag.py – v2.9  (2025-07-31)
 Tag (or strip) audiobook files using multiple metadata providers.
 
     The script queries Audible, Open Library and Google Books, ranks the
@@ -32,7 +32,7 @@ import argparse, datetime, re, sys, textwrap
 from pathlib import Path
 from typing import Optional, Tuple, List
 
-VERSION = "2.8"
+VERSION = "2.9"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -217,7 +217,7 @@ def write_tags(file: Path, meta: dict):
         if meta["year"]:
             mp4["©day"] = meta["year"]
         if meta.get("series"):
-            mp4["----:com.apple.iTunes:series"] = [meta["series"]]
+            mp4["----:com.apple.iTunes:series"] = [meta["series"].encode("utf-8")]
         mp4.save()
 
 def export_metadata(path: Path, meta: dict):
