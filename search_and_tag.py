@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-ABtools/search_and_tag.py – v2.5  (2025-07-15)
+ABtools/search_and_tag.py – v2.6  (2025-07-22)
 Tag (or strip) audiobook files using multiple metadata providers.
 
 The script queries Audible, Open Library and Google Books, ranks the
 results using fuzzy title matching and automatically tags files with the
 best match. Low scoring hits will prompt for confirmation unless you
-run with ``--yes``. Log files are written next to the chosen root as
-``tag_log.txt`` and ``review_log.txt``.
+run with ``--yes``. When prompted, the default answer is "No" so low
+confidence matches won't be accepted accidentally. Log files are written
+next to the chosen root as ``tag_log.txt`` and ``review_log.txt``.
 Use ``--version`` to print the script version and file location.
 
 examples
@@ -27,7 +28,7 @@ import argparse, datetime, re, sys, textwrap
 from pathlib import Path
 from typing import Optional, Tuple, List
 
-VERSION = "2.5"
+VERSION = "2.6"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -268,9 +269,9 @@ def process_leaf(path: Path, args):
         rprint("  [yellow]⚠ low confidence – double-check[/]")
     if score < 70 and not args.yes:
         if hasattr(Confirm, "ask"):
-            proceed = Confirm.ask("  tag with this metadata?")
+            proceed = Confirm.ask("  tag with this metadata?", default=False)
         else:
-            proceed = Confirm("tag with this metadata?")
+            proceed = Confirm("tag with this metadata?", default=False)
         if not proceed:
             log("SKIP", str(path))
             review_log(path, "user_skip")
