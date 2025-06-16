@@ -21,7 +21,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - Each script reports its version and location with `--version`
 - Experimental features are toggled via `~/.abclient.json` using `AbClient`
 - Prints the score from each metadata provider during tagging
-- `find_duplicates.py` shows progress while scanning
+- Duplicate finder displays progress when `tqdm` is available
 
 ## Requirements
 
@@ -32,6 +32,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
   - `beautifulsoup4`
   - `rapidfuzz`
   - `rich` (optional, for prettier output)
+  - `tqdm` (optional, for progress display in `find_duplicates.py`)
 
 Install all dependencies with:
 
@@ -124,7 +125,7 @@ details.
 `restructure_for_audiobookshelf.py` reorganizes a source collection into Audiobookshelf layout. It reads tags from the audio files first, then `metadata.json` or `book.nfo`, and finally falls back to folder names. Disc folders are flattened and books are moved or copied to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`. Series names and volume numbers are detected with fuzzy matching (e.g. `Book 3`, `#3`, `Volume III`). When run with `--interactive`, the script prompts for missing series info. Metadata matching is handled by `search_and_tag.py`. Track renaming now avoids collisions by staging files with temporary names first.
 
 ## `find_duplicates.py`
-`find_duplicates.py` scans a folder recursively and reports audio files with identical SHA1 hashes. Progress is shown while scanning. Results are also written to `duplicate_log.txt` inside the scanned folder. Use `--version` to show the script version and path.
+`find_duplicates.py` scans a folder recursively and reports audio files with identical SHA1 hashes. Results are also written to `duplicate_log.txt` inside the scanned folder. Use `--version` to show the script version and path. A progress bar is displayed during hashing when `tqdm` is installed.
 
 
 

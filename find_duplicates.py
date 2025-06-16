@@ -5,13 +5,18 @@ Find duplicate audio files by comparing SHA1 hashes.
 
 Results are written to ``duplicate_log.txt`` in the chosen root folder.
 Use ``--version`` to print the script version and file path.
-Now shows scanning progress.
+Shows progress while hashing files when ``tqdm`` is installed.
 """
 
 from __future__ import annotations
 import argparse, hashlib, sys
 from pathlib import Path
 from collections import defaultdict
+
+try:
+    from tqdm import tqdm  # type: ignore
+except ImportError:  # pragma: no cover - optional
+    tqdm = None
 
 VERSION = "0.3"
 FILE_PATH = Path(__file__).resolve()
@@ -35,18 +40,18 @@ def sha1sum(path: Path) -> str:
 
 
 def find_dupes(root: Path) -> dict[str, list[Path]]:
-    hashes: dict[str, list[Path]] = defaultdict(list)
     files = [p for p in root.rglob('*') if p.is_file() and is_audio(p)]
-    total = len(files)
-    for idx, p in enumerate(files, 1):
-        print(f"\rScanning {idx}/{total}...", end="", flush=True)
+    hashes: dict[str, list[Path]] = defaultdict(list)
+    iterator = tqdm(files, desc="Hashing", unit="file") if tqdm else files
+    for p in iterator:
         try:
             digest = sha1sum(p)
         except OSError as e:
-            print(f"\nCould not read {p}: {e}", file=sys.stderr)
+            print(f"Could not read {p}: {e}", file=sys.stderr)
             continue
         hashes[digest].append(p)
-    print()  # newline after progress
+    if tqdm:
+        tqdm.write("Scan complete")
     return {k: v for k, v in hashes.items() if len(v) > 1}
 
 

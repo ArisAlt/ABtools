@@ -68,6 +68,7 @@ Audiobooks/
 - Writes results to `duplicate_log.txt` in the scanned folder
 - Shows scanning progress
 - `--version` shows the script version and path
+- Shows progress while hashing when `tqdm` is installed
 
 ## Regex Patterns Used
 
