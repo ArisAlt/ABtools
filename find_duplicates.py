@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-ABtools/find_duplicates.py - v0.3 (2025-09-01)
-Find duplicate audio files by comparing SHA1 hashes.
+ABtools/find_duplicates.py - v0.4 (2025-09-01)
+Find duplicate audio files by comparing SHA1 hashes or file names.
 
 Results are written to ``duplicate_log.txt`` in the chosen root folder.
 Use ``--version`` to print the script version and file path.
@@ -13,7 +13,7 @@ import argparse, hashlib, sys
 from pathlib import Path
 from collections import defaultdict
 
-VERSION = "0.3"
+VERSION = "0.4"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -34,31 +34,52 @@ def sha1sum(path: Path) -> str:
     return h.hexdigest()
 
 
-def find_dupes(root: Path) -> dict[str, list[Path]]:
-    hashes: dict[str, list[Path]] = defaultdict(list)
-    files = [p for p in root.rglob('*') if p.is_file() and is_audio(p)]
+def find_dupes(root: Path, by: str = "hash") -> dict[str, list[Path]]:
+    files = [p for p in root.rglob("*") if p.is_file() and is_audio(p)]
     total = len(files)
+    print(f"Scanning {total} files...", end="", flush=True)
+    if by == "name":
+        groups: dict[str, list[Path]] = defaultdict(list)
+        for idx, p in enumerate(files, 1):
+            print(f"\rScanning {idx}/{total}...", end="", flush=True)
+            groups[p.name].append(p)
+        print()
+        return {k: v for k, v in groups.items() if len(v) > 1}
+
+    # group by file size first to avoid hashing uniques
+    size_map: dict[int, list[Path]] = defaultdict(list)
     for idx, p in enumerate(files, 1):
         print(f"\rScanning {idx}/{total}...", end="", flush=True)
         try:
-            digest = sha1sum(p)
+            size_map[p.stat().st_size].append(p)
         except OSError as e:
-            print(f"\nCould not read {p}: {e}", file=sys.stderr)
-            continue
-        hashes[digest].append(p)
-    print()  # newline after progress
+            print(f"\nCould not stat {p}: {e}", file=sys.stderr)
+    print()
+
+    hashes: dict[str, list[Path]] = defaultdict(list)
+    work = [g for g in size_map.values() if len(g) > 1]
+    for group in work:
+        for p in group:
+            try:
+                digest = sha1sum(p)
+            except OSError as e:
+                print(f"Could not read {p}: {e}", file=sys.stderr)
+                continue
+            hashes[digest].append(p)
     return {k: v for k, v in hashes.items() if len(v) > 1}
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Detect duplicate audio files under a directory.")
     ap.add_argument("root", type=Path, help="Top-level folder to scan")
+    ap.add_argument("--by", choices=["hash", "name"], default="hash",
+                    help="Compare files by SHA1 hash or file name")
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args = ap.parse_args()
     root = args.root.resolve()
     if not root.is_dir():
         sys.exit(f"{root} is not a directory")
-    dupes = find_dupes(root)
+    dupes = find_dupes(root, by=args.by)
     if not dupes:
         print("No duplicates found.")
     else:
