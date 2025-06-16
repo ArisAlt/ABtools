@@ -67,6 +67,7 @@ Audiobooks/
 - Prints groups of duplicate files
 - Writes results to `duplicate_log.txt` in the scanned folder
 - `--version` shows the script version and path
+- Shows progress while hashing when `tqdm` is installed
 
 ## Regex Patterns Used
 
@@ -94,6 +95,6 @@ Audiobooks/
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v4.8 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.15 | `ABtools/search_and_tag.py` |
-| `find_duplicates.py` | v0.2 | `ABtools/find_duplicates.py` |
+| `find_duplicates.py` | v0.3 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
 

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-ABtools/find_duplicates.py - v0.2 (2025-09-01)
+ABtools/find_duplicates.py - v0.3 (2025-09-01)
 Find duplicate audio files by comparing SHA1 hashes.
 
 Results are written to ``duplicate_log.txt`` in the chosen root folder.
 Use ``--version`` to print the script version and file path.
+Shows progress while hashing files when ``tqdm`` is installed.
 """
 
 from __future__ import annotations
@@ -12,7 +13,12 @@ import argparse, hashlib, sys
 from pathlib import Path
 from collections import defaultdict
 
-VERSION = "0.2"
+try:
+    from tqdm import tqdm  # type: ignore
+except ImportError:  # pragma: no cover - optional
+    tqdm = None
+
+VERSION = "0.3"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -34,15 +40,18 @@ def sha1sum(path: Path) -> str:
 
 
 def find_dupes(root: Path) -> dict[str, list[Path]]:
+    files = [p for p in root.rglob('*') if p.is_file() and is_audio(p)]
     hashes: dict[str, list[Path]] = defaultdict(list)
-    for p in root.rglob('*'):
-        if p.is_file() and is_audio(p):
-            try:
-                digest = sha1sum(p)
-            except OSError as e:
-                print(f"Could not read {p}: {e}", file=sys.stderr)
-                continue
-            hashes[digest].append(p)
+    iterator = tqdm(files, desc="Hashing", unit="file") if tqdm else files
+    for p in iterator:
+        try:
+            digest = sha1sum(p)
+        except OSError as e:
+            print(f"Could not read {p}: {e}", file=sys.stderr)
+            continue
+        hashes[digest].append(p)
+    if tqdm:
+        tqdm.write("Scan complete")
     return {k: v for k, v in hashes.items() if len(v) > 1}
 
 
