@@ -8,6 +8,8 @@ Audiobooks/
 ├── search_and_tag.py       # Tags files using metadata providers
 ├── flatten_discs.py        # Merges "Disc" folders into one
 ├── combobook.py            # Combines tagging and restructuring
+├── restructure_for_audiobookshelf.py  # Reorganizes folders into Audiobookshelf layout
+├── find_duplicates.py      # Reports duplicate audio files
 ├── metadata.json           # Optional: sample metadata format
 ├── requirements.txt        # Pip requirements
 ├── README.md
@@ -59,6 +61,13 @@ Audiobooks/
 - Detects fuzzy series numbering ("Book 2", "#2", "Volume II")
 - `--interactive` prompts for series info when unclear
 
+### `find_duplicates.py`
+
+- Scans recursively for audio files with identical SHA1 hashes
+- Prints groups of duplicate files
+- Writes results to `duplicate_log.txt` in the scanned folder
+- `--version` shows the script version and path
+
 ## Regex Patterns Used
 
 - `^(\d{4})\s*[-_]\s*`: extracts leading year
@@ -85,5 +94,6 @@ Audiobooks/
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v4.8 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.15 | `ABtools/search_and_tag.py` |
+| `find_duplicates.py` | v0.2 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
 
