@@ -21,7 +21,8 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - Each script reports its version and location with `--version`
 - Experimental features are toggled via `~/.abclient.json` using `AbClient`
 - Prints the score from each metadata provider during tagging
-- `find_duplicates.py` shows progress while scanning
+- `find_duplicates.py` shows progress while scanning and can compare
+  files by SHA1 hash or by name
 
 ## Requirements
 
@@ -48,7 +49,7 @@ pip install -r requirements.txt
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v4.8 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.15 | `ABtools/search_and_tag.py` |
-| `find_duplicates.py` | v0.3 | `ABtools/find_duplicates.py` |
+| `find_duplicates.py` | v0.4 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
 
 Run any script with `--version` to print its version and file location.
@@ -124,7 +125,7 @@ details.
 `restructure_for_audiobookshelf.py` reorganizes a source collection into Audiobookshelf layout. It reads tags from the audio files first, then `metadata.json` or `book.nfo`, and finally falls back to folder names. Disc folders are flattened and books are moved or copied to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`. Series names and volume numbers are detected with fuzzy matching (e.g. `Book 3`, `#3`, `Volume III`). When run with `--interactive`, the script prompts for missing series info. Metadata matching is handled by `search_and_tag.py`. Track renaming now avoids collisions by staging files with temporary names first.
 
 ## `find_duplicates.py`
-`find_duplicates.py` scans a folder recursively and reports audio files with identical SHA1 hashes. Progress is shown while scanning. Results are also written to `duplicate_log.txt` inside the scanned folder. Use `--version` to show the script version and path.
+`find_duplicates.py` scans a folder recursively and can find duplicates either by computing SHA1 hashes or by matching file names. Progress is shown while scanning. Results are written to `duplicate_log.txt` inside the scanned folder. Use `--version` to show the script version and path. Hash matching now skips hashing files with unique sizes for much faster scans.
 
 
 
