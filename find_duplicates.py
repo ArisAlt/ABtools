@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-ABtools/find_duplicates.py - v0.2 (2025-09-01)
+ABtools/find_duplicates.py - v0.3 (2025-09-01)
 Find duplicate audio files by comparing SHA1 hashes.
 
 Results are written to ``duplicate_log.txt`` in the chosen root folder.
 Use ``--version`` to print the script version and file path.
+Now shows scanning progress.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ import argparse, hashlib, sys
 from pathlib import Path
 from collections import defaultdict
 
-VERSION = "0.2"
+VERSION = "0.3"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -35,14 +36,17 @@ def sha1sum(path: Path) -> str:
 
 def find_dupes(root: Path) -> dict[str, list[Path]]:
     hashes: dict[str, list[Path]] = defaultdict(list)
-    for p in root.rglob('*'):
-        if p.is_file() and is_audio(p):
-            try:
-                digest = sha1sum(p)
-            except OSError as e:
-                print(f"Could not read {p}: {e}", file=sys.stderr)
-                continue
-            hashes[digest].append(p)
+    files = [p for p in root.rglob('*') if p.is_file() and is_audio(p)]
+    total = len(files)
+    for idx, p in enumerate(files, 1):
+        print(f"\rScanning {idx}/{total}...", end="", flush=True)
+        try:
+            digest = sha1sum(p)
+        except OSError as e:
+            print(f"\nCould not read {p}: {e}", file=sys.stderr)
+            continue
+        hashes[digest].append(p)
+    print()  # newline after progress
     return {k: v for k, v in hashes.items() if len(v) > 1}
 
 
