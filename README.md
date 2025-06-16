@@ -47,6 +47,7 @@ pip install -r requirements.txt
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v4.8 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.15 | `ABtools/search_and_tag.py` |
+| `find_duplicates.py` | v0.2 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
 
 Run any script with `--version` to print its version and file location.
@@ -120,6 +121,9 @@ details.
 
 ## `restructure_for_audiobookshelf.py`
 `restructure_for_audiobookshelf.py` reorganizes a source collection into Audiobookshelf layout. It reads tags from the audio files first, then `metadata.json` or `book.nfo`, and finally falls back to folder names. Disc folders are flattened and books are moved or copied to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`. Series names and volume numbers are detected with fuzzy matching (e.g. `Book 3`, `#3`, `Volume III`). When run with `--interactive`, the script prompts for missing series info. Metadata matching is handled by `search_and_tag.py`. Track renaming now avoids collisions by staging files with temporary names first.
+
+## `find_duplicates.py`
+`find_duplicates.py` scans a folder recursively and reports audio files with identical SHA1 hashes. Results are also written to `duplicate_log.txt` inside the scanned folder. Use `--version` to show the script version and path.
 
 
 
