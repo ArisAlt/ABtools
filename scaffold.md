@@ -1,4 +1,4 @@
-<!-- ABtools/scaffold.md · v1.2 · 2025-08-31 -->
+<!-- ABtools/scaffold.md · v1.3 · 2025-08-31 -->
 # Audiobook Tagging & Organization – Scaffold
 
 ## Project Structure
@@ -52,7 +52,8 @@ Audiobooks/
   - Tags them using `search_and_tag.py` logic
   - Creates cleaned-up `Author/Year - Title` folder
   - Moves and renames content
-- Embeds tags with FFmpeg; fixed missing output file to ensure tags are written
+  - Unmatched folders are moved into an `_unmatched` directory for manual review
+  - Embeds tags with FFmpeg; fixed missing output file to ensure tags are written
 
 ### `AbtoolsGui.py`
 
@@ -102,7 +103,7 @@ Audiobooks/
 
 | Script | Version | Path |
 |-------|---------|------|
-| `combobook.py` | v1.9 | `ABtools/combobook.py` |
+| `combobook.py` | v1.10 | `ABtools/combobook.py` |
 | `AbtoolsGui.py` | v0.1 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v4.8 | `ABtools/restructure_for_audiobookshelf.py` |
