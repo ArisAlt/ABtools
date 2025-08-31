@@ -1,4 +1,4 @@
-<!-- ABtools/README.md · v1.4 · 2025-09-01 -->
+<!-- ABtools/README.md · v1.5 · 2025-09-01 -->
 # Audiobook Organizer & Tagger
 
 This repository contains small utilities for preparing audiobook folders for [Audiobookshelf](https://www.audiobookshelf.org/).
@@ -47,7 +47,7 @@ pip install -r requirements.txt
 | Script | Version | Path |
 |-------|---------|------|
 
-| `combobook.py` | v1.11 | `ABtools/combobook.py` |
+| `combobook.py` | v1.12 | `ABtools/combobook.py` |
 | `AbtoolsGui.py` | v0.2 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v4.9 | `ABtools/restructure_for_audiobookshelf.py` |
@@ -61,6 +61,8 @@ Run any script with `--version` to print its version and file location.
 `combobook.py` tags, flattens and moves audiobook folders in a single pass. It searches Open Library, Google Books and Audible, ranks potential matches using fuzzy similarity and asks you to confirm before tagging and moving files. When no match is found, the folder is moved into an `_unmatched` directory inside your library for later review.
 
 It now also collapses folders named like `Book Title (1 of 5)` into a single directory and names each file `Part 01`, `Part 02`, etc.
+
+The source path is now passed explicitly, avoiding `NameError: SRC is not defined` when the script is imported by other modules or run via the GUI.
 
 For a simple graphical front-end, use `AbtoolsGui.py`, which provides text fields for source and destination folders, checkboxes for `--commit`, `--copy` and `--yes` options, and a live output pane.
 
