@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/combobook.py  ·  v1.10  ·  2025-08-31
+ABtools/combobook.py  ·  v1.11  ·  2025-09-01
 
 USAGE
 -----
@@ -30,7 +30,7 @@ from typing import List, Optional
 from difflib import SequenceMatcher
 import errno
 
-VERSION = "1.10"
+VERSION = "1.11"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -564,15 +564,32 @@ if __name__=="__main__":
               --commit    actually move / write tags (omit for preview)
               --yes       auto-accept every metadata match
             """))
-    ap.add_argument("source_root", type=Path)
-    ap.add_argument("library_root", type=Path)
+    ap.add_argument("paths", nargs="+", metavar=("source_root","library_root"))
     ap.add_argument("--commit", action="store_true")
     ap.add_argument("--yes",    action="store_true")
     ap.add_argument("--copy",   action="store_true", help="Copy instead of move when used with --commit")
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args=ap.parse_args()
-    SRC=args.source_root.resolve(); LIB=args.library_root.resolve()
-    if not SRC.is_dir(): sys.exit("source_root not found")
+
+    if len(args.paths) < 2:
+        ap.error("source_root and library_root required")
+
+    raw = args.paths
+    src = None
+    for i in range(1, len(raw)):
+        cand = Path(" ".join(raw[:i])).expanduser()
+        if cand.exists():
+            src = cand
+            dst = Path(" ".join(raw[i:])).expanduser()
+            break
+    if src is None:
+        src = Path(raw[0]).expanduser()
+        dst = Path(" ".join(raw[1:])).expanduser()
+
+    SRC = src.resolve()
+    LIB = dst.resolve()
+    if not SRC.is_dir():
+        sys.exit(f"source_root not found: {SRC}")
     LIB.mkdir(exist_ok=True, parents=True)
     AUTO_YES=args.yes
     main(SRC,LIB,args.commit,args.yes,args.copy)

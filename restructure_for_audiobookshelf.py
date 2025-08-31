@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/restructure_for_audiobookshelf.py – v4.8  (2025-09-01)
+ABtools/restructure_for_audiobookshelf.py – v4.9  (2025-09-01)
 Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --commit 
 • Recursively scans source_root; every directory that *contains* audio but whose
   sub-directories don’t is treated as one “book”.
@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import List, Optional
 import xml.etree.ElementTree as ET
 
-VERSION = "4.8"
+VERSION = "4.9"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -491,8 +491,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(
         description="Recursively tidy audiobook folders for Audiobookshelf."
     )
-    ap.add_argument("source_root", type=Path, help="Folder to scan recursively")
-    ap.add_argument("library_root", type=Path, help="Audiobookshelf library root")
+    ap.add_argument("paths", nargs="+", metavar=("source_root", "library_root"))
     ap.add_argument(
         "--commit",
         action="store_true",
@@ -510,5 +509,20 @@ if __name__ == "__main__":
     )
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args = ap.parse_args()
-    main(args.source_root, args.library_root, args.commit, args.copy,
-         args.interactive)
+
+    if len(args.paths) < 2:
+        ap.error("source_root and library_root required")
+
+    raw = args.paths
+    src = None
+    for i in range(1, len(raw)):
+        cand = Path(" ".join(raw[:i])).expanduser()
+        if cand.exists():
+            src = cand
+            dst = Path(" ".join(raw[i:])).expanduser()
+            break
+    if src is None:
+        src = Path(raw[0]).expanduser()
+        dst = Path(" ".join(raw[1:])).expanduser()
+
+    main(src, dst, args.commit, args.copy, args.interactive)

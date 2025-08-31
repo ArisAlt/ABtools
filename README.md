@@ -20,6 +20,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - Detects series and volume numbers with fuzzy matching
   and prompts for confirmation when run with `--interactive`
 - Each script reports its version and location with `--version`
+- `combobook.py` and `restructure_for_audiobookshelf.py` accept paths with spaces without quoting
 - Experimental features are toggled via `~/.abclient.json` using `AbClient`
 - Prints the score from each metadata provider during tagging
 - `find_duplicates.py` shows progress while scanning and can compare
@@ -46,10 +47,10 @@ pip install -r requirements.txt
 | Script | Version | Path |
 |-------|---------|------|
 
-| `combobook.py` | v1.10 | `ABtools/combobook.py` |
+| `combobook.py` | v1.11 | `ABtools/combobook.py` |
 | `AbtoolsGui.py` | v0.2 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v4.8 | `ABtools/restructure_for_audiobookshelf.py` |
+| `restructure_for_audiobookshelf.py` | v4.9 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.15 | `ABtools/search_and_tag.py` |
 | `find_duplicates.py` | v0.4 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
