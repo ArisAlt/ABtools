@@ -54,6 +54,7 @@ Audiobooks/
   - Moves and renames content
   - Unmatched folders are moved into an `_unmatched` directory for manual review
   - Embeds tags with FFmpeg; fixed missing output file to ensure tags are written
+  - Accepts source paths with spaces without needing quotes
 
 ### `AbtoolsGui.py`
 
@@ -71,6 +72,7 @@ Audiobooks/
 - Renames tracks safely to avoid name collisions
 - Detects fuzzy series numbering ("Book 2", "#2", "Volume II")
 - `--interactive` prompts for series info when unclear
+- Handles source folders with spaces without quoting
 
 ### `find_duplicates.py`
 
@@ -104,10 +106,10 @@ Audiobooks/
 
 | Script | Version | Path |
 |-------|---------|------|
-| `combobook.py` | v1.10 | `ABtools/combobook.py` |
+| `combobook.py` | v1.11 | `ABtools/combobook.py` |
 | `AbtoolsGui.py` | v0.2 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v4.8 | `ABtools/restructure_for_audiobookshelf.py` |
+| `restructure_for_audiobookshelf.py` | v4.9 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.15 | `ABtools/search_and_tag.py` |
 | `find_duplicates.py` | v0.4 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
