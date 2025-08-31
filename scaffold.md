@@ -1,4 +1,4 @@
-<!-- ABtools/scaffold.md · v1.1 · 2025-08-31 -->
+<!-- ABtools/scaffold.md · v1.2 · 2025-08-31 -->
 # Audiobook Tagging & Organization – Scaffold
 
 ## Project Structure
@@ -9,6 +9,7 @@ Audiobooks/
 ├── search_and_tag.py       # Tags files using metadata providers
 ├── flatten_discs.py        # Merges "Disc" folders into one
 ├── combobook.py            # Combines tagging and restructuring
+├── AbtoolsGui.py           # Tkinter GUI for combobook
 ├── restructure_for_audiobookshelf.py  # Reorganizes folders into Audiobookshelf layout
 ├── find_duplicates.py      # Reports duplicate audio files
 ├── metadata.json           # Optional: sample metadata format
@@ -51,7 +52,13 @@ Audiobooks/
   - Tags them using `search_and_tag.py` logic
   - Creates cleaned-up `Author/Year - Title` folder
   - Moves and renames content
-  - Embeds tags with FFmpeg; fixed missing output file to ensure tags are written
+- Embeds tags with FFmpeg; fixed missing output file to ensure tags are written
+
+### `AbtoolsGui.py`
+
+- Simple Tkinter GUI front-end for `combobook.py`
+- Text fields for source and library folders
+- Checkboxes for `--commit`, `--copy` and `--yes`
 
 ### `restructure_for_audiobookshelf.py`
 
@@ -96,7 +103,8 @@ Audiobooks/
 
 | Script | Version | Path |
 |-------|---------|------|
-| `combobook.py` | v1.8 | `ABtools/combobook.py` |
+| `combobook.py` | v1.9 | `ABtools/combobook.py` |
+| `AbtoolsGui.py` | v0.1 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v4.8 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.15 | `ABtools/search_and_tag.py` |
