@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/combobook.py  ·  v1.7  ·  2025-09-01
+ABtools/combobook.py  ·  v1.8  ·  2025-08-31
 
 USAGE
 -----
@@ -30,7 +30,7 @@ from typing import List, Optional
 from difflib import SequenceMatcher
 import errno
 
-VERSION = "1.7"
+VERSION = "1.8"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -336,8 +336,13 @@ def write_tags(track:Path, meta:Meta, index:int=0, total:int=0):
         cmd += ["-metadata", f"series-part={meta.seq}"]
     if meta.year: cmd+=["-metadata",f"date={meta.year}"]
     if index: cmd += ["-metadata", f"track={index}/{total or index}"]
-    subprocess.run(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-    if tmp.exists(): tmp.replace(track)
+    cmd.append(str(tmp))
+    res = subprocess.run(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    if res.returncode == 0 and tmp.exists():
+        tmp.replace(track)
+    elif tmp.exists():
+        tmp.unlink(missing_ok=True)
+        rprint("[red]✗ failed to write tags[/]")
 
 # ───────────── disc-flattener ────────────────────────────────────────────────
 def flatten(folder: Path, dry: bool):
