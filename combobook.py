@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/combobook.py  ·  v1.9  ·  2025-08-31
+ABtools/combobook.py  ·  v1.10  ·  2025-08-31
 
 USAGE
 -----
@@ -30,7 +30,7 @@ from typing import List, Optional
 from difflib import SequenceMatcher
 import errno
 
-VERSION = "1.9"
+VERSION = "1.10"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -40,6 +40,7 @@ FLATTEN_DISCS = True
 RENAME_TRACKS = False          # Track 001.*, Track 002.* …
 WRITE_TAGS    = True           # needs ffmpeg on PATH
 AUTO_YES      = False          # --yes overrides per-run
+UNMATCHED_DIR = "_unmatched"   # destination for folders with no metadata match
 
 # “disc / disk / cd / part” + optional ()[]{}
 DISC_RX = re.compile(
@@ -477,8 +478,24 @@ def process(folder: Path, lib: Path, dry: bool, yes: bool, copy: bool, summary: 
         # Prompt the user (or auto‐yes) for a match
         hit = choose_meta(guess)
         if not hit:
-            rprint("[yellow]• skip (no tags / no match):[/] ", folder.relative_to(SRC))
-            summary["skip"] += 1
+            rprint("[yellow]• no metadata match:[/]", folder.relative_to(SRC))
+            summary["unmatched"] += 1
+            dest = lib / UNMATCHED_DIR / slug(folder.name)
+            action = 'cp' if copy else 'mv'
+            rprint(f"{action if not dry else '↪'} {folder.relative_to(SRC)} → {dest.relative_to(lib)}")
+            if dry:
+                summary["would_move"] += 1
+                if FLATTEN_DISCS:
+                    flatten(folder, True)
+                if RENAME_TRACKS and not FLATTEN_DISCS:
+                    rename_tracks(folder)
+                return
+            safe_move(folder, dest, copy=copy)
+            if FLATTEN_DISCS:
+                flatten(dest, False)
+            if RENAME_TRACKS and not FLATTEN_DISCS:
+                rename_tracks(dest)
+            summary["moved"] += 1
             return
 
         # Write tags to all tracks in this folder
@@ -534,7 +551,7 @@ def main(src:Path, lib:Path, commit:bool, yes:bool, copy: bool):
     rprint(f"  {action_word:12}: {summary['moved']}")
     if not commit:
         rprint(f"  would_move   : {summary['would_move']}")
-    for k in ("exists","skip"):
+    for k in ("exists","skip","unmatched"):
         rprint(f"  {k:12}: {summary[k]}")
 
 if __name__=="__main__":
