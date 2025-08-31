@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/combobook.py  ·  v1.11  ·  2025-09-01
+ABtools/combobook.py  ·  v1.12  ·  2025-09-01
 
 USAGE
 -----
@@ -30,7 +30,7 @@ from typing import List, Optional
 from difflib import SequenceMatcher
 import errno
 
-VERSION = "1.11"
+VERSION = "1.12"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -451,7 +451,7 @@ def dest_path(lib: Path, meta: Meta) -> Path:
     return dest
 
 # ───────────── process one folder ────────────────────────────────────────────
-def process(folder: Path, lib: Path, dry: bool, yes: bool, copy: bool, summary: dict):
+def process(folder: Path, src: Path, lib: Path, dry: bool, yes: bool, copy: bool, summary: dict):
     summary["total"] += 1
 
     # 1) Gather all audio files in this folder
@@ -478,11 +478,11 @@ def process(folder: Path, lib: Path, dry: bool, yes: bool, copy: bool, summary: 
         # Prompt the user (or auto‐yes) for a match
         hit = choose_meta(guess)
         if not hit:
-            rprint("[yellow]• no metadata match:[/]", folder.relative_to(SRC))
+            rprint("[yellow]• no metadata match:[/]", folder.relative_to(src))
             summary["unmatched"] += 1
             dest = lib / UNMATCHED_DIR / slug(folder.name)
             action = 'cp' if copy else 'mv'
-            rprint(f"{action if not dry else '↪'} {folder.relative_to(SRC)} → {dest.relative_to(lib)}")
+            rprint(f"{action if not dry else '↪'} {folder.relative_to(src)} → {dest.relative_to(lib)}")
             if dry:
                 summary["would_move"] += 1
                 if FLATTEN_DISCS:
@@ -527,7 +527,7 @@ def process(folder: Path, lib: Path, dry: bool, yes: bool, copy: bool, summary: 
             return
 
     action = 'cp' if copy else 'mv'
-    rprint(f"{action if not dry else '↪'} {folder.relative_to(SRC)} → {dest.relative_to(lib)}")
+    rprint(f"{action if not dry else '↪'} {folder.relative_to(src)} → {dest.relative_to(lib)}")
     if dry:
         summary["would_move"] += 1
         return
@@ -544,7 +544,7 @@ def process(folder: Path, lib: Path, dry: bool, yes: bool, copy: bool, summary: 
 def main(src:Path, lib:Path, commit:bool, yes:bool, copy: bool):
     summary=defaultdict(int)
     for leaf in leaf_dirs(src):
-        process(leaf,lib,dry=not commit,yes=yes,copy=copy,summary=summary)
+        process(leaf, src, lib, dry=not commit, yes=yes, copy=copy, summary=summary)
     rprint("\n[bold]summary[/]")
     action_word = "copied" if copy else "moved"
     rprint(f"  total        : {summary['total']}")
@@ -586,10 +586,10 @@ if __name__=="__main__":
         src = Path(raw[0]).expanduser()
         dst = Path(" ".join(raw[1:])).expanduser()
 
-    SRC = src.resolve()
-    LIB = dst.resolve()
-    if not SRC.is_dir():
-        sys.exit(f"source_root not found: {SRC}")
-    LIB.mkdir(exist_ok=True, parents=True)
-    AUTO_YES=args.yes
-    main(SRC,LIB,args.commit,args.yes,args.copy)
+    src = src.resolve()
+    lib = dst.resolve()
+    if not src.is_dir():
+        sys.exit(f"source_root not found: {src}")
+    lib.mkdir(exist_ok=True, parents=True)
+    AUTO_YES = args.yes
+    main(src, lib, args.commit, args.yes, args.copy)
