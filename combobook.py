@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/combobook.py  ·  v1.8  ·  2025-08-31
+ABtools/combobook.py  ·  v1.9  ·  2025-08-31
 
 USAGE
 -----
@@ -30,7 +30,7 @@ from typing import List, Optional
 from difflib import SequenceMatcher
 import errno
 
-VERSION = "1.8"
+VERSION = "1.9"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
