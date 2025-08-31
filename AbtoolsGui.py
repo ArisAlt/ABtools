@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """
-ABtools/AbtoolsGui.py  ·  v0.1  ·  2025-08-31
+ABtools/AbtoolsGui.py  ·  v0.2  ·  2025-09-01
 """
 from __future__ import annotations
 
 import sys
+import threading
+import queue
+from contextlib import redirect_stdout, redirect_stderr
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from pathlib import Path
 import combobook
 
-VERSION = "0.1"
+VERSION = "0.2"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -52,7 +55,45 @@ tk.Checkbutton(root, text="Commit", variable=commit_var).grid(row=2, column=0, s
 tk.Checkbutton(root, text="Copy", variable=copy_var).grid(row=2, column=1, sticky="w", padx=5)
 tk.Checkbutton(root, text="Yes", variable=yes_var).grid(row=2, column=2, sticky="w", padx=5)
 
-def run():
+# --- output ---
+output_queue: queue.Queue[tuple[str, str]] = queue.Queue()
+
+output_text = tk.Text(root, height=15, width=60, state="disabled")
+output_text.grid(row=4, column=0, columnspan=4, padx=5, pady=5)
+
+def append_output(text: str) -> None:
+    output_text.configure(state="normal")
+    output_text.insert(tk.END, text)
+    output_text.see(tk.END)
+    output_text.configure(state="disabled")
+
+class QueueWriter:
+    def __init__(self, q: queue.Queue[tuple[str, str]]):
+        self.q = q
+
+    def write(self, msg: str) -> None:
+        if msg:
+            self.q.put(("stdout", msg))
+
+    def flush(self) -> None:  # pragma: no cover - required for file-like API
+        pass
+
+def poll_queue() -> None:
+    while True:
+        try:
+            typ, msg = output_queue.get_nowait()
+        except queue.Empty:
+            break
+        if typ == "stdout":
+            append_output(msg)
+        elif typ == "status":
+            if msg == "done":
+                messagebox.showinfo("Done", "Processing finished")
+            elif msg.startswith("error:"):
+                messagebox.showerror("Error", msg[6:])
+    root.after(100, poll_queue)
+
+def run() -> None:
     src = Path(source_var.get()).expanduser()
     dst = Path(dest_var.get()).expanduser()
     if not src.exists():
@@ -60,13 +101,27 @@ def run():
         return
     dst.mkdir(parents=True, exist_ok=True)
     combobook.AUTO_YES = yes_var.get()
-    try:
-        combobook.main(src, dst, commit_var.get(), yes_var.get(), copy_var.get())
-        messagebox.showinfo("Done", "Processing finished")
-    except Exception as exc:
-        messagebox.showerror("Error", str(exc))
+
+    output_text.configure(state="normal")
+    output_text.delete("1.0", tk.END)
+    output_text.configure(state="disabled")
+
+    def worker() -> None:
+        try:
+            with redirect_stdout(QueueWriter(output_queue)), redirect_stderr(
+                QueueWriter(output_queue)
+            ):
+                combobook.main(
+                    src, dst, commit_var.get(), yes_var.get(), copy_var.get()
+                )
+            output_queue.put(("status", "done"))
+        except Exception as exc:  # pragma: no cover - handled via GUI
+            output_queue.put(("status", f"error:{exc}"))
+
+    threading.Thread(target=worker, daemon=True).start()
 
 tk.Button(root, text="Run", command=run).grid(row=3, column=0, columnspan=4, pady=10)
 
 if __name__ == "__main__":
+    poll_queue()
     root.mainloop()

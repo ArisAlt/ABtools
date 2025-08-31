@@ -1,4 +1,4 @@
-<!-- ABtools/README.md · v1.3 · 2025-08-31 -->
+<!-- ABtools/README.md · v1.4 · 2025-09-01 -->
 # Audiobook Organizer & Tagger
 
 This repository contains small utilities for preparing audiobook folders for [Audiobookshelf](https://www.audiobookshelf.org/).
@@ -47,7 +47,7 @@ pip install -r requirements.txt
 |-------|---------|------|
 
 | `combobook.py` | v1.10 | `ABtools/combobook.py` |
-| `AbtoolsGui.py` | v0.1 | `ABtools/AbtoolsGui.py` |
+| `AbtoolsGui.py` | v0.2 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v4.8 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.15 | `ABtools/search_and_tag.py` |
@@ -61,7 +61,7 @@ Run any script with `--version` to print its version and file location.
 
 It now also collapses folders named like `Book Title (1 of 5)` into a single directory and names each file `Part 01`, `Part 02`, etc.
 
-For a simple graphical front-end, use `AbtoolsGui.py`, which provides text fields for source and destination folders and checkboxes for `--commit`, `--copy` and `--yes` options.
+For a simple graphical front-end, use `AbtoolsGui.py`, which provides text fields for source and destination folders, checkboxes for `--commit`, `--copy` and `--yes` options, and a live output pane.
 
 FFmpeg tag writing previously failed silently; the script now specifies the output file so tags are embedded correctly.
 
@@ -107,7 +107,7 @@ Folders are moved to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`
 Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when run with `--copy` alongside `--commit`.
 
 ## `AbtoolsGui.py`
-`AbtoolsGui.py` offers a basic Tkinter interface for `combobook.py`. It provides text fields for selecting the source and library folders and checkboxes matching the `--commit`, `--copy` and `--yes` command-line options.
+`AbtoolsGui.py` offers a basic Tkinter interface for `combobook.py`. It provides text fields for selecting the source and library folders, checkboxes matching the `--commit`, `--copy` and `--yes` command-line options, and shows live `combobook` output in a scrolling pane.
 
 ## `search_and_tag.py`
 `search_and_tag.py` tags or strips audiobook files. It queries Audible,
