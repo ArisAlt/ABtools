@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/AbtoolsGui.py  ·  v0.2  ·  2025-09-01
+ABtools/AbtoolsGui.py  ·  v0.3  ·  2025-09-01
 """
 from __future__ import annotations
 
@@ -12,8 +12,9 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 from pathlib import Path
 import combobook
+import search_and_tag
 
-VERSION = "0.2"
+VERSION = "0.3"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -120,7 +121,42 @@ def run() -> None:
 
     threading.Thread(target=worker, daemon=True).start()
 
-tk.Button(root, text="Run", command=run).grid(row=3, column=0, columnspan=4, pady=10)
+
+def tag_only() -> None:
+    src = Path(source_var.get()).expanduser()
+    if not src.exists():
+        messagebox.showerror("Error", "Source path does not exist")
+        return
+
+    output_text.configure(state="normal")
+    output_text.delete("1.0", tk.END)
+    output_text.configure(state="disabled")
+
+    def worker() -> None:
+        try:
+            with redirect_stdout(QueueWriter(output_queue)), redirect_stderr(
+                QueueWriter(output_queue)
+            ):
+                args = [str(src), "--recurse"]
+                if commit_var.get():
+                    args.append("--commit")
+                if yes_var.get():
+                    args.append("--yes")
+                old_argv = sys.argv
+                sys.argv = ["search_and_tag.py"] + args
+                try:
+                    search_and_tag.main()
+                finally:
+                    sys.argv = old_argv
+            output_queue.put(("status", "done"))
+        except Exception as exc:  # pragma: no cover - handled via GUI
+            output_queue.put(("status", f"error:{exc}"))
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+tk.Button(root, text="Run", command=run).grid(row=3, column=0, columnspan=2, pady=10)
+tk.Button(root, text="Tag Only", command=tag_only).grid(row=3, column=2, columnspan=2, pady=10)
 
 if __name__ == "__main__":
     poll_queue()
