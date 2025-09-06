@@ -15,6 +15,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - Provides preview and logging
 - Optionally prompts for confirmation or proceeds automatically
 - Fetches metadata in parallel for faster tagging
+- Ranks matches using both title and author similarity for better accuracy
 - Preserves part numbers like `(1 of 6)` when reorganizing files
 - Adds track numbers so multi-part books play in order
 - Detects series and volume numbers with fuzzy matching
@@ -52,7 +53,7 @@ pip install -r requirements.txt
 | `AbtoolsGui.py` | v0.4 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v4.9 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.15 | `ABtools/search_and_tag.py` |
+| `search_and_tag.py` | v2.16 | `ABtools/search_and_tag.py` |
 | `find_duplicates.py` | v0.4 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
 
@@ -71,14 +72,14 @@ FFmpeg tag writing previously failed silently; the script now specifies the outp
 
 """
 
-Tag (or strip) audiobook files using multiple metadata providers.
+  Tag (or strip) audiobook files using multiple metadata providers.
 
-The script queries Audible, Open Library and Google Books, ranks the
-results using fuzzy title matching and automatically tags files with the
-best match. Low scoring hits will prompt for confirmation unless you
-run with ``--yes``. When prompted, the default answer is "No" so low
-confidence matches won't be accepted accidentally. Log files are written
-next to the chosen root as ``tag_log.txt`` and ``review_log.txt``.
+  The script queries Audible, Open Library and Google Books, ranks the
+  results using fuzzy title and author matching and automatically tags
+  files with the best match. Low scoring hits will prompt for confirmation
+  unless you run with ``--yes``. When prompted, the default answer is "No" so low
+  confidence matches won't be accepted accidentally. Log files are written
+  next to the chosen root as ``tag_log.txt`` and ``review_log.txt``.
 
 
 examples
@@ -115,7 +116,8 @@ Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when 
 
 ## `search_and_tag.py`
 `search_and_tag.py` tags or strips audiobook files. It queries Audible,
-Goodreads (optional), Open Library and Google Books. The score from each
+Goodreads (optional), Open Library and Google Books. Results are ranked
+using both title and author similarity, and the score from each
 provider is printed so you can see which source matched best. Audible is
 queried first when enabled via `abclient.json`. Matches with a low score
 will ask for confirmation unless you pass `--yes`. Use `--no` to
