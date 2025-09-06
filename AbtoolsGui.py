@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/AbtoolsGui.py  ·  v0.2  ·  2025-09-01
+ABtools/AbtoolsGui.py  ·  v0.4  ·  2025-09-01
 """
 from __future__ import annotations
 
@@ -12,8 +12,9 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 from pathlib import Path
 import combobook
+import search_and_tag
 
-VERSION = "0.2"
+VERSION = "0.4"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -23,6 +24,9 @@ if "--version" in sys.argv:
 
 root = tk.Tk()
 root.title("ABtools GUI")
+for i in range(4):
+    root.grid_columnconfigure(i, weight=1)
+root.grid_rowconfigure(4, weight=1)
 
 # --- input fields ---
 source_var = tk.StringVar()
@@ -58,8 +62,20 @@ tk.Checkbutton(root, text="Yes", variable=yes_var).grid(row=2, column=2, sticky=
 # --- output ---
 output_queue: queue.Queue[tuple[str, str]] = queue.Queue()
 
-output_text = tk.Text(root, height=15, width=60, state="disabled")
-output_text.grid(row=4, column=0, columnspan=4, padx=5, pady=5)
+output_frame = tk.Frame(root)
+output_frame.grid(row=4, column=0, columnspan=4, sticky="nsew", padx=5, pady=5)
+output_frame.grid_rowconfigure(0, weight=1)
+output_frame.grid_columnconfigure(0, weight=1)
+
+output_text = tk.Text(output_frame, height=15, width=60, wrap="none", state="disabled")
+output_text.grid(row=0, column=0, sticky="nsew")
+
+y_scroll = tk.Scrollbar(output_frame, orient="vertical", command=output_text.yview)
+y_scroll.grid(row=0, column=1, sticky="ns")
+x_scroll = tk.Scrollbar(output_frame, orient="horizontal", command=output_text.xview)
+x_scroll.grid(row=1, column=0, sticky="ew")
+
+output_text.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
 
 def append_output(text: str) -> None:
     output_text.configure(state="normal")
@@ -120,7 +136,42 @@ def run() -> None:
 
     threading.Thread(target=worker, daemon=True).start()
 
-tk.Button(root, text="Run", command=run).grid(row=3, column=0, columnspan=4, pady=10)
+
+def tag_only() -> None:
+    src = Path(source_var.get()).expanduser()
+    if not src.exists():
+        messagebox.showerror("Error", "Source path does not exist")
+        return
+
+    output_text.configure(state="normal")
+    output_text.delete("1.0", tk.END)
+    output_text.configure(state="disabled")
+
+    def worker() -> None:
+        try:
+            with redirect_stdout(QueueWriter(output_queue)), redirect_stderr(
+                QueueWriter(output_queue)
+            ):
+                args = [str(src), "--recurse"]
+                if commit_var.get():
+                    args.append("--commit")
+                if yes_var.get():
+                    args.append("--yes")
+                old_argv = sys.argv
+                sys.argv = ["search_and_tag.py"] + args
+                try:
+                    search_and_tag.main()
+                finally:
+                    sys.argv = old_argv
+            output_queue.put(("status", "done"))
+        except Exception as exc:  # pragma: no cover - handled via GUI
+            output_queue.put(("status", f"error:{exc}"))
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+tk.Button(root, text="Run", command=run).grid(row=3, column=0, columnspan=2, pady=10)
+tk.Button(root, text="Tag Only", command=tag_only).grid(row=3, column=2, columnspan=2, pady=10)
 
 if __name__ == "__main__":
     poll_queue()
