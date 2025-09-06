@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-ABtools/search_and_tag.py – v2.15  (2025-09-01)
+ABtools/search_and_tag.py – v2.16  (2025-09-01)
 Tag (or strip) audiobook files using multiple metadata providers.
 
     The script queries Audible, Open Library and Google Books, ranks the
-    results using fuzzy title matching and automatically tags files with the
-    best match. Low scoring hits will prompt for confirmation unless you
+    results using fuzzy title *and author* matching and automatically tags
+    files with the best match. Low scoring hits will prompt for confirmation unless you
     run with ``--yes``. Use ``--no`` to automatically decline low-scoring
     matches. When prompted, the default answer is "No" so low confidence
     matches won't be accepted accidentally. Log files are written
@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Optional, Tuple, List
 from abclient import AbClient
 
-VERSION = "2.15"
+VERSION = "2.16"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -219,7 +219,14 @@ def best_match(author: Optional[str], title: str, client: AbClient = AB) -> tupl
 
     def add_result(name: str, meta: Optional[dict]):
         if meta and meta.get("title"):
-            score = fuzz.token_set_ratio(title.lower(), meta["title"].lower())
+            title_score = fuzz.token_set_ratio(title.lower(), meta["title"].lower())
+            author_score = 0
+            if author and meta.get("authors"):
+                author_score = max(
+                    fuzz.token_set_ratio(author.lower(), a.lower())
+                    for a in meta["authors"]
+                )
+            score = int(title_score * 0.7 + author_score * 0.3)
             meta["source"] = name
             pair = (score, meta)
             candidates.append(pair)

@@ -1,4 +1,4 @@
-<!-- ABtools/scaffold.md · v1.6 · 2025-09-01 -->
+<!-- ABtools/scaffold.md · v1.7 · 2025-09-01 -->
 # Audiobook Tagging & Organization – Scaffold
 
 ## Project Structure
@@ -33,11 +33,12 @@ Audiobooks/
   - `metadata.json`
   - `book.nfo`
   - `--debug` prints tracebacks on errors
-- `--no` auto-declines metadata suggestions
-- fetches metadata in parallel for faster processing
-- `--version` prints the script version and file path
-- Experimental switches stored in `~/.abclient.json` (used by `AbClient`)
-- Prints scores from all metadata providers
+  - `--no` auto-declines metadata suggestions
+  - fetches metadata in parallel for faster processing
+  - ranks matches using title and author similarity
+  - `--version` prints the script version and file path
+  - Experimental switches stored in `~/.abclient.json` (used by `AbClient`)
+  - Prints scores from all metadata providers
 
 ### `flatten_discs.py`
 
@@ -112,7 +113,7 @@ Audiobooks/
 | `AbtoolsGui.py` | v0.3 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v4.9 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.15 | `ABtools/search_and_tag.py` |
+| `search_and_tag.py` | v2.16 | `ABtools/search_and_tag.py` |
 | `find_duplicates.py` | v0.4 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
 
