@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/AbtoolsGui.py  ·  v0.7  ·  2025-09-01
+ABtools/AbtoolsGui.py  ·  v0.8  ·  2025-09-01
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import combobook, search_and_tag, find_duplicates
 
-VERSION = "0.7"
+VERSION = "0.8"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -98,7 +98,10 @@ class QueueWriter:
         pass
 
 def poll_queue() -> None:
-    while True:
+    # Process a limited number of queued messages per tick so the Tk event
+    # loop stays responsive even when a worker thread floods the queue with
+    # progress updates (e.g. during a large duplicate scan).
+    for _ in range(100):
         try:
             typ, msg = output_queue.get_nowait()
         except queue.Empty:

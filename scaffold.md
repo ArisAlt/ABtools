@@ -1,4 +1,4 @@
-<!-- ABtools/scaffold.md · v1.5 · 2025-09-01 -->
+<!-- ABtools/scaffold.md · v1.6 · 2025-09-01 -->
 # Audiobook Tagging & Organization – Scaffold
 
 ## Project Structure
@@ -70,6 +70,7 @@ Audiobooks/
 - "Tag Only" button that runs `search_and_tag.py` without moving files
 - "Find Duplicates" button that scans source and destination using `find_duplicates.py`
 - Buttons to generate restructure plans, apply them atomically and undo the last run
+- Processes output queue in small batches so the window remains responsive during large scans
 
 ### `restructure_for_audiobookshelf.py`
 
@@ -116,7 +117,7 @@ Audiobooks/
 | Script | Version | Path |
 |-------|---------|------|
 | `combobook.py` | v1.13 | `ABtools/combobook.py` |
-| `AbtoolsGui.py` | v0.7 | `ABtools/AbtoolsGui.py` |
+| `AbtoolsGui.py` | v0.8 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.0 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.16 | `ABtools/search_and_tag.py` |
