@@ -1,4 +1,4 @@
-<!-- ABtools/README.md · v2.0 · 2025-09-01 -->
+<!-- ABtools/README.md · v2.1 · 2025-09-01 -->
 # Audiobook Organizer & Tagger
 
 This repository contains small utilities for preparing audiobook folders for [Audiobookshelf](https://www.audiobookshelf.org/).
@@ -54,7 +54,7 @@ pip install -r requirements.txt
 |-------|---------|------|
 
 | `combobook.py` | v1.13 | `ABtools/combobook.py` |
-| `AbtoolsGui.py` | v0.5 | `ABtools/AbtoolsGui.py` |
+| `AbtoolsGui.py` | v0.6 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.0 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.16 | `ABtools/search_and_tag.py` |
@@ -73,7 +73,7 @@ It now also collapses folders named like `Book Title (1 of 5)` into a single dir
 
 The source path is now passed explicitly, avoiding `NameError: SRC is not defined` when the script is imported by other modules or run via the GUI.
 
-For a simple graphical front-end, use `AbtoolsGui.py`, which provides text fields for source and destination folders, checkboxes for `--commit`, `--copy` and `--yes` options, a live output pane, and a progress bar with estimated time. It also includes a "Tag Only" button that runs `search_and_tag.py` without moving files and a "Find Duplicates" button that scans both folders using `find_duplicates.py`.
+For a simple graphical front-end, use `AbtoolsGui.py`, which provides text fields for source and destination folders, checkboxes for `--commit`, `--copy` and `--yes` options, a live output pane, and a progress bar with estimated time. It includes a "Tag Only" button that runs `search_and_tag.py` without moving files, a "Find Duplicates" button, and new controls to generate plans, apply them transactionally, or undo the last run.
 
 FFmpeg tag writing previously failed silently; the script now specifies the output file so tags are embedded correctly.
 
@@ -119,7 +119,7 @@ Folders are moved to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`
 Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when run with `--copy` alongside `--commit`.
 
 ## `AbtoolsGui.py`
-`AbtoolsGui.py` offers a basic Tkinter interface for `combobook.py`. It provides text fields for selecting the source and library folders, checkboxes matching the `--commit`, `--copy` and `--yes` command-line options, and shows live `combobook` output in a scrolling pane. A progress bar displays overall progress with an estimated time remaining. A separate "Tag Only" button uses `search_and_tag.py` to tag files without moving them, and a "Find Duplicates" button runs `find_duplicates.py` on the chosen source and destination folders.
+`AbtoolsGui.py` offers a basic Tkinter interface for `combobook.py`. It provides text fields for selecting the source and library folders, checkboxes matching the `--commit`, `--copy` and `--yes` command-line options, and shows live `combobook` output in a scrolling pane. A progress bar displays overall progress with an estimated time remaining. Beyond the "Tag Only" and "Find Duplicates" helpers, the GUI now exposes buttons to generate restructure plans, apply them atomically, and undo the most recent transaction.
 
 ## `search_and_tag.py`
 `search_and_tag.py` tags or strips audiobook files. It queries Audible,
