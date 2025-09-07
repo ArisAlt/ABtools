@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/AbtoolsGui.py  ·  v0.4  ·  2025-09-01
+ABtools/AbtoolsGui.py  ·  v0.5  ·  2025-09-01
 """
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from pathlib import Path
 from types import SimpleNamespace
-import combobook, search_and_tag
+import combobook, search_and_tag, find_duplicates
 
-VERSION = "0.4"
+VERSION = "0.5"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -210,8 +210,57 @@ def tag_only() -> None:
     threading.Thread(target=worker, daemon=True).start()
 
 
-tk.Button(root, text="Run", command=run).grid(row=3, column=0, columnspan=2, pady=10)
-tk.Button(root, text="Tag Only", command=tag_only).grid(row=3, column=2, columnspan=2, pady=10)
+def find_dupes() -> None:
+    src = Path(source_var.get()).expanduser()
+    dst = Path(dest_var.get()).expanduser()
+    paths = [p for p in (src, dst) if p.exists()]
+    if not paths:
+        messagebox.showerror("Error", "No valid source or destination paths")
+        return
+
+    output_text.configure(state="normal")
+    output_text.delete("1.0", tk.END)
+    output_text.configure(state="disabled")
+    progress.configure(maximum=len(paths))
+    progress_var.set(0)
+    eta_var.set("ETA: --:--")
+
+    def worker() -> None:
+        try:
+            with redirect_stdout(QueueWriter(output_queue)), redirect_stderr(
+                QueueWriter(output_queue)
+            ):
+                for idx, path in enumerate(paths, 1):
+                    print(f"Scanning {path} for duplicates...")
+                    dupes = find_duplicates.find_dupes(path)
+                    if not dupes:
+                        print("No duplicates found.")
+                    else:
+                        for digest, files in dupes.items():
+                            print(f"\nSHA1 {digest}")
+                            for f in files:
+                                print(f"  {f}")
+                        log_file = path / find_duplicates.DUP_LOG.name
+                        with log_file.open("w", encoding="utf-8") as fh:
+                            for digest, files in dupes.items():
+                                fh.write(f"SHA1 {digest}\n")
+                                for f in files:
+                                    fh.write(f"  {f}\n")
+                                fh.write("\n")
+                        print(
+                            f"\n{sum(len(v) for v in dupes.values())} duplicate files logged to {log_file}"
+                        )
+                    output_queue.put(("progress", (idx, len(paths), 0)))
+            output_queue.put(("status", "done"))
+        except Exception as exc:  # pragma: no cover - handled via GUI
+            output_queue.put(("status", f"error:{exc}"))
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+tk.Button(root, text="Run", command=run).grid(row=3, column=0, pady=10)
+tk.Button(root, text="Tag Only", command=tag_only).grid(row=3, column=1, pady=10)
+tk.Button(root, text="Find Duplicates", command=find_dupes).grid(row=3, column=2, columnspan=2, pady=10)
 
 if __name__ == "__main__":
     poll_queue()
