@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/AbtoolsGui.py  ·  v0.6  ·  2025-09-01
+ABtools/AbtoolsGui.py  ·  v0.7  ·  2025-09-01
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import combobook, search_and_tag, find_duplicates
 
-VERSION = "0.6"
+VERSION = "0.7"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -274,13 +274,14 @@ def find_dupes() -> None:
 def make_plan() -> None:
     src = Path(source_var.get()).expanduser()
     dst = Path(dest_var.get()).expanduser()
-    plan_path = Path(plan_var.get()).expanduser()
+    plan_str = plan_var.get().strip()
     if not src.exists():
         messagebox.showerror("Error", "Source path does not exist")
         return
-    if not plan_path:
+    if not plan_str:
         messagebox.showerror("Error", "Plan path is required")
         return
+    plan_path = Path(plan_str).expanduser()
     dst.mkdir(parents=True, exist_ok=True)
 
     output_text.configure(state="normal")
@@ -308,7 +309,11 @@ def make_plan() -> None:
 
 
 def apply_plan() -> None:
-    plan_path = Path(plan_var.get()).expanduser()
+    plan_str = plan_var.get().strip()
+    if not plan_str:
+        messagebox.showerror("Error", "Plan path is required")
+        return
+    plan_path = Path(plan_str).expanduser()
     if not plan_path.exists():
         messagebox.showerror("Error", "Plan file not found")
         return
