@@ -1,4 +1,4 @@
-<!-- ABtools/README.md · v2.1 · 2025-09-01 -->
+<!-- ABtools/README.md · v2.2 · 2025-09-01 -->
 # Audiobook Organizer & Tagger
 
 This repository contains small utilities for preparing audiobook folders for [Audiobookshelf](https://www.audiobookshelf.org/).
@@ -29,6 +29,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - GUI front-end displays a progress bar with estimated time
 - GUI front-end can run `find_duplicates.py` to scan source and destination for duplicate audio files
 - Planning mode writes a JSON plan that can be reviewed before execution
+- GUI front-end checks that a plan file path is selected before generating or applying a plan
 - Transactions are logged and can be rolled back with `--undo-last`
 - Duplicate catalog prevents importing the same book twice
 
@@ -54,7 +55,7 @@ pip install -r requirements.txt
 |-------|---------|------|
 
 | `combobook.py` | v1.13 | `ABtools/combobook.py` |
-| `AbtoolsGui.py` | v0.6 | `ABtools/AbtoolsGui.py` |
+| `AbtoolsGui.py` | v0.7 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.0 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.16 | `ABtools/search_and_tag.py` |
@@ -120,6 +121,7 @@ Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when 
 
 ## `AbtoolsGui.py`
 `AbtoolsGui.py` offers a basic Tkinter interface for `combobook.py`. It provides text fields for selecting the source and library folders, checkboxes matching the `--commit`, `--copy` and `--yes` command-line options, and shows live `combobook` output in a scrolling pane. A progress bar displays overall progress with an estimated time remaining. Beyond the "Tag Only" and "Find Duplicates" helpers, the GUI now exposes buttons to generate restructure plans, apply them atomically, and undo the most recent transaction.
+It validates that a plan file path is chosen before generating or applying a plan to avoid permission errors.
 
 ## `search_and_tag.py`
 `search_and_tag.py` tags or strips audiobook files. It queries Audible,
