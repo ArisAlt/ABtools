@@ -1,4 +1,4 @@
-<!-- ABtools/scaffold.md · v1.2 · 2025-09-01 -->
+<!-- ABtools/scaffold.md · v1.3 · 2025-09-01 -->
 # Audiobook Tagging & Organization – Scaffold
 
 ## Project Structure
@@ -110,11 +110,14 @@ Audiobooks/
 
 | Script | Version | Path |
 |-------|---------|------|
-| `combobook.py` | v1.12 | `ABtools/combobook.py` |
+| `combobook.py` | v1.13 | `ABtools/combobook.py` |
 | `AbtoolsGui.py` | v0.5 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v4.9 | `ABtools/restructure_for_audiobookshelf.py` |
+| `restructure_for_audiobookshelf.py` | v5.0 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.16 | `ABtools/search_and_tag.py` |
 | `find_duplicates.py` | v0.4 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
+| `planning.py` | v0.1 | `ABtools/planning.py` |
+| `transaction.py` | v0.1 | `ABtools/transaction.py` |
+| `catalog.py` | v0.1 | `ABtools/catalog.py` |
 

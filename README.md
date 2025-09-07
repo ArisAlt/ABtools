@@ -1,4 +1,4 @@
-<!-- ABtools/README.md · v1.9 · 2025-09-01 -->
+<!-- ABtools/README.md · v2.0 · 2025-09-01 -->
 # Audiobook Organizer & Tagger
 
 This repository contains small utilities for preparing audiobook folders for [Audiobookshelf](https://www.audiobookshelf.org/).
@@ -28,6 +28,9 @@ This repository contains small utilities for preparing audiobook folders for [Au
   files by SHA1 hash or by name
 - GUI front-end displays a progress bar with estimated time
 - GUI front-end can run `find_duplicates.py` to scan source and destination for duplicate audio files
+- Planning mode writes a JSON plan that can be reviewed before execution
+- Transactions are logged and can be rolled back with `--undo-last`
+- Duplicate catalog prevents importing the same book twice
 
 ## Requirements
 
@@ -50,13 +53,16 @@ pip install -r requirements.txt
 | Script | Version | Path |
 |-------|---------|------|
 
-| `combobook.py` | v1.12 | `ABtools/combobook.py` |
+| `combobook.py` | v1.13 | `ABtools/combobook.py` |
 | `AbtoolsGui.py` | v0.5 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v4.9 | `ABtools/restructure_for_audiobookshelf.py` |
+| `restructure_for_audiobookshelf.py` | v5.0 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.16 | `ABtools/search_and_tag.py` |
 | `find_duplicates.py` | v0.4 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
+| `planning.py` | v0.1 | `ABtools/planning.py` |
+| `transaction.py` | v0.1 | `ABtools/transaction.py` |
+| `catalog.py` | v0.1 | `ABtools/catalog.py` |
 
 Run any script with `--version` to print its version and file location.
 
@@ -156,3 +162,7 @@ details.
 ```
 
 Edit this file to enable or disable experimental features.
+# Generate and apply plans
+python combobook.py "source" "library" --plan-json plan.json
+python combobook.py --apply-plan plan.json
+python combobook.py --undo-last
