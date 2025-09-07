@@ -1,4 +1,4 @@
-<!-- ABtools/scaffold.md · v1.2 · 2025-09-01 -->
+<!-- ABtools/scaffold.md · v1.4 · 2025-09-01 -->
 # Audiobook Tagging & Organization – Scaffold
 
 ## Project Structure
@@ -9,9 +9,12 @@ Audiobooks/
 ├── search_and_tag.py       # Tags files using metadata providers
 ├── flatten_discs.py        # Merges "Disc" folders into one
 ├── combobook.py            # Combines tagging and restructuring
-├── AbtoolsGui.py           # Tkinter GUI for combobook with live output, progress bar, tag-only mode and duplicate finder
+├── AbtoolsGui.py           # Tkinter GUI with live output, planning controls and duplicate finder
 ├── restructure_for_audiobookshelf.py  # Reorganizes folders into Audiobookshelf layout
 ├── find_duplicates.py      # Reports duplicate audio files
+├── planning.py             # Build restructure plans with scoring
+├── transaction.py          # Execute plans atomically with rollback
+├── catalog.py              # SQLite catalog for duplicate detection
 ├── metadata.json           # Optional: sample metadata format
 ├── requirements.txt        # Pip requirements
 ├── README.md
@@ -66,6 +69,7 @@ Audiobooks/
 - Live output pane and progress bar with estimated time
 - "Tag Only" button that runs `search_and_tag.py` without moving files
 - "Find Duplicates" button that scans source and destination using `find_duplicates.py`
+- Buttons to generate restructure plans, apply them atomically and undo the last run
 
 ### `restructure_for_audiobookshelf.py`
 
@@ -111,11 +115,14 @@ Audiobooks/
 
 | Script | Version | Path |
 |-------|---------|------|
-| `combobook.py` | v1.12 | `ABtools/combobook.py` |
-| `AbtoolsGui.py` | v0.5 | `ABtools/AbtoolsGui.py` |
+| `combobook.py` | v1.13 | `ABtools/combobook.py` |
+| `AbtoolsGui.py` | v0.6 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v4.9 | `ABtools/restructure_for_audiobookshelf.py` |
+| `restructure_for_audiobookshelf.py` | v5.0 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.16 | `ABtools/search_and_tag.py` |
 | `find_duplicates.py` | v0.4 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
+| `planning.py` | v0.1 | `ABtools/planning.py` |
+| `transaction.py` | v0.1 | `ABtools/transaction.py` |
+| `catalog.py` | v0.1 | `ABtools/catalog.py` |
 
