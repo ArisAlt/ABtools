@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-ABtools/AbtoolsGui.py  ·  v0.5  ·  2025-09-01
+ABtools/AbtoolsGui.py  ·  v0.6  ·  2025-09-01
 """
 from __future__ import annotations
 
-import sys, threading, queue, time
+import sys, threading, queue, time, json
 from collections import defaultdict
 from contextlib import redirect_stdout, redirect_stderr
 import tkinter as tk
@@ -13,7 +13,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import combobook, search_and_tag, find_duplicates
 
-VERSION = "0.5"
+VERSION = "0.6"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -27,6 +27,7 @@ root.title("ABtools GUI")
 # --- input fields ---
 source_var = tk.StringVar()
 dest_var = tk.StringVar()
+plan_var = tk.StringVar()
 
 def browse_src():
     path = filedialog.askdirectory()
@@ -38,6 +39,11 @@ def browse_dst():
     if path:
         dest_var.set(path)
 
+def browse_plan():
+    path = filedialog.asksaveasfilename(defaultextension=".json")
+    if path:
+        plan_var.set(path)
+
 tk.Label(root, text="Source").grid(row=0, column=0, sticky="e")
 tk.Entry(root, textvariable=source_var, width=40).grid(row=0, column=1, columnspan=2, padx=5, pady=5)
 tk.Button(root, text="Browse", command=browse_src).grid(row=0, column=3, padx=5)
@@ -46,26 +52,30 @@ tk.Label(root, text="Destination").grid(row=1, column=0, sticky="e")
 tk.Entry(root, textvariable=dest_var, width=40).grid(row=1, column=1, columnspan=2, padx=5, pady=5)
 tk.Button(root, text="Browse", command=browse_dst).grid(row=1, column=3, padx=5)
 
+tk.Label(root, text="Plan JSON").grid(row=2, column=0, sticky="e")
+tk.Entry(root, textvariable=plan_var, width=40).grid(row=2, column=1, columnspan=2, padx=5, pady=5)
+tk.Button(root, text="Browse", command=browse_plan).grid(row=2, column=3, padx=5)
+
 # --- options ---
 commit_var = tk.BooleanVar()
 copy_var = tk.BooleanVar()
 yes_var = tk.BooleanVar()
 
-tk.Checkbutton(root, text="Commit", variable=commit_var).grid(row=2, column=0, sticky="w", padx=5)
-tk.Checkbutton(root, text="Copy", variable=copy_var).grid(row=2, column=1, sticky="w", padx=5)
-tk.Checkbutton(root, text="Yes", variable=yes_var).grid(row=2, column=2, sticky="w", padx=5)
+tk.Checkbutton(root, text="Commit", variable=commit_var).grid(row=3, column=0, sticky="w", padx=5)
+tk.Checkbutton(root, text="Copy", variable=copy_var).grid(row=3, column=1, sticky="w", padx=5)
+tk.Checkbutton(root, text="Yes", variable=yes_var).grid(row=3, column=2, sticky="w", padx=5)
 
 # --- output ---
 output_queue: queue.Queue[tuple[str, object]] = queue.Queue()
 
 output_text = tk.Text(root, height=15, width=60, state="disabled")
-output_text.grid(row=4, column=0, columnspan=4, padx=5, pady=5)
+output_text.grid(row=6, column=0, columnspan=4, padx=5, pady=5)
 
 progress_var = tk.IntVar(value=0)
 progress = ttk.Progressbar(root, variable=progress_var, maximum=100)
-progress.grid(row=5, column=0, columnspan=4, padx=5, pady=5, sticky="ew")
+progress.grid(row=7, column=0, columnspan=4, padx=5, pady=5, sticky="ew")
 eta_var = tk.StringVar(value="ETA: --:--")
-tk.Label(root, textvariable=eta_var).grid(row=6, column=0, columnspan=4)
+tk.Label(root, textvariable=eta_var).grid(row=8, column=0, columnspan=4)
 
 def append_output(text: str) -> None:
     output_text.configure(state="normal")
@@ -258,9 +268,99 @@ def find_dupes() -> None:
     threading.Thread(target=worker, daemon=True).start()
 
 
-tk.Button(root, text="Run", command=run).grid(row=3, column=0, pady=10)
-tk.Button(root, text="Tag Only", command=tag_only).grid(row=3, column=1, pady=10)
-tk.Button(root, text="Find Duplicates", command=find_dupes).grid(row=3, column=2, columnspan=2, pady=10)
+def make_plan() -> None:
+    src = Path(source_var.get()).expanduser()
+    dst = Path(dest_var.get()).expanduser()
+    plan_path = Path(plan_var.get()).expanduser()
+    if not src.exists():
+        messagebox.showerror("Error", "Source path does not exist")
+        return
+    if not plan_path:
+        messagebox.showerror("Error", "Plan path is required")
+        return
+    dst.mkdir(parents=True, exist_ok=True)
+
+    output_text.configure(state="normal")
+    output_text.delete("1.0", tk.END)
+    output_text.configure(state="disabled")
+    progress.configure(maximum=1)
+    progress_var.set(0)
+    eta_var.set("ETA: --:--")
+
+    def worker() -> None:
+        try:
+            with redirect_stdout(QueueWriter(output_queue)), redirect_stderr(
+                QueueWriter(output_queue)
+            ):
+                from planning import plan_library
+
+                plan = plan_library(src, dst, copy=copy_var.get())
+                json.dump(plan, open(plan_path, "w"), indent=2)
+                print(f"plan saved to {plan_path}")
+            output_queue.put(("status", "done"))
+        except Exception as exc:  # pragma: no cover - handled via GUI
+            output_queue.put(("status", f"error:{exc}"))
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def apply_plan() -> None:
+    plan_path = Path(plan_var.get()).expanduser()
+    if not plan_path.exists():
+        messagebox.showerror("Error", "Plan file not found")
+        return
+
+    output_text.configure(state="normal")
+    output_text.delete("1.0", tk.END)
+    output_text.configure(state="disabled")
+    progress.configure(maximum=1)
+    progress_var.set(0)
+    eta_var.set("ETA: --:--")
+
+    def worker() -> None:
+        try:
+            with redirect_stdout(QueueWriter(output_queue)), redirect_stderr(
+                QueueWriter(output_queue)
+            ):
+                from transaction import execute
+
+                execute(plan_path)
+            output_queue.put(("status", "done"))
+        except Exception as exc:  # pragma: no cover - handled via GUI
+            output_queue.put(("status", f"error:{exc}"))
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def undo_last_txn() -> None:
+    output_text.configure(state="normal")
+    output_text.delete("1.0", tk.END)
+    output_text.configure(state="disabled")
+    progress.configure(maximum=1)
+    progress_var.set(0)
+    eta_var.set("ETA: --:--")
+
+    def worker() -> None:
+        try:
+            with redirect_stdout(QueueWriter(output_queue)), redirect_stderr(
+                QueueWriter(output_queue)
+            ):
+                from transaction import undo_last
+
+                undo_last()
+            output_queue.put(("status", "done"))
+        except Exception as exc:  # pragma: no cover - handled via GUI
+            output_queue.put(("status", f"error:{exc}"))
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+tk.Button(root, text="Run", command=run).grid(row=4, column=0, pady=10)
+tk.Button(root, text="Tag Only", command=tag_only).grid(row=4, column=1, pady=10)
+tk.Button(root, text="Find Duplicates", command=find_dupes).grid(row=4, column=2, columnspan=2, pady=10)
+tk.Button(root, text="Plan", command=make_plan).grid(row=5, column=0, pady=10)
+tk.Button(root, text="Apply Plan", command=apply_plan).grid(row=5, column=1, pady=10)
+tk.Button(root, text="Undo Last", command=undo_last_txn).grid(row=5, column=2, pady=10)
 
 if __name__ == "__main__":
     poll_queue()

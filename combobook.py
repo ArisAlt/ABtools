@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/combobook.py  ·  v1.12  ·  2025-09-01
+ABtools/combobook.py  ·  v1.13  ·  2025-09-01
 
 USAGE
 -----
@@ -19,6 +19,15 @@ python combo_abooks.py  "E:\\Audio Books"  "G:\\AudiobookShelf"  --commit  --yes
 
 # show version and file location
 python combo_abooks.py --version
+
+# plan without moving
+python combo_abooks.py "E:\\Audio Books" "G:\\AudiobookShelf" --plan-json plan.json
+
+# apply a previously generated plan
+python combo_abooks.py --apply-plan plan.json
+
+# undo the last applied plan
+python combo_abooks.py --undo-last
 """
 
 from __future__ import annotations
@@ -30,7 +39,7 @@ from typing import List, Optional
 from difflib import SequenceMatcher
 import errno
 
-VERSION = "1.12"
+VERSION = "1.13"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -568,6 +577,9 @@ if __name__=="__main__":
     ap.add_argument("--commit", action="store_true")
     ap.add_argument("--yes",    action="store_true")
     ap.add_argument("--copy",   action="store_true", help="Copy instead of move when used with --commit")
+    ap.add_argument("--plan-json")
+    ap.add_argument("--apply-plan")
+    ap.add_argument("--undo-last", action="store_true")
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args=ap.parse_args()
 
@@ -591,5 +603,18 @@ if __name__=="__main__":
     if not src.is_dir():
         sys.exit(f"source_root not found: {src}")
     lib.mkdir(exist_ok=True, parents=True)
+    if args.undo_last:
+        from transaction import undo_last
+        undo_last()
+        sys.exit(0)
+    if args.apply_plan:
+        from transaction import execute
+        execute(Path(args.apply_plan))
+        sys.exit(0)
+    if args.plan_json:
+        from planning import plan_library
+        plan = plan_library(src, lib, copy=args.copy)
+        json.dump(plan, open(args.plan_json, "w"), indent=2)
+        sys.exit(0)
     AUTO_YES = args.yes
     main(src, lib, args.commit, args.yes, args.copy)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/restructure_for_audiobookshelf.py – v4.9  (2025-09-01)
+ABtools/restructure_for_audiobookshelf.py – v5.0  (2025-09-01)
 Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --commit 
 • Recursively scans source_root; every directory that *contains* audio but whose
   sub-directories don’t is treated as one “book”.
@@ -15,6 +15,9 @@ Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --com
       <library_root>/Author/Series?/Vol # - YYYY - Title {Narrator}/
 • Add --copy to duplicate folders instead of moving them
 • ``--version`` prints the script version and file path
+• ``--plan-json`` write restructure plan to a JSON file
+• ``--apply-plan`` execute a previously generated plan
+• ``--undo-last`` rollback the most recent transaction
 • Fuzzy series matching ("Book 3", "#3", "Volume III", etc.)
 • ``--interactive`` prompts for series info when uncertain
 • Part suffixes like “(1 of 6)” or “Part 1” are preserved when moving
@@ -28,7 +31,7 @@ from pathlib import Path
 from typing import List, Optional
 import xml.etree.ElementTree as ET
 
-VERSION = "4.9"
+VERSION = "5.0"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -41,7 +44,9 @@ DISC_RX                    = re.compile(r"disc[ _-]?(\d+)", re.I)
 try:
     from mutagen import File as MFile, MutagenError
 except ImportError:
-    sys.exit("✗ mutagen not installed – run  'pip install mutagen'")
+    MFile = None
+    class MutagenError(Exception):
+        pass
 
 FFMPEG = shutil.which("ffmpeg")
 if WRITE_TAGS_WITH_FFMPEG and not FFMPEG:
@@ -507,6 +512,9 @@ if __name__ == "__main__":
         action="store_true",
         help="Prompt for series info when not detected",
     )
+    ap.add_argument("--plan-json")
+    ap.add_argument("--apply-plan")
+    ap.add_argument("--undo-last", action="store_true")
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args = ap.parse_args()
 
@@ -525,4 +533,17 @@ if __name__ == "__main__":
         src = Path(raw[0]).expanduser()
         dst = Path(" ".join(raw[1:])).expanduser()
 
+    if args.undo_last:
+        from transaction import undo_last
+        undo_last()
+        sys.exit(0)
+    if args.apply_plan:
+        from transaction import execute
+        execute(Path(args.apply_plan))
+        sys.exit(0)
+    if args.plan_json:
+        from planning import plan_library
+        plan = plan_library(src, dst, copy=args.copy)
+        json.dump(plan, open(args.plan_json, "w"), indent=2)
+        sys.exit(0)
     main(src, dst, args.commit, args.copy, args.interactive)

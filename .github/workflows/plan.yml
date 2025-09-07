@@ -1,0 +1,17 @@
+name: PlanCheck
+on: [push, pull_request]
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run plan
+        run: |
+          python restructure_for_audiobookshelf.py tests/fixtures/library /tmp/lib --plan-json plan.json
+          python - <<'PY'
+import json,sys
+plan=json.load(open('plan.json'))
+for p in plan:
+    assert p['confidence'] >= 92 or p['action']!='move', f"low-confidence move for {p['source']}"
+PY
+
