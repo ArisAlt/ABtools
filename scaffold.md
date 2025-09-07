@@ -1,4 +1,4 @@
-<!-- ABtools/scaffold.md · v1.6 · 2025-09-01 -->
+<!-- ABtools/scaffold.md · v1.8 · 2025-09-01 -->
 # Audiobook Tagging & Organization – Scaffold
 
 ## Project Structure
@@ -66,11 +66,13 @@ Audiobooks/
 - Simple Tkinter GUI front-end for `combobook.py`
 - Text fields for source and library folders
 - Checkboxes for `--commit`, `--copy` and `--yes`
-- Live output pane and progress bar with estimated time
+- Scrollable output pane and progress bar with estimated time
 - "Tag Only" button that runs `search_and_tag.py` without moving files
 - "Find Duplicates" button that scans source and destination using `find_duplicates.py`
+- "Restructure" button that reorganizes folders via `restructure_for_audiobookshelf.py`
 - Buttons to generate restructure plans, apply them atomically and undo the last run
 - Processes output queue in small batches so the window remains responsive during large scans
+- Saves plan files with UTF-8 encoding for cross-platform compatibility
 
 ### `restructure_for_audiobookshelf.py`
 
@@ -82,6 +84,20 @@ Audiobooks/
 - Detects fuzzy series numbering ("Book 2", "#2", "Volume II")
 - `--interactive` prompts for series info when unclear
 - Handles source folders with spaces without quoting
+
+Examples:
+
+```bash
+# preview
+python restructure_for_audiobookshelf.py "Downloads" "Audiobooks"
+
+# commit changes
+python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --commit
+
+# create and apply plan
+python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --plan-json plan.json
+python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --apply-plan plan.json
+```
 
 ### `find_duplicates.py`
 
@@ -115,14 +131,14 @@ Audiobooks/
 
 | Script | Version | Path |
 |-------|---------|------|
-| `combobook.py` | v1.13 | `ABtools/combobook.py` |
-| `AbtoolsGui.py` | v0.8 | `ABtools/AbtoolsGui.py` |
+| `combobook.py` | v1.14 | `ABtools/combobook.py` |
+| `AbtoolsGui.py` | v0.11 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v5.0 | `ABtools/restructure_for_audiobookshelf.py` |
+| `restructure_for_audiobookshelf.py` | v5.2 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.16 | `ABtools/search_and_tag.py` |
 | `find_duplicates.py` | v0.4 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
-| `planning.py` | v0.1 | `ABtools/planning.py` |
-| `transaction.py` | v0.1 | `ABtools/transaction.py` |
+| `planning.py` | v0.2 | `ABtools/planning.py` |
+| `transaction.py` | v0.2 | `ABtools/transaction.py` |
 | `catalog.py` | v0.1 | `ABtools/catalog.py` |
 
