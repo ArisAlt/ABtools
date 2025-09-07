@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/restructure_for_audiobookshelf.py – v5.0  (2025-09-01)
+ABtools/restructure_for_audiobookshelf.py – v5.2  (2025-09-01)
 Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --commit 
 • Recursively scans source_root; every directory that *contains* audio but whose
   sub-directories don’t is treated as one “book”.
@@ -21,6 +21,14 @@ Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --com
 • Fuzzy series matching ("Book 3", "#3", "Volume III", etc.)
 • ``--interactive`` prompts for series info when uncertain
 • Part suffixes like “(1 of 6)” or “Part 1” are preserved when moving
+
+Examples::
+
+    restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --commit
+    restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --commit --copy
+    restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --plan-json plan.json
+    restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --apply-plan plan.json
+    restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --undo-last
 """
 
 from __future__ import annotations
@@ -31,7 +39,7 @@ from pathlib import Path
 from typing import List, Optional
 import xml.etree.ElementTree as ET
 
-VERSION = "5.0"
+VERSION = "5.2"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -512,9 +520,21 @@ if __name__ == "__main__":
         action="store_true",
         help="Prompt for series info when not detected",
     )
-    ap.add_argument("--plan-json")
-    ap.add_argument("--apply-plan")
-    ap.add_argument("--undo-last", action="store_true")
+    ap.add_argument(
+        "--plan-json",
+        metavar="PATH",
+        help="write restructure plan to PATH and exit",
+    )
+    ap.add_argument(
+        "--apply-plan",
+        metavar="PATH",
+        help="apply moves from plan at PATH and exit",
+    )
+    ap.add_argument(
+        "--undo-last",
+        action="store_true",
+        help="rollback the most recent transaction and exit",
+    )
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args = ap.parse_args()
 
@@ -544,6 +564,6 @@ if __name__ == "__main__":
     if args.plan_json:
         from planning import plan_library
         plan = plan_library(src, dst, copy=args.copy)
-        json.dump(plan, open(args.plan_json, "w"), indent=2)
+        json.dump(plan, open(args.plan_json, "w", encoding="utf-8"), indent=2)
         sys.exit(0)
     main(src, dst, args.commit, args.copy, args.interactive)

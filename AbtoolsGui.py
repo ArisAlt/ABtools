@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/AbtoolsGui.py  ·  v0.8  ·  2025-09-01
+ABtools/AbtoolsGui.py  ·  v0.11  ·  2025-09-01
 """
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ import sys, threading, queue, time, json
 from collections import defaultdict
 from contextlib import redirect_stdout, redirect_stderr
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, ttk, scrolledtext
 from pathlib import Path
 from types import SimpleNamespace
-import combobook, search_and_tag, find_duplicates
+import combobook, search_and_tag, find_duplicates, restructure_for_audiobookshelf
 
-VERSION = "0.8"
+VERSION = "0.11"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -71,7 +71,7 @@ tk.Checkbutton(root, text="Yes", variable=yes_var).grid(row=3, column=2, sticky=
 # --- output ---
 output_queue: queue.Queue[tuple[str, object]] = queue.Queue()
 
-output_text = tk.Text(root, height=15, width=60, state="disabled")
+output_text = scrolledtext.ScrolledText(root, height=15, width=60, state="disabled")
 output_text.grid(row=6, column=0, columnspan=4, padx=5, pady=5)
 
 progress_var = tk.IntVar(value=0)
@@ -82,7 +82,7 @@ tk.Label(root, textvariable=eta_var).grid(row=8, column=0, columnspan=4)
 
 def append_output(text: str) -> None:
     output_text.configure(state="normal")
-    output_text.insert(tk.END, text)
+    output_text.insert(tk.END, text.replace("\r", "\n"))
     output_text.see(tk.END)
     output_text.configure(state="disabled")
 
@@ -173,6 +173,64 @@ def run() -> None:
                     combobook.rprint(f"  would_move   : {summary['would_move']}")
                 for k in ("exists", "skip", "unmatched"):
                     combobook.rprint(f"  {k:12}: {summary[k]}")
+            output_queue.put(("status", "done"))
+        except Exception as exc:  # pragma: no cover - handled via GUI
+            output_queue.put(("status", f"error:{exc}"))
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def restructure() -> None:
+    src = Path(source_var.get()).expanduser()
+    dst = Path(dest_var.get()).expanduser()
+    if not src.exists():
+        messagebox.showerror("Error", "Source path does not exist")
+        return
+    dst.mkdir(parents=True, exist_ok=True)
+
+    output_text.configure(state="normal")
+    output_text.delete("1.0", tk.END)
+    output_text.configure(state="disabled")
+    progress.configure(maximum=1)
+    progress_var.set(0)
+    eta_var.set("ETA: --:--")
+
+    def worker() -> None:
+        try:
+            with redirect_stdout(QueueWriter(output_queue)), redirect_stderr(
+                QueueWriter(output_queue)
+            ):
+                leaves = restructure_for_audiobookshelf.leaf_audio_dirs(src)
+                total = len(leaves)
+                stats = defaultdict(int)
+                start = time.time()
+                for idx, leaf in enumerate(leaves, 1):
+                    restructure_for_audiobookshelf.process(
+                        leaf,
+                        dst,
+                        dry=not commit_var.get(),
+                        copy=copy_var.get(),
+                        st=stats,
+                        interactive=False,
+                    )
+                    elapsed = time.time() - start
+                    rate = idx / elapsed if elapsed else 0
+                    eta = (total - idx) / rate if rate else 0
+                    output_queue.put(("progress", (idx, total, eta)))
+                print("\n──── Summary ────")
+                action_word = "copied" if copy_var.get() else "moved"
+                print(f" Books scanned            : {stats['total']}")
+                print(f" Books {action_word:20}: {stats['moved']}")
+                if not commit_var.get():
+                    print(f" Books that would move    : {stats['would_move']}")
+                for k, label in (
+                    ("exists", "Destination exists"),
+                    ("no_audio", "No audio"),
+                    ("tag_fail", "Tag/name unreadable"),
+                ):
+                    if stats[k]:
+                        print(f" {label:25}: {stats[k]}")
+                print("──── Done ────\n")
             output_queue.put(("status", "done"))
         except Exception as exc:  # pragma: no cover - handled via GUI
             output_queue.put(("status", f"error:{exc}"))
@@ -302,7 +360,7 @@ def make_plan() -> None:
                 from planning import plan_library
 
                 plan = plan_library(src, dst, copy=copy_var.get())
-                json.dump(plan, open(plan_path, "w"), indent=2)
+                json.dump(plan, open(plan_path, "w", encoding="utf-8"), indent=2)
                 print(f"plan saved to {plan_path}")
             output_queue.put(("status", "done"))
         except Exception as exc:  # pragma: no cover - handled via GUI
@@ -367,8 +425,9 @@ def undo_last_txn() -> None:
 
 
 tk.Button(root, text="Run", command=run).grid(row=4, column=0, pady=10)
-tk.Button(root, text="Tag Only", command=tag_only).grid(row=4, column=1, pady=10)
-tk.Button(root, text="Find Duplicates", command=find_dupes).grid(row=4, column=2, columnspan=2, pady=10)
+tk.Button(root, text="Restructure", command=restructure).grid(row=4, column=1, pady=10)
+tk.Button(root, text="Tag Only", command=tag_only).grid(row=4, column=2, pady=10)
+tk.Button(root, text="Find Duplicates", command=find_dupes).grid(row=4, column=3, pady=10)
 tk.Button(root, text="Plan", command=make_plan).grid(row=5, column=0, pady=10)
 tk.Button(root, text="Apply Plan", command=apply_plan).grid(row=5, column=1, pady=10)
 tk.Button(root, text="Undo Last", command=undo_last_txn).grid(row=5, column=2, pady=10)

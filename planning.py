@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-ABtools/planning.py · v0.1 · 2025-09-01
+ABtools/planning.py · v0.2 · 2025-09-01
 Builds restructure plans for audiobook libraries.
 """
 from __future__ import annotations
-import json, re, hashlib
+import json, re, hashlib, sys
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -13,6 +13,14 @@ from catalog import Catalog
 
 AUDIO_EXTS = {".mp3", ".m4b", ".m4a", ".flac", ".ogg", ".opus"}
 SIDE_EXTS = {".cue", ".pdf", "metadata.json", "book.nfo"}
+
+VERSION = "0.2"
+FILE_PATH = Path(__file__).resolve()
+VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
+
+if "--version" in sys.argv:
+    print(VERSION_INFO % {"prog": Path(sys.argv[0]).name})
+    sys.exit(0)
 
 @dataclass
 class PlanEntry:
@@ -55,7 +63,7 @@ def plan_library(src_root: Path, dest_root: Path, copy: bool = False) -> List[Di
     plan: List[Dict] = []
     for book in leaf_audio_dirs(src_root):
         meta_path = book / "metadata.json"
-        meta = json.load(meta_path.open()) if meta_path.exists() else {}
+        meta = json.load(meta_path.open(encoding="utf-8")) if meta_path.exists() else {}
         author = meta.get("author", "Unknown")
         title = meta.get("title", book.name)
         provider = meta.get("provider", "mock")
@@ -89,7 +97,7 @@ def plan_library(src_root: Path, dest_root: Path, copy: bool = False) -> List[Di
     return plan
 
 if __name__ == "__main__":
-    import argparse, sys
+    import argparse
     ap = argparse.ArgumentParser(description="Build plan for library")
     ap.add_argument("src")
     ap.add_argument("dest")
@@ -98,6 +106,6 @@ if __name__ == "__main__":
     args = ap.parse_args()
     p = plan_library(Path(args.src), Path(args.dest), copy=args.copy)
     if args.plan_json:
-        json.dump(p, open(args.plan_json, "w"), indent=2)
+        json.dump(p, open(args.plan_json, "w", encoding="utf-8"), indent=2)
     else:
         json.dump(p, sys.stdout, indent=2)
