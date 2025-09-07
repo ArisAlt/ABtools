@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/combobook.py  ·  v1.13  ·  2025-09-01
+ABtools/combobook.py  ·  v1.14  ·  2025-09-01
 
 USAGE
 -----
@@ -39,7 +39,7 @@ from typing import List, Optional
 from difflib import SequenceMatcher
 import errno
 
-VERSION = "1.13"
+VERSION = "1.14"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -614,7 +614,7 @@ if __name__=="__main__":
     if args.plan_json:
         from planning import plan_library
         plan = plan_library(src, lib, copy=args.copy)
-        json.dump(plan, open(args.plan_json, "w"), indent=2)
+        json.dump(plan, open(args.plan_json, "w", encoding="utf-8"), indent=2)
         sys.exit(0)
     AUTO_YES = args.yes
     main(src, lib, args.commit, args.yes, args.copy)

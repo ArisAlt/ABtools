@@ -1,4 +1,4 @@
-<!-- ABtools/README.md · v2.3 · 2025-09-01 -->
+<!-- ABtools/README.md · v2.5 · 2025-09-01 -->
 # Audiobook Organizer & Tagger
 
 This repository contains small utilities for preparing audiobook folders for [Audiobookshelf](https://www.audiobookshelf.org/).
@@ -26,11 +26,12 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - Prints the score from each metadata provider during tagging
 - `find_duplicates.py` shows progress while scanning and can compare
   files by SHA1 hash or by name
-- GUI front-end displays a progress bar with estimated time
+- GUI front-end shows live output in a scrollable pane with a progress bar and estimated time
 - GUI front-end can run `find_duplicates.py` to scan source and destination for duplicate audio files
 - GUI front-end processes output in batches so the window stays responsive during large scans
 - Planning mode writes a JSON plan that can be reviewed before execution
 - GUI front-end checks that a plan file path is selected before generating or applying a plan
+- Plan files are read and written using UTF-8 encoding for cross-platform compatibility
 - Transactions are logged and can be rolled back with `--undo-last`
 - Duplicate catalog prevents importing the same book twice
 
@@ -55,15 +56,15 @@ pip install -r requirements.txt
 | Script | Version | Path |
 |-------|---------|------|
 
-| `combobook.py` | v1.13 | `ABtools/combobook.py` |
-| `AbtoolsGui.py` | v0.8 | `ABtools/AbtoolsGui.py` |
+| `combobook.py` | v1.14 | `ABtools/combobook.py` |
+| `AbtoolsGui.py` | v0.11 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v5.0 | `ABtools/restructure_for_audiobookshelf.py` |
+| `restructure_for_audiobookshelf.py` | v5.2 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.16 | `ABtools/search_and_tag.py` |
 | `find_duplicates.py` | v0.4 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
-| `planning.py` | v0.1 | `ABtools/planning.py` |
-| `transaction.py` | v0.1 | `ABtools/transaction.py` |
+| `planning.py` | v0.2 | `ABtools/planning.py` |
+| `transaction.py` | v0.2 | `ABtools/transaction.py` |
 | `catalog.py` | v0.1 | `ABtools/catalog.py` |
 
 Run any script with `--version` to print its version and file location.
@@ -75,7 +76,7 @@ It now also collapses folders named like `Book Title (1 of 5)` into a single dir
 
 The source path is now passed explicitly, avoiding `NameError: SRC is not defined` when the script is imported by other modules or run via the GUI.
 
-For a simple graphical front-end, use `AbtoolsGui.py`, which provides text fields for source and destination folders, checkboxes for `--commit`, `--copy` and `--yes` options, a live output pane, and a progress bar with estimated time. It includes a "Tag Only" button that runs `search_and_tag.py` without moving files, a "Find Duplicates" button, and new controls to generate plans, apply them transactionally, or undo the last run.
+For a simple graphical front-end, use `AbtoolsGui.py`, which provides text fields for source and destination folders, checkboxes for `--commit`, `--copy` and `--yes` options, a live output pane, and a progress bar with estimated time. It includes a "Restructure" button for reorganizing folders, a "Tag Only" button that runs `search_and_tag.py` without moving files, a "Find Duplicates" button, and new controls to generate plans, apply them transactionally, or undo the last run.
 
 FFmpeg tag writing previously failed silently; the script now specifies the output file so tags are embedded correctly.
 
@@ -121,7 +122,7 @@ Folders are moved to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`
 Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when run with `--copy` alongside `--commit`.
 
 ## `AbtoolsGui.py`
-`AbtoolsGui.py` offers a basic Tkinter interface for `combobook.py`. It provides text fields for selecting the source and library folders, checkboxes matching the `--commit`, `--copy` and `--yes` command-line options, and shows live `combobook` output in a scrolling pane. A progress bar displays overall progress with an estimated time remaining. Beyond the "Tag Only" and "Find Duplicates" helpers, the GUI now exposes buttons to generate restructure plans, apply them atomically, and undo the most recent transaction.
+`AbtoolsGui.py` offers a basic Tkinter interface for `combobook.py`. It provides text fields for selecting the source and library folders, checkboxes matching the `--commit`, `--copy` and `--yes` command-line options, and shows live `combobook` output in a scrolling pane. Progress messages that rely on carriage returns are normalized so each update appears on its own line. A progress bar displays overall progress with an estimated time remaining. Alongside buttons for "Restructure", "Tag Only" and "Find Duplicates", the GUI exposes controls to generate restructure plans, apply them atomically, and undo the most recent transaction.
 It validates that a plan file path is chosen before generating or applying a plan to avoid permission errors, and processes queued output in small batches so the window stays responsive during long runs.
 
 ## `search_and_tag.py`
@@ -148,6 +149,20 @@ details.
 
 ## `restructure_for_audiobookshelf.py`
 `restructure_for_audiobookshelf.py` reorganizes a source collection into Audiobookshelf layout. It reads tags from the audio files first, then `metadata.json` or `book.nfo`, and finally falls back to folder names. Disc folders are flattened and books are moved or copied to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`. Series names and volume numbers are detected with fuzzy matching (e.g. `Book 3`, `#3`, `Volume III`). When run with `--interactive`, the script prompts for missing series info. Metadata matching is handled by `search_and_tag.py`. Track renaming now avoids collisions by staging files with temporary names first.
+
+Examples:
+
+```bash
+# preview
+python restructure_for_audiobookshelf.py "Downloads" "Audiobooks"
+
+# move folders
+python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --commit
+
+# plan then apply
+python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --plan-json plan.json
+python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --apply-plan plan.json
+```
 
 ## `find_duplicates.py`
 `find_duplicates.py` scans a folder recursively and can find duplicates either by computing SHA1 hashes or by matching file names. Progress is shown while scanning. Results are written to `duplicate_log.txt` inside the scanned folder. Use `--version` to show the script version and path. Hash matching now skips hashing files with unique sizes for much faster scans.
