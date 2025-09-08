@@ -1,4 +1,4 @@
-<!-- ABtools/scaffold.md · v1.8 · 2025-09-01 -->
+<!-- ABtools/scaffold.md · v1.9 · 2025-09-01 -->
 # Audiobook Tagging & Organization – Scaffold
 
 ## Project Structure
@@ -9,7 +9,7 @@ Audiobooks/
 ├── search_and_tag.py       # Tags files using metadata providers
 ├── flatten_discs.py        # Merges "Disc" folders into one
 ├── combobook.py            # Combines tagging and restructuring
-├── AbtoolsGui.py           # Tkinter GUI with live output, planning controls and duplicate finder
+├── AbtoolsGui.cpp          # Qt GUI with live output, planning controls and duplicate finder
 ├── restructure_for_audiobookshelf.py  # Reorganizes folders into Audiobookshelf layout
 ├── find_duplicates.py      # Reports duplicate audio files
 ├── planning.py             # Build restructure plans with scoring
@@ -61,9 +61,9 @@ Audiobooks/
     - Accepts source paths with spaces without needing quotes
     - Passes the source path explicitly to avoid `NameError: SRC is not defined` when imported elsewhere
 
-### `AbtoolsGui.py`
+### `AbtoolsGui.cpp`
 
-- Simple Tkinter GUI front-end for `combobook.py`
+- Simple Qt GUI front-end for `combobook.py`
 - Text fields for source and library folders
 - Checkboxes for `--commit`, `--copy` and `--yes`
 - Scrollable output pane and progress bar with estimated time
@@ -71,8 +71,7 @@ Audiobooks/
 - "Find Duplicates" button that scans source and destination using `find_duplicates.py`
 - "Restructure" button that reorganizes folders via `restructure_for_audiobookshelf.py`
 - Buttons to generate restructure plans, apply them atomically and undo the last run
-- Processes output queue in small batches so the window remains responsive during large scans
-- Saves plan files with UTF-8 encoding for cross-platform compatibility
+- Launches underlying Python scripts through `python3`
 
 ### `restructure_for_audiobookshelf.py`
 
@@ -132,7 +131,7 @@ python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --apply-plan p
 | Script | Version | Path |
 |-------|---------|------|
 | `combobook.py` | v1.14 | `ABtools/combobook.py` |
-| `AbtoolsGui.py` | v0.11 | `ABtools/AbtoolsGui.py` |
+| `AbtoolsGui.cpp` | v0.1 | `ABtools/AbtoolsGui.cpp` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.2 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.16 | `ABtools/search_and_tag.py` |

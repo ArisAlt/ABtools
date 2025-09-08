@@ -1,4 +1,4 @@
-<!-- ABtools/README.md · v2.5 · 2025-09-01 -->
+<!-- ABtools/README.md · v2.6 · 2025-09-01 -->
 # Audiobook Organizer & Tagger
 
 This repository contains small utilities for preparing audiobook folders for [Audiobookshelf](https://www.audiobookshelf.org/).
@@ -26,11 +26,11 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - Prints the score from each metadata provider during tagging
 - `find_duplicates.py` shows progress while scanning and can compare
   files by SHA1 hash or by name
-- GUI front-end shows live output in a scrollable pane with a progress bar and estimated time
-- GUI front-end can run `find_duplicates.py` to scan source and destination for duplicate audio files
-- GUI front-end processes output in batches so the window stays responsive during large scans
+- Qt-based GUI front-end shows live output in a scrollable pane with a progress bar and estimated time
+- Qt-based GUI front-end can run `find_duplicates.py` to scan source and destination for duplicate audio files
+- Qt-based GUI front-end processes output in batches so the window stays responsive during large scans
 - Planning mode writes a JSON plan that can be reviewed before execution
-- GUI front-end checks that a plan file path is selected before generating or applying a plan
+- Qt-based GUI front-end checks that a plan file path is selected before generating or applying a plan
 - Plan files are read and written using UTF-8 encoding for cross-platform compatibility
 - Transactions are logged and can be rolled back with `--undo-last`
 - Duplicate catalog prevents importing the same book twice
@@ -57,7 +57,7 @@ pip install -r requirements.txt
 |-------|---------|------|
 
 | `combobook.py` | v1.14 | `ABtools/combobook.py` |
-| `AbtoolsGui.py` | v0.11 | `ABtools/AbtoolsGui.py` |
+| `AbtoolsGui.cpp` | v0.1 | `ABtools/AbtoolsGui.cpp` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.2 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.16 | `ABtools/search_and_tag.py` |
@@ -76,7 +76,7 @@ It now also collapses folders named like `Book Title (1 of 5)` into a single dir
 
 The source path is now passed explicitly, avoiding `NameError: SRC is not defined` when the script is imported by other modules or run via the GUI.
 
-For a simple graphical front-end, use `AbtoolsGui.py`, which provides text fields for source and destination folders, checkboxes for `--commit`, `--copy` and `--yes` options, a live output pane, and a progress bar with estimated time. It includes a "Restructure" button for reorganizing folders, a "Tag Only" button that runs `search_and_tag.py` without moving files, a "Find Duplicates" button, and new controls to generate plans, apply them transactionally, or undo the last run.
+For a simple graphical front-end, use `AbtoolsGui.cpp`, which provides text fields for source and destination folders, checkboxes for `--commit`, `--copy` and `--yes` options, a live output pane, and a progress bar with estimated time. It includes a "Restructure" button for reorganizing folders, a "Tag Only" button that runs `search_and_tag.py` without moving files, a "Find Duplicates" button, and new controls to generate plans, apply them transactionally, or undo the last run.
 
 FFmpeg tag writing previously failed silently; the script now specifies the output file so tags are embedded correctly.
 
@@ -121,8 +121,8 @@ Folders are moved to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`
 
 Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when run with `--copy` alongside `--commit`.
 
-## `AbtoolsGui.py`
-`AbtoolsGui.py` offers a basic Tkinter interface for `combobook.py`. It provides text fields for selecting the source and library folders, checkboxes matching the `--commit`, `--copy` and `--yes` command-line options, and shows live `combobook` output in a scrolling pane. Progress messages that rely on carriage returns are normalized so each update appears on its own line. A progress bar displays overall progress with an estimated time remaining. Alongside buttons for "Restructure", "Tag Only" and "Find Duplicates", the GUI exposes controls to generate restructure plans, apply them atomically, and undo the most recent transaction.
+## `AbtoolsGui.cpp`
+`AbtoolsGui.cpp` is a Qt-based C++ application that fronts `combobook.py`. It provides text fields for selecting the source and library folders, checkboxes matching the `--commit`, `--copy` and `--yes` command-line options, and shows live `combobook` output in a scrolling pane. Progress messages that rely on carriage returns are normalized so each update appears on its own line. A progress bar displays overall progress with an estimated time remaining. Alongside buttons for "Restructure", "Tag Only" and "Find Duplicates", the GUI exposes controls to generate restructure plans and apply them atomically.
 It validates that a plan file path is chosen before generating or applying a plan to avoid permission errors, and processes queued output in small batches so the window stays responsive during long runs.
 
 ## `search_and_tag.py`
