@@ -1,4 +1,4 @@
-<!-- ABtools/README.md · v2.8 · 2025-09-04 -->
+<!-- ABtools/README.md · v2.9 · 2025-09-04 -->
 # Audiobook Organizer & Tagger
 
 This repository contains small utilities for preparing audiobook folders for [Audiobookshelf](https://www.audiobookshelf.org/).
@@ -17,6 +17,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - Fetches metadata in parallel for faster tagging
 - Ranks matches using both title and author similarity for better accuracy
 - Optional GPT4All fallback can propose metadata when lookups fail or are low-confidence (`--llm-model`/`--llm-threshold`) and now feeds it a Faster-Whisper transcript of the first minute with configurable device/compute options for GPU acceleration
+- `combobook.py` now reuses the GPT4All fallback to supply metadata when provider searches fail, tags the files automatically, and logs AI-assisted folders for later review
 - Preserves part numbers like `(1 of 6)` when reorganizing files
 - Adds track numbers so multi-part books play in order
 - Detects series and volume numbers with fuzzy matching
@@ -62,7 +63,7 @@ pip install -r requirements.txt
 | Script | Version | Path |
 |-------|---------|------|
 
-| `combobook.py` | v1.14 | `ABtools/combobook.py` |
+| `combobook.py` | v1.15 | `ABtools/combobook.py` |
 | `AbtoolsGui.py` | v0.11 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.2 | `ABtools/restructure_for_audiobookshelf.py` |
@@ -76,7 +77,7 @@ pip install -r requirements.txt
 Run any script with `--version` to print its version and file location.
 
 ## `combobook.py`
-`combobook.py` tags, flattens and moves audiobook folders in a single pass. It searches Open Library, Google Books and Audible, ranks potential matches using fuzzy similarity and asks you to confirm before tagging and moving files. When no match is found, the folder is moved into an `_unmatched` directory inside your library for later review.
+`combobook.py` tags, flattens and moves audiobook folders in a single pass. It searches Open Library, Google Books and Audible, ranks potential matches using fuzzy similarity and asks you to confirm before tagging and moving files. When provider lookups and prompts fail, the script now consults the shared GPT4All fallback to propose metadata, tags every track automatically, and logs which folders used the AI assist. Only when both paths fail does it fall back to moving the folder into an `_unmatched` directory inside your library for manual review.
 
 It now also collapses folders named like `Book Title (1 of 5)` into a single directory and names each file `Part 01`, `Part 02`, etc.
 
