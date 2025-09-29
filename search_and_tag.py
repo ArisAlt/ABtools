@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/search_and_tag.py – v2.16  (2025-09-01)
+ABtools/search_and_tag.py – v2.19  (2025-09-04)
 Tag (or strip) audiobook files using multiple metadata providers.
 
     The script queries Audible, Open Library and Google Books, ranks the
@@ -11,6 +11,14 @@ Tag (or strip) audiobook files using multiple metadata providers.
     matches won't be accepted accidentally. Log files are written
 next to the chosen root as ``tag_log.txt`` and ``review_log.txt``.
 Use ``--version`` to print the script version and file location.
+
+Supply ``--llm-model /path/to/model.gguf`` to let a local GPT4All model
+suggest metadata when online providers fail or return low scores. Adjust
+the trigger with ``--llm-threshold`` (default: 75). When the fallback is
+used the script transcribes the first minute of audio with
+Faster-Whisper (``--whisper-model``) and feeds that transcript to the LLM.
+Use ``--whisper-device`` (``auto``/``cpu``/``cuda``/``rocm``) and
+``--whisper-compute-type`` to steer GPU acceleration where supported.
 
 examples
 --------
@@ -30,10 +38,10 @@ python search_and_tag.py "E:\\Audio Books" --recurse --striptags --commit
 from __future__ import annotations
 import argparse, datetime, re, sys, textwrap
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Dict, Any
 from abclient import AbClient
 
-VERSION = "2.16"
+VERSION = "2.19"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -50,6 +58,16 @@ from mutagen import File as MFile, MutagenError
 from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TALB, TPE1, TDRC, TXXX, TRCK
 from mutagen.mp4 import MP4, MP4StreamInfoError
 from bs4 import BeautifulSoup
+
+try:
+    from gpt4all import GPT4All  # type: ignore
+except ImportError:  # optional dependency
+    GPT4All = None  # type: ignore
+
+try:
+    from faster_whisper import WhisperModel  # type: ignore
+except ImportError:  # optional dependency
+    WhisperModel = None  # type: ignore
 
 # ───── colour (rich) or plain text ─────
 try:
@@ -69,6 +87,111 @@ PAREN_RX   = re.compile(r"\([^)]*\)")
 YEAR_RX    = re.compile(r"^(\d{4})\s*[-_]\s*")
 LOG_PATH   = Path("tag_log.txt")
 REVIEW_PATH = Path("review_log.txt")
+
+LLM_MODEL_PATH: Optional[Path] = None
+LLM_MODEL: Optional["GPT4All"] = None
+LLM_LOAD_ERROR: Optional[str] = None
+
+WHISPER_MODEL_NAME: Optional[str] = None
+WHISPER_DEVICE: str = "auto"
+WHISPER_COMPUTE_TYPE: str = "auto"
+WHISPER_MODEL: Optional["WhisperModel"] = None
+WHISPER_LOAD_ERROR: Optional[str] = None
+
+
+def _whisper_compute_candidates(device: str) -> List[Optional[str]]:
+    choice = (WHISPER_COMPUTE_TYPE or "auto").lower()
+    device_key = (device or "auto").lower()
+    if choice and choice != "auto":
+        return [WHISPER_COMPUTE_TYPE]
+    if device_key == "cpu":
+        return ["int8", "int8_float16", None]
+    if device_key in {"cuda", "rocm"}:
+        return ["float16", "int8_float16", None, "int8"]
+    # device="auto" or anything else: try library default first then fallbacks
+    return [None, "float16", "int8_float16", "int8"]
+
+
+def get_llm_model() -> Optional["GPT4All"]:
+    global LLM_MODEL, LLM_LOAD_ERROR
+    if LLM_MODEL_PATH is None:
+        return None
+    if LLM_MODEL is not None:
+        return LLM_MODEL
+    if LLM_LOAD_ERROR:
+        return None
+    if GPT4All is None:
+        LLM_LOAD_ERROR = "gpt4all not installed"
+        rprint("  [yellow]• install 'gpt4all' to enable local LLM metadata fallback[/]")
+        return None
+    if not LLM_MODEL_PATH.exists():
+        LLM_LOAD_ERROR = f"model not found: {LLM_MODEL_PATH}"
+        rprint(f"  [yellow]• GPT4All model not found: {LLM_MODEL_PATH}[/]")
+        return None
+    try:
+        LLM_MODEL = GPT4All(str(LLM_MODEL_PATH))
+    except Exception as exc:  # pragma: no cover - best effort optional dependency
+        LLM_LOAD_ERROR = str(exc)
+        detail = f" ({exc})" if DEBUG else ""
+        rprint(f"  [yellow]• failed to load GPT4All model{detail}[/]")
+        return None
+    return LLM_MODEL
+
+
+def get_whisper_model() -> Optional["WhisperModel"]:
+    global WHISPER_MODEL, WHISPER_LOAD_ERROR
+    if WHISPER_MODEL_NAME is None:
+        return None
+    if WHISPER_MODEL is not None:
+        return WHISPER_MODEL
+    if WHISPER_LOAD_ERROR:
+        return None
+    if WhisperModel is None:
+        WHISPER_LOAD_ERROR = "faster-whisper not installed"
+        rprint("  [yellow]• install 'faster-whisper' to enable local transcription[/]")
+        return None
+    target = WHISPER_MODEL_NAME
+    expanded = Path(target).expanduser()
+    model_source = str(expanded) if expanded.exists() else target
+    requested_device = WHISPER_DEVICE or "auto"
+    device_candidates = [requested_device]
+    if requested_device.lower() not in {"cpu"}:
+        device_candidates.append("cpu")
+
+    last_exc: Optional[Exception] = None
+    for device in device_candidates:
+        compute_candidates = _whisper_compute_candidates(device)
+        for compute_type in compute_candidates:
+            kwargs: Dict[str, Any] = {"device": device}
+            if compute_type is not None:
+                kwargs["compute_type"] = compute_type
+            try:
+                WHISPER_MODEL = WhisperModel(model_source, **kwargs)
+                if device != requested_device:
+                    rprint(
+                        f"  [yellow]• Faster-Whisper fell back to device '{device}' (requested '{requested_device}')[/]"
+                    )
+                elif (
+                    (WHISPER_COMPUTE_TYPE or "auto").lower() == "auto"
+                    and compute_candidates
+                    and compute_type != compute_candidates[0]
+                ):
+                    chosen = compute_type or "default"
+                    rprint(f"  [yellow]• Faster-Whisper compute_type auto-selected '{chosen}'[/]")
+                return WHISPER_MODEL
+            except Exception as exc:  # pragma: no cover - optional dependency guard
+                last_exc = exc
+                if DEBUG:
+                    chosen = compute_type or "default"
+                    rprint(
+                        f"  [yellow]• Faster-Whisper load failed with device='{device}' compute_type='{chosen}': {exc}[/]"
+                    )
+                continue
+    if last_exc is not None:
+        WHISPER_LOAD_ERROR = str(last_exc)
+    detail = f" ({last_exc})" if DEBUG and last_exc else ""
+    rprint(f"  [yellow]• failed to load Faster-Whisper model{detail}[/]")
+    return None
 
 # ───── logging helper ─────
 def log(status: str, message: str):
@@ -251,6 +374,181 @@ def best_match(author: Optional[str], title: str, client: AbClient = AB) -> tupl
         return None, results
     return max(candidates, key=lambda x: x[0]), results
 
+
+def _strip_fence(text: str) -> str:
+    text = text.strip()
+    if text.startswith("```"):
+        # remove optional language hint
+        first_newline = text.find("\n")
+        if first_newline != -1:
+            text = text[first_newline + 1 :]
+        else:
+            text = ""
+        if text.endswith("```"):
+            text = text[: text.rfind("```")]
+    return text.strip()
+
+
+def _normalise_value(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        value = str(value)
+    elif isinstance(value, list):
+        parts = [str(v).strip() for v in value if str(v).strip()]
+        value = ", ".join(parts)
+    elif not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value or None
+
+
+def _transcribe_first_minute(files: list[Path]) -> Optional[str]:
+    if not files:
+        return None
+    whisper = get_whisper_model()
+    if whisper is None:
+        return None
+    sample = files[0]
+    try:
+        segments, _ = whisper.transcribe(
+            str(sample),
+            beam_size=1,
+            temperature=0.0,
+            vad_filter=True,
+            word_timestamps=False,
+        )
+    except Exception as exc:  # pragma: no cover - runtime dependency guard
+        if DEBUG:
+            rprint(f"  [yellow]• Faster-Whisper failed on {sample.name}: {exc}[/]")
+        return None
+
+    pieces: list[str] = []
+    total_chars = 0
+    for segment in segments:
+        text = segment.text.strip()
+        if not text:
+            continue
+        pieces.append(text)
+        total_chars += len(text)
+        # stop once we reach roughly the first minute of audio
+        if getattr(segment, "end", None) is not None and segment.end >= 60:
+            break
+        if total_chars >= 1600:
+            break
+    if not pieces:
+        return None
+    transcript = " ".join(pieces).strip()
+    if len(transcript) > 1600:
+        transcript = transcript[:1600].rsplit(" ", 1)[0] + "…"
+    return transcript or None
+
+
+def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]:
+    if not files:
+        return None
+    model = get_llm_model()
+    if model is None:
+        return None
+
+    folder_label = folder.name or folder.stem or str(folder)
+    file_lines = "\n".join(f"- {f.name}" for f in files[:25])
+    if len(files) > 25:
+        file_lines += f"\n- … (+{len(files) - 25} more)"
+
+    transcript = _transcribe_first_minute(files)
+    if transcript:
+        transcript_block = textwrap.fill(transcript, width=96)
+    else:
+        transcript_block = "(transcript unavailable)"
+    sample_name = files[0].name
+
+    prompt = textwrap.dedent(
+        f"""
+        You are generating audiobook metadata for local tagging.
+        Folder name: {folder_label}
+        Total audio files: {len(files)}
+        Audio files:
+        {file_lines}
+
+        Transcript (first minute of {sample_name}):
+        {transcript_block}
+
+        Provide a single JSON object with these keys:
+          - "title" (required)
+          - "author" (required)
+          - "series" (optional)
+          - "series_index" (optional)
+          - "year" (optional four digit year)
+          - "narrator" (optional)
+          - "language" (optional language code or name)
+          - "description" (optional short summary)
+          - "publisher" (optional)
+
+        Use null when a value is unknown. Respond with JSON only.
+        """
+    ).strip()
+
+    try:
+        raw = model.generate(prompt, max_tokens=512, temp=0.0)
+    except Exception as exc:  # pragma: no cover - runtime safety
+        if DEBUG:
+            rprint(f"  [yellow]• GPT4All generation failed: {exc}[/]")
+        return None
+
+    cleaned = _strip_fence(raw)
+    try:
+        payload = json.loads(cleaned)
+    except json.JSONDecodeError:
+        if DEBUG:
+            rprint("  [yellow]• GPT4All returned non-JSON metadata[/]")
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    allowed = {
+        "title",
+        "author",
+        "series",
+        "series_index",
+        "year",
+        "narrator",
+        "language",
+        "description",
+        "publisher",
+    }
+
+    meta: Dict[str, Optional[str]] = {}
+    for key in allowed:
+        if key in payload:
+            meta[key] = _normalise_value(payload[key])
+
+    if not meta.get("title") or not meta.get("author"):
+        return None
+
+    year_value = meta.get("year")
+    if year_value:
+        match = re.search(r"\b(\d{4})\b", year_value)
+        meta["year"] = match.group(1) if match else None
+
+    if meta.get("series_index"):
+        meta["series_index"] = _normalise_value(meta["series_index"])
+
+    result: Dict[str, Optional[str]] = {
+        "title": meta["title"],
+        "author": meta["author"],
+        "year": meta.get("year"),
+        "series": meta.get("series"),
+    }
+    if meta.get("series_index"):
+        result["series_index"] = meta["series_index"]
+    for extra in ("narrator", "language", "description", "publisher"):
+        if meta.get(extra):
+            result[extra] = meta[extra]
+    result["source"] = "llm"
+    return result
+
 # ───── tag / strip functions ─────
 def strip_tags(file: Path):
     audio = MFile(str(file))
@@ -326,46 +624,74 @@ def process_leaf(path: Path, args):
     rprint(f"[cyan]→[/] {path}")
     rprint(f"  guess: [italic]{t_guess}[/] by {a_guess or '?'} ({y_guess or '?'})")
 
+    if path.is_file():
+        targets = [path] if path.suffix.lower() in AUDIO_EXTS else []
+    else:
+        targets = sorted(
+            [f for f in path.rglob("*") if f.suffix.lower() in AUDIO_EXTS]
+        )
+    if not targets:
+        rprint("  [yellow]• no audio files found[/]")
+        log("SKIP", f"{path}  no_audio")
+        return
+
+    folder = path if path.is_dir() else path.parent
+
     result, scores = best_match(a_guess, t_guess)
+    llm_used = False
     if not result:
         rprint("  [red] • no match[/]")
-        log("NOMATCH", str(path))
-        review_log(path, "no_match")
-        return
-    score, hit = result
-
-    for name, (sc, _) in sorted(scores.items(), key=lambda x: -x[1][0]):
-        rprint(f"  {name:>9}: {sc}")
-
-    author_hit = ", ".join(hit["authors"]) or a_guess or "Unknown"
-    rprint(f"  match: [bold]{hit['title']}[/] by {author_hit} ({hit['year'] or '?'})")
-    if hit.get("series"):
-        rprint(f"  series: {hit['series']}")
-    rprint(f"  provider: {hit['source']}")
-
-    if score < 60:
-        rprint("  [yellow]⚠ low confidence – double-check[/]")
-    if score < 70 and not args.yes:
-        if args.no:
-            proceed = False
-        elif hasattr(Confirm, "ask"):
-            proceed = Confirm.ask("  tag with this metadata?", default=False)
+        llm_meta = generate_metadata_via_llm(folder, targets)
+        if llm_meta:
+            rprint("  [magenta]• metadata supplied by local LLM[/]")
+            meta = llm_meta
+            llm_used = True
         else:
-            proceed = Confirm("tag with this metadata?", default=False)
-        if not proceed:
-            log("SKIP", str(path))
-            review_log(path, "user_skip")
+            log("NOMATCH", str(path))
+            review_log(path, "no_match")
             return
+    else:
+        score, hit = result
 
-    meta = {
-        "title": hit["title"],
-        "author": author_hit,
-        "year": hit["year"],
-        "series": hit.get("series"),
-    }
-    targets = [path] if path.is_file() else sorted(
-        [f for f in path.rglob("*") if f.suffix.lower() in AUDIO_EXTS]
-    )
+        for name, (sc, _) in sorted(scores.items(), key=lambda x: -x[1][0]):
+            rprint(f"  {name:>9}: {sc}")
+
+        author_hit = ", ".join(hit["authors"]) or a_guess or "Unknown"
+        rprint(f"  match: [bold]{hit['title']}[/] by {author_hit} ({hit['year'] or '?'})")
+        if hit.get("series"):
+            rprint(f"  series: {hit['series']}")
+        rprint(f"  provider: {hit['source']}")
+
+        if score < 60:
+            rprint("  [yellow]⚠ low confidence – double-check[/]")
+
+        meta = {
+            "title": hit["title"],
+            "author": author_hit,
+            "year": hit["year"],
+            "series": hit.get("series"),
+        }
+
+        if score < args.llm_threshold:
+            llm_meta = generate_metadata_via_llm(folder, targets)
+            if llm_meta:
+                rprint(
+                    f"  [magenta]• metadata supplied by local LLM (score {score} < {args.llm_threshold})[/]"
+                )
+                meta = llm_meta
+                llm_used = True
+
+        if not llm_used and score < 70 and not args.yes:
+            if args.no:
+                proceed = False
+            elif hasattr(Confirm, "ask"):
+                proceed = Confirm.ask("  tag with this metadata?", default=False)
+            else:
+                proceed = Confirm("tag with this metadata?", default=False)
+            if not proceed:
+                log("SKIP", str(path))
+                review_log(path, "user_skip")
+                return
     ok = 0
     for idx, f in enumerate(targets, 1):
         try:
@@ -374,7 +700,8 @@ def process_leaf(path: Path, args):
             log("ERR", f"tag {f}")
     label = "OK" if ok == len(targets) else "ERR"
     rprint(f"  [green]tagged {ok}/{len(targets)} file(s)[/]")
-    log(label, f"{path}  ({ok}/{len(targets)})")
+    suffix = " [LLM]" if llm_used else ""
+    log(label, f"{path}  ({ok}/{len(targets)}){suffix}")
     if label == "OK":
         export_metadata(path, meta)
 
@@ -402,6 +729,10 @@ def main():
               --yes         auto-accept matches (tag mode)
               --no          auto-decline matches (tag mode)
               --striptags   delete *all* tags instead of adding
+              --llm-model   path to a GPT4All .gguf model for offline fallback
+              --llm-threshold SCORE  confidence score before using the LLM (default: 75)
+              --whisper-device   target device for Faster-Whisper (auto/cpu/cuda/rocm)
+              --whisper-compute-type TYPE  compute precision for Faster-Whisper (auto/int8/float16…)
             """))
     ap.add_argument("root", type=Path, help="file or folder")
     ap.add_argument("--debug", action="store_true",
@@ -411,14 +742,42 @@ def main():
     ap.add_argument("--yes",       action="store_true")
     ap.add_argument("--no",        action="store_true")
     ap.add_argument("--striptags", action="store_true")
+    ap.add_argument("--llm-model", type=Path,
+                    help="GPT4All .gguf model to consult when lookups fail or scores are low")
+    ap.add_argument("--llm-threshold", type=int, default=75, metavar="SCORE",
+                    help="use the local LLM when provider score falls below SCORE (default: 75)")
+    ap.add_argument("--whisper-model", default="base.en", metavar="MODEL",
+                    help="Faster-Whisper model size or path used to transcribe a 1-minute sample (default: base.en; use 'none' to disable)")
+    ap.add_argument("--whisper-device", default="auto", metavar="DEV",
+                    help="device passed to Faster-Whisper (auto, cpu, cuda, rocm; default: auto)")
+    ap.add_argument("--whisper-compute-type", default="auto", metavar="TYPE",
+                    help="compute precision for Faster-Whisper (auto chooses a sensible default)")
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args = ap.parse_args()
 
-    global LOG_PATH, REVIEW_PATH, DEBUG
+    global LOG_PATH, REVIEW_PATH, DEBUG, LLM_MODEL_PATH, LLM_MODEL, LLM_LOAD_ERROR
+    global WHISPER_MODEL_NAME, WHISPER_DEVICE, WHISPER_COMPUTE_TYPE, WHISPER_MODEL, WHISPER_LOAD_ERROR
     DEBUG = args.debug
     base = args.root if args.root.is_dir() else args.root.parent
     LOG_PATH = base / "tag_log.txt"
     REVIEW_PATH = base / "review_log.txt"
+
+    LLM_MODEL_PATH = args.llm_model.resolve() if args.llm_model else None
+    LLM_MODEL = None
+    LLM_LOAD_ERROR = None
+
+    whisper_arg = args.whisper_model.strip() if args.whisper_model else ""
+    if whisper_arg.lower() == "none":
+        WHISPER_MODEL_NAME = None
+    elif whisper_arg:
+        WHISPER_MODEL_NAME = whisper_arg
+    else:
+        WHISPER_MODEL_NAME = None
+    WHISPER_DEVICE = (args.whisper_device or "auto").strip().lower() or "auto"
+    WHISPER_COMPUTE_TYPE = (args.whisper_compute_type or "auto").strip().lower() or "auto"
+    WHISPER_MODEL = None
+    WHISPER_LOAD_ERROR = None
+    args.llm_threshold = max(0, min(100, args.llm_threshold))
 
     if not args.root.exists():
         sys.exit("path not found")
