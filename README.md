@@ -1,4 +1,4 @@
-<!-- ABtools/README.md · v2.5 · 2025-09-01 -->
+<!-- ABtools/README.md · v2.8 · 2025-09-04 -->
 # Audiobook Organizer & Tagger
 
 This repository contains small utilities for preparing audiobook folders for [Audiobookshelf](https://www.audiobookshelf.org/).
@@ -16,6 +16,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - Optionally prompts for confirmation or proceeds automatically
 - Fetches metadata in parallel for faster tagging
 - Ranks matches using both title and author similarity for better accuracy
+- Optional GPT4All fallback can propose metadata when lookups fail or are low-confidence (`--llm-model`/`--llm-threshold`) and now feeds it a Faster-Whisper transcript of the first minute with configurable device/compute options for GPU acceleration
 - Preserves part numbers like `(1 of 6)` when reorganizing files
 - Adds track numbers so multi-part books play in order
 - Detects series and volume numbers with fuzzy matching
@@ -46,6 +47,8 @@ This repository contains small utilities for preparing audiobook folders for [Au
   - `beautifulsoup4`
   - `rapidfuzz`
   - `rich` (optional, for prettier output)
+  - `gpt4all` (optional, enables offline metadata fallback in `search_and_tag.py`)
+  - `faster-whisper` (optional, provides 1-minute transcripts for the LLM fallback in `search_and_tag.py`; supports GPU via `--whisper-device`/`--whisper-compute-type`)
 - `tqdm` (optional, for progress display in `find_duplicates.py`)
 
 Install all dependencies with:
@@ -63,7 +66,7 @@ pip install -r requirements.txt
 | `AbtoolsGui.py` | v0.11 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.2 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.16 | `ABtools/search_and_tag.py` |
+| `search_and_tag.py` | v2.19 | `ABtools/search_and_tag.py` |
 | `find_duplicates.py` | v0.5 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
 | `planning.py` | v0.2 | `ABtools/planning.py` |
@@ -145,6 +148,16 @@ later inspection. All actions are logged to `tag_log.txt` beside it. On
 successful tagging, the metadata is exported to `metadata.json` and
 `book.nfo` so other players (including Audiobookshelf) can read the
 details.
+
+For stubborn matches, pass `--llm-model /path/to/model.gguf` to consult a
+local GPT4All model. When online providers score below
+`--llm-threshold` (default 75) or return nothing, the script now takes a
+1-minute sample from the first audio file, transcribes it locally with
+Faster-Whisper (configurable via `--whisper-model`, `--whisper-device`,
+and `--whisper-compute-type`), and feeds the
+transcript plus folder context to GPT4All. Successful LLM suggestions
+skip the review log but are written to tags, `metadata.json`, and
+`book.nfo` like any other metadata.
 
 
 ## `flatten_discs.py`

@@ -1,4 +1,4 @@
-<!-- ABtools/scaffold.md · v1.8 · 2025-09-01 -->
+<!-- ABtools/scaffold.md · v2.1 · 2025-09-04 -->
 # Audiobook Tagging & Organization – Scaffold
 
 ## Project Structure
@@ -42,6 +42,7 @@ Audiobooks/
   - `--version` prints the script version and file path
   - Experimental switches stored in `~/.abclient.json` (used by `AbClient`)
   - Prints scores from all metadata providers
+  - Optional GPT4All fallback via `--llm-model` / `--llm-threshold` supplies metadata when lookups fail, feeding it a Faster-Whisper transcript from the first minute of audio (configurable with `--whisper-model`, `--whisper-device`, and `--whisper-compute-type`)
 
 ### `flatten_discs.py`
 
@@ -143,7 +144,7 @@ python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --apply-plan p
 | `AbtoolsGui.py` | v0.11 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.2 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.16 | `ABtools/search_and_tag.py` |
+| `search_and_tag.py` | v2.19 | `ABtools/search_and_tag.py` |
 | `find_duplicates.py` | v0.5 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
 | `planning.py` | v0.2 | `ABtools/planning.py` |
