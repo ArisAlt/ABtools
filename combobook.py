@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/combobook.py  ·  v1.14  ·  2025-09-01
+ABtools/combobook.py  ·  v1.15  ·  2025-09-04
 
 USAGE
 -----
@@ -40,7 +40,9 @@ from difflib import SequenceMatcher
 import errno
 from difflib import SequenceMatcher
 
-VERSION = "1.14"
+from search_and_tag import generate_metadata_via_llm
+
+VERSION = "1.15"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -511,12 +513,46 @@ def process(folder: Path, src: Path, lib: Path, dry: bool, yes: bool, copy: bool
         guess = guess_from_folder(folder)
         # Prompt the user (or auto‐yes) for a match
         hit = choose_meta(guess)
-        if not hit:
-            rprint("[yellow]• no metadata match:[/]", folder.relative_to(src))
+        chosen_meta = hit
+        llm_used = False
+        if not chosen_meta:
+            llm_payload = generate_metadata_via_llm(folder, audio_files)
+            if llm_payload:
+                author = (llm_payload.get("author") or "").strip()
+                title = (llm_payload.get("title") or "").strip()
+                if author and title:
+                    series = llm_payload.get("series") or None
+                    if isinstance(series, str):
+                        series = series.strip() or None
+                    seq = llm_payload.get("series_index") or None
+                    if seq is not None:
+                        seq = str(seq).strip() or None
+                    year = llm_payload.get("year") or None
+                    if isinstance(year, str):
+                        year = year.strip() or None
+                    narr = llm_payload.get("narrator") or None
+                    if isinstance(narr, str):
+                        narr = narr.strip() or None
+                    chosen_meta = Meta(
+                        author=author,
+                        title=title,
+                        year=year,
+                        series=series,
+                        seq=seq,
+                        narr=narr,
+                    )
+                    llm_used = True
+
+        if not chosen_meta:
+            try:
+                rel = folder.relative_to(src)
+            except ValueError:
+                rel = folder
+            rprint("[yellow]• no metadata match:[/]", rel)
             summary["unmatched"] += 1
             dest = lib / UNMATCHED_DIR / slug(folder.name)
             action = 'cp' if copy else 'mv'
-            rprint(f"{action if not dry else '↪'} {folder.relative_to(src)} → {dest.relative_to(lib)}")
+            rprint(f"{action if not dry else '↪'} {rel} → {dest.relative_to(lib)}")
             if dry:
                 summary["would_move"] += 1
                 if FLATTEN_DISCS:
@@ -532,10 +568,18 @@ def process(folder: Path, src: Path, lib: Path, dry: bool, yes: bool, copy: bool
             summary["moved"] += 1
             return
 
-        # Write tags to all tracks in this folder
+        if llm_used:
+            try:
+                rel = folder.relative_to(src)
+            except ValueError:
+                rel = folder
+            rprint(
+                f"[magenta]• metadata via LLM fallback:[/] {rel} → {chosen_meta.title} by {chosen_meta.author}"
+            )
+
         for idx, t in enumerate(audio_files, 1):
-            write_tags(t, hit, idx, len(audio_files))
-        meta = hit
+            write_tags(t, chosen_meta, idx, len(audio_files))
+        meta = chosen_meta
 
     # 4) At this point 'meta' is guaranteed to contain author/title, etc.
     #    We can flatten / rename / move as before.
