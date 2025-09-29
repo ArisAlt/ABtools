@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/search_and_tag.py – v2.19  (2025-09-04)
+ABtools/search_and_tag.py – v2.20  (2025-09-08)
 Tag (or strip) audiobook files using multiple metadata providers.
 
     The script queries Audible, Open Library and Google Books, ranks the
@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
 from abclient import AbClient
 
-VERSION = "2.19"
+VERSION = "2.20"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
