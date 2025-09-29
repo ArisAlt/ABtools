@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import List, Optional
 from difflib import SequenceMatcher
 import errno
+from difflib import SequenceMatcher
 
 VERSION = "1.14"
 FILE_PATH = Path(__file__).resolve()
@@ -295,10 +296,33 @@ def audible_search_all(meta: Meta) -> List[Meta]:
     except Exception:
         return []
 
+def _seq_in_text(seq: str, text: str) -> bool:
+    """Return True if a sequence number appears in a title, e.g. 'Book 4', '#4', or 'HP4'."""
+    if not seq:
+        return False
+    s = str(seq)
+    t = (text or "").lower()
+    patterns = [
+        r"\bbook\s*" + re.escape(s) + r"\b",
+        r"\b#\s*" + re.escape(s) + r"\b",
+        r"\bhp\s*" + re.escape(s) + r"\b",
+        r"\b" + re.escape(s) + r"\b",
+    ]
+    return any(re.search(p, t) for p in patterns)
+
+
 def _similarity(a: Meta, b: Meta) -> float:
     t1 = f"{a.author} {a.title}".lower()
     t2 = f"{b.author} {b.title}".lower()
-    return SequenceMatcher(None, t1, t2).ratio()
+    base = SequenceMatcher(None, t1, t2).ratio()
+    # Boost or penalize based on sequence number if present in guess
+    seq = str(a.seq or "").strip()
+    if seq:
+        if _seq_in_text(seq, getattr(b, 'title', '') or ''):
+            base = min(1.0, base + 0.12)
+        else:
+            base = max(0.0, base - 0.12)
+    return base
 
 def choose_meta(guess: Meta) -> Optional[Meta]:
     candidates = (
@@ -328,7 +352,8 @@ def choose_meta(guess: Meta) -> Optional[Meta]:
         rprint(
             f"  match: [bold]{hit.title}[/] by {hit.author} ({hit.year or '?'})  score: {score:.2f}"
         )
-        if AUTO_YES or Confirm.ask("  use this metadata?", default=score > 0.8):
+        default_yes = score > 0.85
+        if AUTO_YES or Confirm.ask("  use this metadata?", default=default_yes):
             return hit
     return None
 
@@ -514,6 +539,19 @@ def process(folder: Path, src: Path, lib: Path, dry: bool, yes: bool, copy: bool
 
     # 4) At this point 'meta' is guaranteed to contain author/title, etc.
     #    We can flatten / rename / move as before.
+
+    # Validate required tags: do not move when author is unknown or tags incomplete
+    if (
+        (not meta.author or not meta.author.strip() or meta.author.strip().lower() in {"unknown", "unknown author"})
+        or (not meta.title or not meta.title.strip())
+    ):
+        try:
+            rel = folder.relative_to(src)
+        except Exception:
+            rel = folder
+        rprint("[yellow]skip - incomplete tags (author/title)[/]", rel)
+        summary["skip"] += 1
+        return
 
     if dry:
         if FLATTEN_DISCS:

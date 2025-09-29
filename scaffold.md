@@ -68,8 +68,12 @@ Audiobooks/
 - Checkboxes for `--commit`, `--copy` and `--yes`
 - Scrollable output pane and progress bar with estimated time
 - "Tag Only" button that runs `search_and_tag.py` without moving files
-- "Find Duplicates" button that scans source and destination using `find_duplicates.py`
+- "Find Duplicates" button; when both Source and Destination are set it cross-compares them using `find_duplicates.py`, otherwise it scans the single folder
+- "Compare by" selector (hash/name) for duplicate scans
+- "Threads" control to adjust hashing concurrency
+- Output grouped by folder (matches CLI grouped logs)
 - "Restructure" button that reorganizes folders via `restructure_for_audiobookshelf.py`
+- "Network Mode" toggle with a timeout field to prevent stalls when reading from network shares during duplicate scans
 - Buttons to generate restructure plans, apply them atomically and undo the last run
 - Processes output queue in small batches so the window remains responsive during large scans
 - Saves plan files with UTF-8 encoding for cross-platform compatibility
@@ -102,13 +106,16 @@ python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --apply-plan p
 ### `find_duplicates.py`
 
 - Scans recursively for audio files
-- Can compare files by SHA1 hash or by name
+- Compares files by SHA1 hash or by name
+- Cross-compares two folders to report duplicates present in both
 - Skips hashing files with unique sizes for faster scans
 - Prints groups of duplicate files
-- Writes results to `duplicate_log.txt` in the scanned folder
-- Shows scanning progress
+- Writes results to `duplicate_log.txt` (in the scanned folder, or the source when comparing two roots)
+- Shows scanning progress and prints the current file being checked
 - `--version` shows the script version and path
 - Shows progress while hashing when `tqdm` is installed
+- Parallel hashing with configurable threads via `--threads` (default: 4)
+- Per-file read timeouts via `--hash-timeout` (auto 30s on UNC paths)
 
 ## Regex Patterns Used
 
@@ -137,7 +144,7 @@ python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --apply-plan p
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.2 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.16 | `ABtools/search_and_tag.py` |
-| `find_duplicates.py` | v0.4 | `ABtools/find_duplicates.py` |
+| `find_duplicates.py` | v0.5 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
 | `planning.py` | v0.2 | `ABtools/planning.py` |
 | `transaction.py` | v0.2 | `ABtools/transaction.py` |

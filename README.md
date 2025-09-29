@@ -25,9 +25,11 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - Experimental features are toggled via `~/.abclient.json` using `AbClient`
 - Prints the score from each metadata provider during tagging
 - `find_duplicates.py` shows progress while scanning and can compare
-  files by SHA1 hash or by name
+  files by SHA1 hash or by name, and can cross-compare a source and
+  destination folder to report duplicates present in both
 - GUI front-end shows live output in a scrollable pane with a progress bar and estimated time
 - GUI front-end can run `find_duplicates.py` to scan source and destination for duplicate audio files
+- GUI duplicate finder adds: cross-compare Source <-> Destination, Compare-by selector (hash/name), Network Mode with timeout to avoid NAS stalls, adjustable hashing Threads, live "Checking:" current-file output, and output grouped by folder (matches CLI). Window is resizable and progress is smooth.
 - GUI front-end processes output in batches so the window stays responsive during large scans
 - Planning mode writes a JSON plan that can be reviewed before execution
 - GUI front-end checks that a plan file path is selected before generating or applying a plan
@@ -44,7 +46,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
   - `beautifulsoup4`
   - `rapidfuzz`
   - `rich` (optional, for prettier output)
-  - `tqdm` (optional, for progress display in `find_duplicates.py`)
+- `tqdm` (optional, for progress display in `find_duplicates.py`)
 
 Install all dependencies with:
 
@@ -62,7 +64,7 @@ pip install -r requirements.txt
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.2 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.16 | `ABtools/search_and_tag.py` |
-| `find_duplicates.py` | v0.4 | `ABtools/find_duplicates.py` |
+| `find_duplicates.py` | v0.5 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
 | `planning.py` | v0.2 | `ABtools/planning.py` |
 | `transaction.py` | v0.2 | `ABtools/transaction.py` |
@@ -123,7 +125,7 @@ Folders are moved to `<library>/Author/Series?/Vol # - YYYY - Title {Narrator}/`
 Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when run with `--copy` alongside `--commit`.
 
 ## `AbtoolsGui.py`
-`AbtoolsGui.py` offers a basic Tkinter interface for `combobook.py`. It provides text fields for selecting the source and library folders, checkboxes matching the `--commit`, `--copy` and `--yes` command-line options, and shows live `combobook` output in a scrolling pane. Progress messages that rely on carriage returns are normalized so each update appears on its own line. A progress bar displays overall progress with an estimated time remaining. Alongside buttons for "Restructure", "Tag Only" and "Find Duplicates", the GUI exposes controls to generate restructure plans, apply them atomically, and undo the most recent transaction.
+`AbtoolsGui.py` offers a basic Tkinter interface for `combobook.py`. It provides text fields for selecting the source and library folders, checkboxes matching the `--commit`, `--copy` and `--yes` command-line options, and shows live `combobook` output in a scrolling pane. Progress messages that rely on carriage returns are normalized so each update appears on its own line. A progress bar displays overall progress with an estimated time remaining. Alongside buttons for "Restructure", "Tag Only" and "Find Duplicates", the GUI exposes controls to generate restructure plans, apply them atomically, and undo the most recent transaction. The GUI also includes a "Network Mode" toggle with a timeout field used by the duplicate finder to prevent stalls on slow or flaky network shares, and a "Compare by" selector (hash/name). When both Source and Destination are set, "Find Duplicates" compares them against each other; otherwise it scans the single folder.
 It validates that a plan file path is chosen before generating or applying a plan to avoid permission errors, and processes queued output in small batches so the window stays responsive during long runs.
 
 ## `search_and_tag.py`
@@ -166,7 +168,46 @@ python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --apply-plan p
 ```
 
 ## `find_duplicates.py`
-`find_duplicates.py` scans a folder recursively and can find duplicates either by computing SHA1 hashes or by matching file names. Progress is shown while scanning. Results are written to `duplicate_log.txt` inside the scanned folder. Use `--version` to show the script version and path. Hash matching now skips hashing files with unique sizes for much faster scans.
+`find_duplicates.py` scans recursively and can find duplicates either by computing SHA1 hashes or by matching file names. You can scan a single folder for within-folder duplicates, or pass two folders to report duplicates that exist in both. Progress is shown (uses `tqdm` when installed; otherwise inline counters). Results are written to `duplicate_log.txt` inside the scanned folder (or the source folder when comparing two roots). Use `--version` to show the script version and path. Hash matching skips hashing files with unique sizes for faster scans. To avoid stalls on flaky network shares, per-file hashing supports a timeout via `--hash-timeout SECONDS` (auto-applies 30s on UNC paths; use `0` to disable). Hashing runs in parallel threads for speed and prints the current file being checked.
+
+CLI options of interest:
+- `--by {hash,name}`: comparison mode
+- `--hash-timeout SECONDS`: per-file read timeout (0 disables; default auto)
+- `--threads N`: hashing threads (default 4)
+
+Examples:
+
+```bash
+# Within a single folder (4 threads)
+python find_duplicates.py "E:\\Audio" --by hash --threads 4
+python find_duplicates.py "E:\\Audio" --by name --threads 4
+
+# Cross-compare two folders with timeout for network shares
+python find_duplicates.py "E:\\Downloads" "E:\\Audiobooks" --by hash --threads 4
+python find_duplicates.py "E:\\Downloads" "E:\\Audiobooks" --by name --hash-timeout 60 --threads 4
+```
+
+## Planning & Transactions
+
+Build a safe, reviewable plan for restructuring your library, then apply it atomically with undo support.
+
+- GUI usage:
+  - Plan: set Source and Destination, click "Plan" to generate a JSON plan using `planning.plan_library(...)`.
+  - Apply: click "Apply Plan" to execute the plan via `transaction.execute(plan.json)`.
+  - Undo: click "Undo Last" to roll back the most recent applied plan.
+
+- CLI usage:
+  - Build plan JSON:
+    - `python planning.py "Downloads" "Audiobooks" --plan-json plan.json`  (add `--copy` to propose copies instead of moves)
+  - Apply plan (module call):
+    - `python -c "import pathlib; from transaction import execute; execute(pathlib.Path('plan.json'))"`
+  - Undo last transaction:
+    - `python -c "from transaction import undo_last; undo_last()"`
+
+Notes
+- Plans contain a list of actions (move/copy/skip/quarantine) with resolved source/destination paths.
+- A SQLite catalog at `<dest>/.abtools_catalog.db` prevents re-importing duplicates across runs.
+- Books with disc/track gaps are quarantined to `<dest>/_quarantine/...` for manual review.
 
 
 
@@ -181,7 +222,7 @@ python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --apply-plan p
 ```
 
 Edit this file to enable or disable experimental features.
-# Generate and apply plans
-python combobook.py "source" "library" --plan-json plan.json
-python combobook.py --apply-plan plan.json
-python combobook.py --undo-last
+# Generate and apply plans (alternative CLI)
+python planning.py "source" "library" --plan-json plan.json
+python -c "import pathlib; from transaction import execute; execute(pathlib.Path('plan.json'))"
+python -c "from transaction import undo_last; undo_last()"

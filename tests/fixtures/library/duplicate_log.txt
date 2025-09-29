@@ -1,0 +1,7 @@
+SHA1 829c3804401b0727f70f73d4415e162400cbe57b
+  C:\Users\Aris\OneDrive\py\Audiobooks\AudioBooks_tools\tests\fixtures\library\ambiguous\Track 01.mp3
+  C:\Users\Aris\OneDrive\py\Audiobooks\AudioBooks_tools\tests\fixtures\library\disc_gap\Track 01.mp3
+  C:\Users\Aris\OneDrive\py\Audiobooks\AudioBooks_tools\tests\fixtures\library\disc_gap\Track 03.mp3
+  C:\Users\Aris\OneDrive\py\Audiobooks\AudioBooks_tools\tests\fixtures\library\dup_a\Track 01.mp3
+  C:\Users\Aris\OneDrive\py\Audiobooks\AudioBooks_tools\tests\fixtures\library\dup_b\Track 01.mp3
+
