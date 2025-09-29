@@ -1,4 +1,4 @@
-<!-- ABtools/scaffold.md · v2.2 · 2025-09-04 -->
+<!-- ABtools/scaffold.md · v2.3 · 2025-09-08 -->
 # Audiobook Tagging & Organization – Scaffold
 
 ## Project Structure
@@ -42,7 +42,7 @@ Audiobooks/
   - `--version` prints the script version and file path
   - Experimental switches stored in `~/.abclient.json` (used by `AbClient`)
   - Prints scores from all metadata providers
-  - Optional GPT4All fallback via `--llm-model` / `--llm-threshold` supplies metadata when lookups fail, feeding it a Faster-Whisper transcript from the first minute of audio (configurable with `--whisper-model`, `--whisper-device`, and `--whisper-compute-type`)
+  - Optional GPT4All/Ollama fallback via `--llm-model` / `--llm-threshold` supplies metadata when lookups fail, feeding it a Faster-Whisper transcript from the first minute of audio (configurable with `--whisper-model`, `--whisper-device`, and `--whisper-compute-type`) and cascading to Ollama if a GPT4All model is unavailable
 
 ### `flatten_discs.py`
 
@@ -55,10 +55,10 @@ Audiobooks/
 - Combines the functionality of both scripts:
     - Detects audio files
     - Tags them using `search_and_tag.py` logic
-    - Calls the shared GPT4All fallback when provider lookups fail, tagging tracks automatically and logging AI-assisted folders
+    - Calls the shared GPT4All/Ollama fallback when provider lookups fail, tagging tracks automatically and logging AI-assisted folders
     - Creates cleaned-up `Author/Year - Title` folder
     - Moves and renames content
-    - Only moves folders into `_unmatched` when both provider searches and the GPT4All fallback fail
+    - Only moves folders into `_unmatched` when both provider searches and the GPT4All/Ollama fallback fail
     - Embeds tags with FFmpeg; fixed missing output file to ensure tags are written
     - Accepts source paths with spaces without needing quotes
     - Passes the source path explicitly to avoid `NameError: SRC is not defined` when imported elsewhere
@@ -141,11 +141,11 @@ python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --apply-plan p
 
 | Script | Version | Path |
 |-------|---------|------|
-| `combobook.py` | v1.15 | `ABtools/combobook.py` |
+| `combobook.py` | v1.16 | `ABtools/combobook.py` |
 | `AbtoolsGui.py` | v0.11 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v5.2 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.19 | `ABtools/search_and_tag.py` |
+| `restructure_for_audiobookshelf.py` | v5.3 | `ABtools/restructure_for_audiobookshelf.py` |
+| `search_and_tag.py` | v2.20 | `ABtools/search_and_tag.py` |
 | `find_duplicates.py` | v0.5 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
 | `planning.py` | v0.2 | `ABtools/planning.py` |

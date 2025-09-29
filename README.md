@@ -1,4 +1,4 @@
-<!-- ABtools/README.md · v2.9 · 2025-09-04 -->
+<!-- ABtools/README.md · v2.10 · 2025-09-08 -->
 # Audiobook Organizer & Tagger
 
 This repository contains small utilities for preparing audiobook folders for [Audiobookshelf](https://www.audiobookshelf.org/).
@@ -16,8 +16,8 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - Optionally prompts for confirmation or proceeds automatically
 - Fetches metadata in parallel for faster tagging
 - Ranks matches using both title and author similarity for better accuracy
-- Optional GPT4All fallback can propose metadata when lookups fail or are low-confidence (`--llm-model`/`--llm-threshold`) and now feeds it a Faster-Whisper transcript of the first minute with configurable device/compute options for GPU acceleration
-- `combobook.py` now reuses the GPT4All fallback to supply metadata when provider searches fail, tags the files automatically, and logs AI-assisted folders for later review
+- Local LLM fallback can propose metadata when online lookups fail or are low-confidence. It first tries GPT4All models you specify with `--llm-model`/`--llm-threshold`, piping in a Faster-Whisper transcript of the first minute (GPU-tunable via `--whisper-device`/`--whisper-compute-type`) and will fall back to an Ollama endpoint when a GPT4All model cannot be loaded.
+- `combobook.py` reuses the shared GPT4All/Ollama fallback to supply metadata when provider searches fail, tags the files automatically, and logs AI-assisted folders for later review
 - Preserves part numbers like `(1 of 6)` when reorganizing files
 - Adds track numbers so multi-part books play in order
 - Detects series and volume numbers with fuzzy matching
@@ -48,7 +48,8 @@ This repository contains small utilities for preparing audiobook folders for [Au
   - `beautifulsoup4`
   - `rapidfuzz`
   - `rich` (optional, for prettier output)
-  - `gpt4all` (optional, enables offline metadata fallback in `search_and_tag.py`)
+  - `gpt4all` (install to enable the offline metadata fallback; models default to `~/.cache/gpt4all/` unless you pass `--llm-model`)
+  - `ollama` (optional, used when the fallback routes to a running Ollama server; models live under `~/.ollama/models/` by default)
   - `faster-whisper` (optional, provides 1-minute transcripts for the LLM fallback in `search_and_tag.py`; supports GPU via `--whisper-device`/`--whisper-compute-type`)
 - `tqdm` (optional, for progress display in `find_duplicates.py`)
 
@@ -58,16 +59,32 @@ Install all dependencies with:
 pip install -r requirements.txt
 ```
 
+## Local LLM setup
+
+1. Install the Python bindings:
+   ```bash
+   pip install gpt4all faster-whisper
+   ```
+   (Install [Ollama](https://ollama.com/download) separately if you want the HTTP fallback.)
+2. Download a GPT4All `.gguf` model and place it in `~/.cache/gpt4all/`, or pass its absolute path with `--llm-model`. The helper reuses files from that directory between runs.
+3. Optionally start Ollama and pull a compatible model:
+   ```bash
+   ollama pull mistral
+   ollama serve
+   ```
+   When GPT4All fails to load or you set `--llm-model ollama:mistral`, the scripts stream prompts to the Ollama endpoint at `http://localhost:11434/`.
+4. During tagging, the fallback triggers automatically whenever every provider lookup returns no results or the best score falls below `--llm-threshold` (default 75). It first attempts GPT4All, then hands the same context and Faster-Whisper transcript to Ollama if configured.
+
 ## Scripts
 
 | Script | Version | Path |
 |-------|---------|------|
 
-| `combobook.py` | v1.15 | `ABtools/combobook.py` |
+| `combobook.py` | v1.16 | `ABtools/combobook.py` |
 | `AbtoolsGui.py` | v0.11 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v5.2 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.19 | `ABtools/search_and_tag.py` |
+| `restructure_for_audiobookshelf.py` | v5.3 | `ABtools/restructure_for_audiobookshelf.py` |
+| `search_and_tag.py` | v2.20 | `ABtools/search_and_tag.py` |
 | `find_duplicates.py` | v0.5 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
 | `planning.py` | v0.2 | `ABtools/planning.py` |
@@ -77,7 +94,7 @@ pip install -r requirements.txt
 Run any script with `--version` to print its version and file location.
 
 ## `combobook.py`
-`combobook.py` tags, flattens and moves audiobook folders in a single pass. It searches Open Library, Google Books and Audible, ranks potential matches using fuzzy similarity and asks you to confirm before tagging and moving files. When provider lookups and prompts fail, the script now consults the shared GPT4All fallback to propose metadata, tags every track automatically, and logs which folders used the AI assist. Only when both paths fail does it fall back to moving the folder into an `_unmatched` directory inside your library for manual review.
+`combobook.py` tags, flattens and moves audiobook folders in a single pass. It searches Open Library, Google Books and Audible, ranks potential matches using fuzzy similarity and asks you to confirm before tagging and moving files. When provider lookups and prompts fail, the script now consults the shared GPT4All/Ollama fallback to propose metadata, tags every track automatically, and logs which folders used the AI assist. Only when both paths fail does it fall back to moving the folder into an `_unmatched` directory inside your library for manual review.
 
 It now also collapses folders named like `Book Title (1 of 5)` into a single directory and names each file `Part 01`, `Part 02`, etc.
 
@@ -151,14 +168,16 @@ successful tagging, the metadata is exported to `metadata.json` and
 details.
 
 For stubborn matches, pass `--llm-model /path/to/model.gguf` to consult a
-local GPT4All model. When online providers score below
+local GPT4All model or `--llm-model ollama:model-name` to stream prompts
+to an Ollama server. When online providers score below
 `--llm-threshold` (default 75) or return nothing, the script now takes a
 1-minute sample from the first audio file, transcribes it locally with
 Faster-Whisper (configurable via `--whisper-model`, `--whisper-device`,
 and `--whisper-compute-type`), and feeds the
-transcript plus folder context to GPT4All. Successful LLM suggestions
-skip the review log but are written to tags, `metadata.json`, and
-`book.nfo` like any other metadata.
+transcript plus folder context to GPT4All. If GPT4All fails or you
+explicitly request Ollama, the same prompt is sent to the Ollama API.
+Successful LLM suggestions skip the review log but are written to tags,
+`metadata.json`, and `book.nfo` like any other metadata.
 
 
 ## `flatten_discs.py`
