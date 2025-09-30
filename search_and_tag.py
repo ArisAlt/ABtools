@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/search_and_tag.py – v2.20  (2025-09-08)
+ABtools/search_and_tag.py – v2.21  (2025-09-08)
 Tag (or strip) audiobook files using multiple metadata providers.
 
     The script queries Audible, Open Library and Google Books, ranks the
@@ -12,12 +12,13 @@ Tag (or strip) audiobook files using multiple metadata providers.
 next to the chosen root as ``tag_log.txt`` and ``review_log.txt``.
 Use ``--version`` to print the script version and file location.
 
-Supply ``--llm-model /path/to/model.gguf`` to let a local GPT4All model
-suggest metadata when online providers fail or return low scores. Adjust
-the trigger with ``--llm-threshold`` (default: 75). When the fallback is
-used the script transcribes the first minute of audio with
-Faster-Whisper (``--whisper-model``) and feeds that transcript to the LLM.
-Use ``--whisper-device`` (``auto``/``cpu``/``cuda``/``rocm``) and
+Supply ``--llm-endpoint``/``--llm-model`` to let a local LM Studio
+instance (tested with Mistral-7B Q4 on port 1234) suggest metadata when
+online providers fail or return low scores. Adjust the trigger with
+``--llm-threshold`` (default: 75). When the fallback is used the script
+transcribes the first minute of audio with Faster-Whisper
+(``--whisper-model``) and feeds that transcript to the LLM. Use
+``--whisper-device`` (``auto``/``cpu``/``cuda``/``rocm``) and
 ``--whisper-compute-type`` to steer GPU acceleration where supported.
 
 examples
@@ -41,7 +42,7 @@ from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
 from abclient import AbClient
 
-VERSION = "2.20"
+VERSION = "2.21"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -58,11 +59,6 @@ from mutagen import File as MFile, MutagenError
 from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TALB, TPE1, TDRC, TXXX, TRCK
 from mutagen.mp4 import MP4, MP4StreamInfoError
 from bs4 import BeautifulSoup
-
-try:
-    from gpt4all import GPT4All  # type: ignore
-except ImportError:  # optional dependency
-    GPT4All = None  # type: ignore
 
 try:
     from faster_whisper import WhisperModel  # type: ignore
@@ -88,9 +84,12 @@ YEAR_RX    = re.compile(r"^(\d{4})\s*[-_]\s*")
 LOG_PATH   = Path("tag_log.txt")
 REVIEW_PATH = Path("review_log.txt")
 
-LLM_MODEL_PATH: Optional[Path] = None
-LLM_MODEL: Optional["GPT4All"] = None
-LLM_LOAD_ERROR: Optional[str] = None
+LLM_ENDPOINT: Optional[str] = "http://127.0.0.1:1234/v1/chat/completions"
+LLM_MODEL_NAME: Optional[str] = "mistral-7b-instruct-q4"
+LLM_TIMEOUT: int = 90
+LLM_SYSTEM_PROMPT = (
+    "You analyse audiobook folders and respond with JSON metadata only."
+)
 
 WHISPER_MODEL_NAME: Optional[str] = None
 WHISPER_DEVICE: str = "auto"
@@ -111,31 +110,50 @@ def _whisper_compute_candidates(device: str) -> List[Optional[str]]:
     # device="auto" or anything else: try library default first then fallbacks
     return [None, "float16", "int8_float16", "int8"]
 
-
-def get_llm_model() -> Optional["GPT4All"]:
-    global LLM_MODEL, LLM_LOAD_ERROR
-    if LLM_MODEL_PATH is None:
+def _call_llm(prompt: str) -> Optional[str]:
+    if not LLM_ENDPOINT or not LLM_MODEL_NAME:
         return None
-    if LLM_MODEL is not None:
-        return LLM_MODEL
-    if LLM_LOAD_ERROR:
-        return None
-    if GPT4All is None:
-        LLM_LOAD_ERROR = "gpt4all not installed"
-        rprint("  [yellow]• install 'gpt4all' to enable local LLM metadata fallback[/]")
-        return None
-    if not LLM_MODEL_PATH.exists():
-        LLM_LOAD_ERROR = f"model not found: {LLM_MODEL_PATH}"
-        rprint(f"  [yellow]• GPT4All model not found: {LLM_MODEL_PATH}[/]")
-        return None
+    payload = {
+        "model": LLM_MODEL_NAME,
+        "messages": [
+            {"role": "system", "content": LLM_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.0,
+        "max_tokens": 512,
+        "stream": False,
+    }
     try:
-        LLM_MODEL = GPT4All(str(LLM_MODEL_PATH))
-    except Exception as exc:  # pragma: no cover - best effort optional dependency
-        LLM_LOAD_ERROR = str(exc)
-        detail = f" ({exc})" if DEBUG else ""
-        rprint(f"  [yellow]• failed to load GPT4All model{detail}[/]")
+        resp = SESSION.post(LLM_ENDPOINT, json=payload, timeout=LLM_TIMEOUT)
+    except requests.RequestException as exc:  # pragma: no cover - network guard
+        if DEBUG:
+            rprint(f"  [yellow]• LM Studio request failed: {exc}[/]")
         return None
-    return LLM_MODEL
+
+    if resp.status_code >= 400:
+        if DEBUG:
+            rprint(
+                f"  [yellow]• LM Studio returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
+            )
+        return None
+
+    try:
+        data = resp.json()
+    except ValueError:
+        if DEBUG:
+            rprint("  [yellow]• LM Studio response was not valid JSON[/]")
+        return None
+
+    choices = data.get("choices")
+    if not choices:
+        return None
+    message = choices[0].get("message") if isinstance(choices[0], dict) else None
+    if not message:
+        return None
+    content = message.get("content") if isinstance(message, dict) else None
+    if not content:
+        return None
+    return str(content)
 
 
 def get_whisper_model() -> Optional["WhisperModel"]:
@@ -447,8 +465,7 @@ def _transcribe_first_minute(files: list[Path]) -> Optional[str]:
 def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]:
     if not files:
         return None
-    model = get_llm_model()
-    if model is None:
+    if not LLM_ENDPOINT or not LLM_MODEL_NAME:
         return None
 
     folder_label = folder.name or folder.stem or str(folder)
@@ -489,11 +506,10 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
         """
     ).strip()
 
-    try:
-        raw = model.generate(prompt, max_tokens=512, temp=0.0)
-    except Exception as exc:  # pragma: no cover - runtime safety
+    raw = _call_llm(prompt)
+    if raw is None:
         if DEBUG:
-            rprint(f"  [yellow]• GPT4All generation failed: {exc}[/]")
+            rprint("  [yellow]• LM Studio metadata request returned no content[/]")
         return None
 
     cleaned = _strip_fence(raw)
@@ -501,7 +517,7 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
         payload = json.loads(cleaned)
     except json.JSONDecodeError:
         if DEBUG:
-            rprint("  [yellow]• GPT4All returned non-JSON metadata[/]")
+            rprint("  [yellow]• LM Studio returned non-JSON metadata[/]")
         return None
 
     if not isinstance(payload, dict):
@@ -729,7 +745,8 @@ def main():
               --yes         auto-accept matches (tag mode)
               --no          auto-decline matches (tag mode)
               --striptags   delete *all* tags instead of adding
-              --llm-model   path to a GPT4All .gguf model for offline fallback
+              --llm-endpoint URL   OpenAI-compatible endpoint (default: http://127.0.0.1:1234/v1/chat/completions)
+              --llm-model NAME     model to request from the endpoint (default: mistral-7b-instruct-q4)
               --llm-threshold SCORE  confidence score before using the LLM (default: 75)
               --whisper-device   target device for Faster-Whisper (auto/cpu/cuda/rocm)
               --whisper-compute-type TYPE  compute precision for Faster-Whisper (auto/int8/float16…)
@@ -742,12 +759,14 @@ def main():
     ap.add_argument("--yes",       action="store_true")
     ap.add_argument("--no",        action="store_true")
     ap.add_argument("--striptags", action="store_true")
-    ap.add_argument("--llm-model", type=Path,
-                    help="GPT4All .gguf model to consult when lookups fail or scores are low")
+    ap.add_argument("--llm-endpoint", default="http://127.0.0.1:1234/v1/chat/completions",
+                    help="OpenAI-compatible completion endpoint (use 'none' to disable; default: %(default)s)")
+    ap.add_argument("--llm-model", default="mistral-7b-instruct-q4",
+                    help="Model name to request from the LM Studio endpoint (default: %(default)s)")
     ap.add_argument("--llm-threshold", type=int, default=75, metavar="SCORE",
                     help="use the local LLM when provider score falls below SCORE (default: 75)")
-    ap.add_argument("--whisper-model", default="base.en", metavar="MODEL",
-                    help="Faster-Whisper model size or path used to transcribe a 1-minute sample (default: base.en; use 'none' to disable)")
+    ap.add_argument("--whisper-model", default="medium.en", metavar="MODEL",
+                    help="Faster-Whisper model size or path used to transcribe a 1-minute sample (default: medium.en; use 'none' to disable)")
     ap.add_argument("--whisper-device", default="auto", metavar="DEV",
                     help="device passed to Faster-Whisper (auto, cpu, cuda, rocm; default: auto)")
     ap.add_argument("--whisper-compute-type", default="auto", metavar="TYPE",
@@ -755,16 +774,21 @@ def main():
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args = ap.parse_args()
 
-    global LOG_PATH, REVIEW_PATH, DEBUG, LLM_MODEL_PATH, LLM_MODEL, LLM_LOAD_ERROR
+    global LOG_PATH, REVIEW_PATH, DEBUG, LLM_ENDPOINT, LLM_MODEL_NAME
     global WHISPER_MODEL_NAME, WHISPER_DEVICE, WHISPER_COMPUTE_TYPE, WHISPER_MODEL, WHISPER_LOAD_ERROR
     DEBUG = args.debug
     base = args.root if args.root.is_dir() else args.root.parent
     LOG_PATH = base / "tag_log.txt"
     REVIEW_PATH = base / "review_log.txt"
 
-    LLM_MODEL_PATH = args.llm_model.resolve() if args.llm_model else None
-    LLM_MODEL = None
-    LLM_LOAD_ERROR = None
+    endpoint_arg = (args.llm_endpoint or "").strip()
+    if endpoint_arg.lower() in {"", "none", "null"}:
+        LLM_ENDPOINT = None
+    else:
+        LLM_ENDPOINT = endpoint_arg
+
+    model_arg = (args.llm_model or "").strip()
+    LLM_MODEL_NAME = model_arg or None
 
     whisper_arg = args.whisper_model.strip() if args.whisper_model else ""
     if whisper_arg.lower() == "none":
