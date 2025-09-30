@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/AbtoolsGui.py  ·  v0.11  ·  2025-09-01
+ABtools/AbtoolsGui.py  ·  v0.12  ·  2025-09-09
 """
 from __future__ import annotations
 
@@ -13,9 +13,19 @@ from pathlib import Path
 from types import SimpleNamespace
 import combobook, search_and_tag, find_duplicates, restructure_for_audiobookshelf
 
-VERSION = "0.11"
+VERSION = "0.12"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
+
+DEFAULT_LLM_ENDPOINT = (
+    search_and_tag.LLM_ENDPOINT
+    or "http://127.0.0.1:1234/v1/chat/completions"
+)
+DEFAULT_LLM_MODEL = search_and_tag.LLM_MODEL_NAME or "mistral-7b-instruct-q4"
+DEFAULT_LLM_THRESHOLD = 75
+DEFAULT_WHISPER_MODEL = "medium.en"
+DEFAULT_WHISPER_DEVICE = "auto"
+DEFAULT_WHISPER_COMPUTE = "auto"
 
 if "--version" in sys.argv:
     print(VERSION_INFO % {"prog": Path(sys.argv[0]).name})
@@ -27,7 +37,7 @@ root.resizable(True, True)
 # Allow all visible columns to expand and make the output row stretchy
 for i in range(8):
     root.grid_columnconfigure(i, weight=1)
-root.grid_rowconfigure(6, weight=1)
+root.grid_rowconfigure(7, weight=1)
 
 # --- input fields ---
 source_var = tk.StringVar()
@@ -71,6 +81,12 @@ compare_by_var = tk.StringVar(value="hash")
 threads_var = tk.IntVar(value=4)
 recurse_var = tk.BooleanVar(value=True)
 only_src_log_var = tk.BooleanVar()
+llm_endpoint_var = tk.StringVar(value=DEFAULT_LLM_ENDPOINT)
+llm_model_var = tk.StringVar(value=DEFAULT_LLM_MODEL)
+llm_threshold_var = tk.StringVar(value=str(DEFAULT_LLM_THRESHOLD))
+whisper_model_var = tk.StringVar(value=DEFAULT_WHISPER_MODEL)
+whisper_device_var = tk.StringVar(value=DEFAULT_WHISPER_DEVICE)
+whisper_compute_var = tk.StringVar(value=DEFAULT_WHISPER_COMPUTE)
 
 tk.Checkbutton(root, text="Commit", variable=commit_var).grid(row=3, column=0, sticky="w", padx=5)
 tk.Checkbutton(root, text="Copy", variable=copy_var).grid(row=3, column=1, sticky="w", padx=5)
@@ -91,6 +107,40 @@ tk.Entry(root, textvariable=timeout_var, width=6).grid(row=2, column=5, sticky="
 tk.Checkbutton(root, text="Recurse", variable=recurse_var).grid(row=2, column=6, sticky="w", padx=5)
 tk.Checkbutton(root, text="Only src log", variable=only_src_log_var).grid(row=2, column=6, columnspan=2, sticky="w", padx=5)
 
+llm_frame = ttk.LabelFrame(root, text="LLM fallback")
+llm_frame.grid(row=4, column=0, columnspan=8, padx=5, pady=(0, 5), sticky="ew")
+llm_frame.columnconfigure(1, weight=1)
+llm_frame.columnconfigure(3, weight=1)
+
+ttk.Label(llm_frame, text="Endpoint").grid(row=0, column=0, sticky="e", padx=5, pady=2)
+ttk.Entry(llm_frame, textvariable=llm_endpoint_var).grid(
+    row=0, column=1, columnspan=3, sticky="ew", padx=5, pady=2
+)
+ttk.Label(llm_frame, text="Model").grid(row=1, column=0, sticky="e", padx=5, pady=2)
+ttk.Entry(llm_frame, textvariable=llm_model_var).grid(
+    row=1, column=1, sticky="ew", padx=5, pady=2
+)
+ttk.Label(llm_frame, text="Threshold").grid(row=1, column=2, sticky="e", padx=5, pady=2)
+ttk.Spinbox(
+    llm_frame,
+    from_=0,
+    to=100,
+    textvariable=llm_threshold_var,
+    width=5,
+).grid(row=1, column=3, sticky="w", padx=5, pady=2)
+ttk.Label(llm_frame, text="Whisper model").grid(row=2, column=0, sticky="e", padx=5, pady=2)
+ttk.Entry(llm_frame, textvariable=whisper_model_var).grid(
+    row=2, column=1, columnspan=3, sticky="ew", padx=5, pady=2
+)
+ttk.Label(llm_frame, text="Device").grid(row=3, column=0, sticky="e", padx=5, pady=2)
+ttk.Entry(llm_frame, textvariable=whisper_device_var, width=12).grid(
+    row=3, column=1, sticky="w", padx=5, pady=2
+)
+ttk.Label(llm_frame, text="Compute type").grid(row=3, column=2, sticky="e", padx=5, pady=2)
+ttk.Entry(llm_frame, textvariable=whisper_compute_var, width=12).grid(
+    row=3, column=3, sticky="w", padx=5, pady=2
+)
+
 # --- output ---
 output_queue: queue.Queue[tuple[str, object]] = queue.Queue()
 # Track whether the progress bar is running in indeterminate mode to avoid
@@ -98,13 +148,82 @@ output_queue: queue.Queue[tuple[str, object]] = queue.Queue()
 progress_is_indeterminate = False
 
 output_text = scrolledtext.ScrolledText(root, height=15, width=60, state="disabled")
-output_text.grid(row=6, column=0, columnspan=8, padx=5, pady=5, sticky="nsew")
+output_text.grid(row=7, column=0, columnspan=8, padx=5, pady=5, sticky="nsew")
 
 progress_var = tk.IntVar(value=0)
 progress = ttk.Progressbar(root, variable=progress_var, maximum=100)
-progress.grid(row=7, column=0, columnspan=8, padx=5, pady=5, sticky="ew")
+progress.grid(row=8, column=0, columnspan=8, padx=5, pady=5, sticky="ew")
 eta_var = tk.StringVar(value="ETA: --:--")
-tk.Label(root, textvariable=eta_var).grid(row=8, column=0, columnspan=8)
+tk.Label(root, textvariable=eta_var).grid(row=9, column=0, columnspan=8)
+
+
+def gather_llm_settings() -> dict[str, object]:
+    endpoint = (llm_endpoint_var.get() or "").strip()
+    model = (llm_model_var.get() or "").strip()
+    whisper_model = (whisper_model_var.get() or "").strip()
+    whisper_device = (whisper_device_var.get() or "").strip()
+    whisper_compute = (whisper_compute_var.get() or "").strip()
+    try:
+        threshold = int((llm_threshold_var.get() or "").strip())
+    except ValueError:
+        threshold = DEFAULT_LLM_THRESHOLD
+    threshold = max(0, min(100, threshold))
+    return {
+        "endpoint": endpoint,
+        "model": model,
+        "threshold": threshold,
+        "whisper_model": whisper_model,
+        "whisper_device": whisper_device,
+        "whisper_compute": whisper_compute,
+    }
+
+
+def apply_llm_settings(settings: dict[str, object]) -> int:
+    endpoint_raw = str(settings.get("endpoint", "") or "").strip()
+    model_raw = str(settings.get("model", "") or "").strip()
+    whisper_model_raw = str(settings.get("whisper_model", "") or "").strip()
+    whisper_device_raw = str(settings.get("whisper_device", "") or "").strip()
+    whisper_compute_raw = str(settings.get("whisper_compute", "") or "").strip()
+    threshold = int(settings.get("threshold", DEFAULT_LLM_THRESHOLD))
+    if endpoint_raw.lower() in {"none", "null", "off"}:
+        search_and_tag.LLM_ENDPOINT = None
+    elif endpoint_raw:
+        search_and_tag.LLM_ENDPOINT = endpoint_raw
+    else:
+        search_and_tag.LLM_ENDPOINT = DEFAULT_LLM_ENDPOINT
+
+    if model_raw.lower() in {"none", "null", "off"}:
+        search_and_tag.LLM_MODEL_NAME = None
+    elif model_raw:
+        search_and_tag.LLM_MODEL_NAME = model_raw
+    else:
+        search_and_tag.LLM_MODEL_NAME = DEFAULT_LLM_MODEL
+
+    if whisper_model_raw.lower() == "none":
+        search_and_tag.WHISPER_MODEL_NAME = None
+    elif whisper_model_raw:
+        search_and_tag.WHISPER_MODEL_NAME = whisper_model_raw
+    else:
+        search_and_tag.WHISPER_MODEL_NAME = DEFAULT_WHISPER_MODEL
+
+    device_val = whisper_device_raw.lower() or DEFAULT_WHISPER_DEVICE
+    compute_val = whisper_compute_raw.lower() or DEFAULT_WHISPER_COMPUTE
+    search_and_tag.WHISPER_DEVICE = device_val
+    search_and_tag.WHISPER_COMPUTE_TYPE = compute_val
+    search_and_tag.WHISPER_MODEL = None
+    search_and_tag.WHISPER_LOAD_ERROR = None
+
+    tagger_mod = getattr(combobook, "tagger", None)
+    if tagger_mod is not None and tagger_mod is not search_and_tag:
+        tagger_mod.LLM_ENDPOINT = search_and_tag.LLM_ENDPOINT
+        tagger_mod.LLM_MODEL_NAME = search_and_tag.LLM_MODEL_NAME
+        tagger_mod.WHISPER_MODEL_NAME = search_and_tag.WHISPER_MODEL_NAME
+        tagger_mod.WHISPER_DEVICE = search_and_tag.WHISPER_DEVICE
+        tagger_mod.WHISPER_COMPUTE_TYPE = search_and_tag.WHISPER_COMPUTE_TYPE
+        tagger_mod.WHISPER_MODEL = None
+        tagger_mod.WHISPER_LOAD_ERROR = None
+
+    return threshold
 
 def append_output(text: str) -> None:
     output_text.configure(state="normal")
@@ -203,6 +322,7 @@ def run() -> None:
         return
     dst.mkdir(parents=True, exist_ok=True)
     combobook.AUTO_YES = yes_var.get()
+    llm_settings = gather_llm_settings()
 
     output_text.configure(state="normal")
     output_text.delete("1.0", tk.END)
@@ -216,6 +336,7 @@ def run() -> None:
             with redirect_stdout(QueueWriter(output_queue)), redirect_stderr(
                 QueueWriter(output_queue)
             ):
+                apply_llm_settings(llm_settings)
                 # Hook up interactive confirms to GUI prompt
                 def gui_confirm(question: str, default: bool = False) -> bool:
                     resp_q: queue.Queue[bool] = queue.Queue()
@@ -325,6 +446,7 @@ def tag_only() -> None:
     if not src.exists():
         messagebox.showerror("Error", "Source path does not exist")
         return
+    llm_settings = gather_llm_settings()
 
     output_text.configure(state="normal")
     output_text.delete("1.0", tk.END)
@@ -338,6 +460,7 @@ def tag_only() -> None:
             with redirect_stdout(QueueWriter(output_queue)), redirect_stderr(
                 QueueWriter(output_queue)
             ):
+                llm_threshold = apply_llm_settings(llm_settings)
                 # Hook up interactive confirms to GUI prompt for search_and_tag
                 def gui_confirm(question: str, default: bool = False) -> bool:
                     resp_q: queue.Queue[bool] = queue.Queue()
@@ -362,6 +485,12 @@ def tag_only() -> None:
                     yes=yes_var.get(),
                     no=False,
                     striptags=False,
+                    llm_threshold=llm_threshold,
+                    llm_endpoint=search_and_tag.LLM_ENDPOINT,
+                    llm_model=search_and_tag.LLM_MODEL_NAME,
+                    whisper_model=search_and_tag.WHISPER_MODEL_NAME,
+                    whisper_device=search_and_tag.WHISPER_DEVICE,
+                    whisper_compute_type=search_and_tag.WHISPER_COMPUTE_TYPE,
                 )
                 total = len(leaves)
                 start = time.time()
@@ -603,13 +732,13 @@ def undo_last_txn() -> None:
     threading.Thread(target=worker, daemon=True).start()
 
 
-tk.Button(root, text="Move and Tag", command=run).grid(row=4, column=0, pady=10)
-tk.Button(root, text="Restructure Foldes", command=restructure).grid(row=4, column=1, pady=10)
-tk.Button(root, text="Tag Only", command=tag_only).grid(row=4, column=2, pady=10)
-tk.Button(root, text="Find Duplicates", command=find_dupes).grid(row=4, column=3, pady=10)
-tk.Button(root, text="Plan", command=make_plan).grid(row=5, column=0, pady=10)
-tk.Button(root, text="Apply Plan", command=apply_plan).grid(row=5, column=1, pady=10)
-tk.Button(root, text="Undo Last", command=undo_last_txn).grid(row=5, column=2, pady=10)
+tk.Button(root, text="Move and Tag", command=run).grid(row=5, column=0, pady=10)
+tk.Button(root, text="Restructure Foldes", command=restructure).grid(row=5, column=1, pady=10)
+tk.Button(root, text="Tag Only", command=tag_only).grid(row=5, column=2, pady=10)
+tk.Button(root, text="Find Duplicates", command=find_dupes).grid(row=5, column=3, pady=10)
+tk.Button(root, text="Plan", command=make_plan).grid(row=6, column=0, pady=10)
+tk.Button(root, text="Apply Plan", command=apply_plan).grid(row=6, column=1, pady=10)
+tk.Button(root, text="Undo Last", command=undo_last_txn).grid(row=6, column=2, pady=10)
 
 if __name__ == "__main__":
     poll_queue()

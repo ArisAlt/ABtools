@@ -1,4 +1,4 @@
-<!-- ABtools/scaffold.md · v2.3 · 2025-09-08 -->
+<!-- ABtools/scaffold.md · v2.4 · 2025-09-09 -->
 # Audiobook Tagging & Organization – Scaffold
 
 ## Project Structure
@@ -79,6 +79,7 @@ Audiobooks/
 - Buttons to generate restructure plans, apply them atomically and undo the last run
 - Processes output queue in small batches so the window remains responsive during large scans
 - Saves plan files with UTF-8 encoding for cross-platform compatibility
+- Dedicated "LLM fallback" panel mirrors CLI flags: endpoint, model, low-score threshold and Faster-Whisper device/compute (enter `none` to disable endpoint or whisper model)
 
 ### `restructure_for_audiobookshelf.py`
 
@@ -142,7 +143,7 @@ python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --apply-plan p
 | Script | Version | Path |
 |-------|---------|------|
 | `combobook.py` | v1.17 | `ABtools/combobook.py` |
-| `AbtoolsGui.py` | v0.11 | `ABtools/AbtoolsGui.py` |
+| `AbtoolsGui.py` | v0.12 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.3 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.21 | `ABtools/search_and_tag.py` |
