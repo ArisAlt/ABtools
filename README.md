@@ -16,8 +16,8 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - Optionally prompts for confirmation or proceeds automatically
 - Fetches metadata in parallel for faster tagging
 - Ranks matches using both title and author similarity for better accuracy
-- Local LLM fallback can propose metadata when online lookups fail or are low-confidence. It first tries GPT4All models you specify with `--llm-model`/`--llm-threshold`, piping in a Faster-Whisper transcript of the first minute (GPU-tunable via `--whisper-device`/`--whisper-compute-type`) and will fall back to an Ollama endpoint when a GPT4All model cannot be loaded.
-- `combobook.py` reuses the shared GPT4All/Ollama fallback to supply metadata when provider searches fail, tags the files automatically, and logs AI-assisted folders for later review
+- Local LM Studio fallback can propose metadata when online lookups fail or are low-confidence. It streams folder context and a Faster-Whisper transcript of the first minute (GPU-tunable via `--whisper-device`/`--whisper-compute-type`) to the OpenAI-compatible API that LM Studio exposes on port 1234 and parses the JSON reply.
+- `combobook.py` reuses the shared LM Studio fallback to supply metadata when provider searches fail, tags the files automatically, and logs AI-assisted folders for later review
 - Preserves part numbers like `(1 of 6)` when reorganizing files
 - Adds track numbers so multi-part books play in order
 - Detects series and volume numbers with fuzzy matching
@@ -48,9 +48,8 @@ This repository contains small utilities for preparing audiobook folders for [Au
   - `beautifulsoup4`
   - `rapidfuzz`
   - `rich` (optional, for prettier output)
-  - `gpt4all` (install to enable the offline metadata fallback; models default to `~/.cache/gpt4all/` unless you pass `--llm-model`)
-  - `ollama` (optional, used when the fallback routes to a running Ollama server; models live under `~/.ollama/models/` by default)
-  - `faster-whisper` (optional, provides 1-minute transcripts for the LLM fallback in `search_and_tag.py`; supports GPU via `--whisper-device`/`--whisper-compute-type`)
+  - `faster-whisper` (optional, provides 1-minute transcripts for the LM Studio fallback in `search_and_tag.py`; supports GPU via `--whisper-device`/`--whisper-compute-type`)
+  - An OpenAI-compatible endpoint (LM Studio 0.2+ exposes one locally; start Mistral-7B Q4 on port 1234 for best results)
 - `tqdm` (optional, for progress display in `find_duplicates.py`)
 
 Install all dependencies with:
@@ -59,32 +58,31 @@ Install all dependencies with:
 pip install -r requirements.txt
 ```
 
-## Local LLM setup
+## Local LLM setup (LM Studio)
 
-1. Install the Python bindings:
+1. Install the transcription dependency:
    ```bash
-   pip install gpt4all faster-whisper
+   pip install faster-whisper
    ```
-   (Install [Ollama](https://ollama.com/download) separately if you want the HTTP fallback.)
-2. Download a GPT4All `.gguf` model and place it in `~/.cache/gpt4all/`, or pass its absolute path with `--llm-model`. The helper reuses files from that directory between runs.
-3. Optionally start Ollama and pull a compatible model:
+   GPU acceleration is available when you pass `--whisper-device cuda` (or `rocm`).
+2. Download [LM Studio](https://lmstudio.ai/), open the **Mistral-7B Instruct Q4** model, and start a local server on port `1234` (the UI exposes a "Start Server" button that launches an OpenAI-compatible API).
+3. Run `search_and_tag.py` or `combobook.py` with the defaults or override them explicitly:
    ```bash
-   ollama pull mistral
-   ollama serve
+   python search_and_tag.py "E:/Audio Books" --commit --llm-endpoint http://127.0.0.1:1234/v1/chat/completions --llm-model mistral-7b-instruct-q4
    ```
-   When GPT4All fails to load or you set `--llm-model ollama:mistral`, the scripts stream prompts to the Ollama endpoint at `http://localhost:11434/`.
-4. During tagging, the fallback triggers automatically whenever every provider lookup returns no results or the best score falls below `--llm-threshold` (default 75). It first attempts GPT4All, then hands the same context and Faster-Whisper transcript to Ollama if configured.
+   Use `--llm-endpoint none` to disable the fallback entirely.
+4. The fallback triggers automatically whenever every provider lookup returns no results or the best score falls below `--llm-threshold` (default 75). The script transcribes roughly the first minute of audio using Faster-Whisper (default model `medium.en`) and sends folder context plus the transcript to LM Studio, expecting a single JSON object in return.
 
 ## Scripts
 
 | Script | Version | Path |
 |-------|---------|------|
 
-| `combobook.py` | v1.16 | `ABtools/combobook.py` |
+| `combobook.py` | v1.17 | `ABtools/combobook.py` |
 | `AbtoolsGui.py` | v0.11 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.3 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.20 | `ABtools/search_and_tag.py` |
+| `search_and_tag.py` | v2.21 | `ABtools/search_and_tag.py` |
 | `find_duplicates.py` | v0.5 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
 | `planning.py` | v0.2 | `ABtools/planning.py` |
@@ -94,7 +92,9 @@ pip install -r requirements.txt
 Run any script with `--version` to print its version and file location.
 
 ## `combobook.py`
-`combobook.py` tags, flattens and moves audiobook folders in a single pass. It searches Open Library, Google Books and Audible, ranks potential matches using fuzzy similarity and asks you to confirm before tagging and moving files. When provider lookups and prompts fail, the script now consults the shared GPT4All/Ollama fallback to propose metadata, tags every track automatically, and logs which folders used the AI assist. Only when both paths fail does it fall back to moving the folder into an `_unmatched` directory inside your library for manual review.
+`combobook.py` tags, flattens and moves audiobook folders in a single pass. It searches Open Library, Google Books and Audible, ranks potential matches using fuzzy similarity and asks you to confirm before tagging and moving files. When provider lookups and prompts fail, the script now consults the shared LM Studio fallback to propose metadata, tags every track automatically, and logs which folders used the AI assist. Only when both paths fail does it fall back to moving the folder into an `_unmatched` directory inside your library for manual review.
+
+The CLI exposes `--llm-endpoint`, `--llm-model`, `--whisper-model`, `--whisper-device`, and `--whisper-compute-type` so you can steer the same LM Studio and Faster-Whisper settings used by `search_and_tag.py` without touching its code.
 
 It now also collapses folders named like `Book Title (1 of 5)` into a single directory and names each file `Part 01`, `Part 02`, etc.
 
@@ -167,17 +167,7 @@ successful tagging, the metadata is exported to `metadata.json` and
 `book.nfo` so other players (including Audiobookshelf) can read the
 details.
 
-For stubborn matches, pass `--llm-model /path/to/model.gguf` to consult a
-local GPT4All model or `--llm-model ollama:model-name` to stream prompts
-to an Ollama server. When online providers score below
-`--llm-threshold` (default 75) or return nothing, the script now takes a
-1-minute sample from the first audio file, transcribes it locally with
-Faster-Whisper (configurable via `--whisper-model`, `--whisper-device`,
-and `--whisper-compute-type`), and feeds the
-transcript plus folder context to GPT4All. If GPT4All fails or you
-explicitly request Ollama, the same prompt is sent to the Ollama API.
-Successful LLM suggestions skip the review log but are written to tags,
-`metadata.json`, and `book.nfo` like any other metadata.
+For stubborn matches, keep the default `--llm-endpoint http://127.0.0.1:1234/v1/chat/completions` or set it explicitly alongside `--llm-model mistral-7b-instruct-q4` to consult LM Studio. When online providers score below `--llm-threshold` (default 75) or return nothing, the script takes roughly a 1-minute sample from the first audio file, transcribes it locally with Faster-Whisper (configurable via `--whisper-model`, `--whisper-device`, and `--whisper-compute-type`), and feeds the transcript plus folder context to LM Studio. Successful LLM suggestions skip the review log but are written to tags, `metadata.json`, and `book.nfo` like any other metadata.
 
 
 ## `flatten_discs.py`

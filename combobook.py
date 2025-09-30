@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/combobook.py  ·  v1.16  ·  2025-09-08
+ABtools/combobook.py  ·  v1.17  ·  2025-09-08
 
 USAGE
 -----
@@ -40,9 +40,9 @@ from difflib import SequenceMatcher
 import errno
 from difflib import SequenceMatcher
 
-from search_and_tag import generate_metadata_via_llm
+import search_and_tag as tagger
 
-VERSION = "1.16"
+VERSION = "1.17"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -516,7 +516,7 @@ def process(folder: Path, src: Path, lib: Path, dry: bool, yes: bool, copy: bool
         chosen_meta = hit
         llm_used = False
         if not chosen_meta:
-            llm_payload = generate_metadata_via_llm(folder, audio_files)
+            llm_payload = tagger.generate_metadata_via_llm(folder, audio_files)
             if llm_payload:
                 author = (llm_payload.get("author") or "").strip()
                 title = (llm_payload.get("title") or "").strip()
@@ -662,6 +662,16 @@ if __name__=="__main__":
     ap.add_argument("--plan-json")
     ap.add_argument("--apply-plan")
     ap.add_argument("--undo-last", action="store_true")
+    ap.add_argument("--llm-endpoint", default=None,
+                    help="OpenAI-compatible endpoint for LM Studio fallback (use 'none' to disable)")
+    ap.add_argument("--llm-model", default=None,
+                    help="Model name to request from the LM Studio endpoint")
+    ap.add_argument("--whisper-model", default=None,
+                    help="Faster-Whisper model or path for transcripts before the LM Studio call (default: medium.en)")
+    ap.add_argument("--whisper-device", default=None,
+                    help="Device passed to Faster-Whisper (auto/cpu/cuda/rocm)")
+    ap.add_argument("--whisper-compute-type", default=None,
+                    help="Precision passed to Faster-Whisper (auto/int8/float16…)")
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args=ap.parse_args()
 
@@ -698,5 +708,26 @@ if __name__=="__main__":
         plan = plan_library(src, lib, copy=args.copy)
         json.dump(plan, open(args.plan_json, "w", encoding="utf-8"), indent=2)
         sys.exit(0)
+    if args.llm_endpoint is not None:
+        val = args.llm_endpoint.strip()
+        if val.lower() in {"", "none", "null"}:
+            tagger.LLM_ENDPOINT = None
+        else:
+            tagger.LLM_ENDPOINT = val
+    if args.llm_model:
+        tagger.LLM_MODEL_NAME = args.llm_model.strip() or tagger.LLM_MODEL_NAME
+    if args.whisper_model is not None:
+        wm = args.whisper_model.strip()
+        if wm.lower() == "none":
+            tagger.WHISPER_MODEL_NAME = None
+        elif wm:
+            tagger.WHISPER_MODEL_NAME = wm
+    if args.whisper_device:
+        tagger.WHISPER_DEVICE = args.whisper_device.strip().lower() or tagger.WHISPER_DEVICE
+    if args.whisper_compute_type:
+        tagger.WHISPER_COMPUTE_TYPE = args.whisper_compute_type.strip().lower() or tagger.WHISPER_COMPUTE_TYPE
+    tagger.WHISPER_MODEL = None
+    tagger.WHISPER_LOAD_ERROR = None
+
     AUTO_YES = args.yes
     main(src, lib, args.commit, args.yes, args.copy)
