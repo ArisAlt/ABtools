@@ -1,4 +1,4 @@
-<!-- ABtools/README.md · v2.10 · 2025-09-08 -->
+<!-- ABtools/README.md · v2.11 · 2025-09-09 -->
 # Audiobook Organizer & Tagger
 
 This repository contains small utilities for preparing audiobook folders for [Audiobookshelf](https://www.audiobookshelf.org/).
@@ -33,6 +33,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - GUI front-end can run `find_duplicates.py` to scan source and destination for duplicate audio files
 - GUI duplicate finder adds: cross-compare Source <-> Destination, Compare-by selector (hash/name), Network Mode with timeout to avoid NAS stalls, adjustable hashing Threads, live "Checking:" current-file output, and output grouped by folder (matches CLI). Window is resizable and progress is smooth.
 - GUI front-end processes output in batches so the window stays responsive during large scans
+- GUI exposes LM Studio fallback controls (endpoint, model, threshold, and Faster-Whisper device/compute settings) so the "Move and Tag" and "Tag Only" flows match the CLI
 - Planning mode writes a JSON plan that can be reviewed before execution
 - GUI front-end checks that a plan file path is selected before generating or applying a plan
 - Plan files are read and written using UTF-8 encoding for cross-platform compatibility
@@ -79,7 +80,7 @@ pip install -r requirements.txt
 |-------|---------|------|
 
 | `combobook.py` | v1.17 | `ABtools/combobook.py` |
-| `AbtoolsGui.py` | v0.11 | `ABtools/AbtoolsGui.py` |
+| `AbtoolsGui.py` | v0.12 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.3 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.21 | `ABtools/search_and_tag.py` |
@@ -147,7 +148,8 @@ Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when 
 
 ## `AbtoolsGui.py`
 `AbtoolsGui.py` offers a basic Tkinter interface for `combobook.py`. It provides text fields for selecting the source and library folders, checkboxes matching the `--commit`, `--copy` and `--yes` command-line options, and shows live `combobook` output in a scrolling pane. Progress messages that rely on carriage returns are normalized so each update appears on its own line. A progress bar displays overall progress with an estimated time remaining. Alongside buttons for "Restructure", "Tag Only" and "Find Duplicates", the GUI exposes controls to generate restructure plans, apply them atomically, and undo the most recent transaction. The GUI also includes a "Network Mode" toggle with a timeout field used by the duplicate finder to prevent stalls on slow or flaky network shares, and a "Compare by" selector (hash/name). When both Source and Destination are set, "Find Duplicates" compares them against each other; otherwise it scans the single folder.
-It validates that a plan file path is chosen before generating or applying a plan to avoid permission errors, and processes queued output in small batches so the window stays responsive during long runs.
+
+A dedicated **LLM fallback** panel mirrors the CLI flags: set the LM Studio endpoint, model name, low-score threshold, and Faster-Whisper device/compute choices used to generate transcripts. Enter `none` to disable the endpoint or whisper model entirely. These settings are applied to both the "Move and Tag" workflow (which calls `combobook.py`) and the "Tag Only" flow (which calls `search_and_tag.py`) so GUI runs match the CLI. The GUI validates that a plan file path is chosen before generating or applying a plan to avoid permission errors, and processes queued output in small batches so the window stays responsive during long runs.
 
 ## `search_and_tag.py`
 `search_and_tag.py` tags or strips audiobook files. It queries Audible,
