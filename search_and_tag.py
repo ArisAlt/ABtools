@@ -1,39 +1,25 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
-ABtools/search_and_tag.py â€“ v2.21  (2025-09-08)
+ABtools/search_and_tag.py – v2.30  (2025-09-12)
 Tag (or strip) audiobook files using multiple metadata providers.
 
-    The script queries Audible, Open Library and Google Books, ranks the
-    results using fuzzy title *and author* matching and automatically tags
-    files with the best match. Low scoring hits will prompt for confirmation unless you
-    run with ``--yes``. Use ``--no`` to automatically decline low-scoring
-    matches. When prompted, the default answer is "No" so low confidence
-    matches won't be accepted accidentally. Log files are written
-next to the chosen root as ``tag_log.txt`` and ``review_log.txt``.
-Use ``--version`` to print the script version and file location.
+    The script queries Audible, Open Library, Google Books and Goodreads
+    via the LM Studio MCP server. Each provider search is routed through
+    ``full_web_search`` with an appropriate ``site:`` filter, then parsed
+    into metadata that is ranked using fuzzy title *and author* matching.
+    Low scoring hits will prompt for confirmation unless you run with
+    ``--yes``. Use ``--no`` to automatically decline low-scoring matches.
+    When prompted, the default answer is "No" so low confidence matches
+    won't be accepted accidentally. Log files are written next to the
+    chosen root as ``tag_log.txt`` and ``review_log.txt``. Use
+    ``--version`` to print the script version and file location.
 
 Supply ``--llm-endpoint``/``--llm-model`` to let a local LM Studio
 instance (tested with Mistral-7B Q4 on port 1234) suggest metadata when
 online providers fail or return low scores. Adjust the trigger with
 ``--llm-threshold`` (default: 75). When the fallback is used the script
-transcribes roughly the first 30 seconds of audio via a ``transformers``
-Whisper pipeline (``--whisper-model``) running on ONNX Runtime. Use
-``--whisper-device`` (``auto``/``cpu``/``cuda``/``rocm``/``dml``) to steer the
-execution provider (DirectML on Windows by default for AMD GPUs).
-
-examples
---------
-# preview everything
-python search_and_tag.py "E:\\Audio Books" --recurse
-
-# tag automatically
-python search_and_tag.py "E:\\Audio Books" --recurse --commit --yes
-
-# skip tagging automatically
-python search_and_tag.py "E:\\Audio Books" --recurse --no
-
-# strip all tags
-python search_and_tag.py "E:\\Audio Books" --recurse --striptags --commit
+shares folder context and file names with the model and expects JSON
+metadata in return; no local Whisper transcription is required anymore.
 """
 
 from __future__ import annotations
@@ -43,7 +29,7 @@ from typing import Optional, Tuple, List, Dict, Any
 from abclient import AbClient
 from dataclasses import dataclass
 
-VERSION = "2.21"
+VERSION = "2.30"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -59,30 +45,12 @@ import xml.etree.ElementTree as ET
 from mutagen import File as MFile, MutagenError
 from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TALB, TPE1, TDRC, TXXX, TRCK
 from mutagen.mp4 import MP4, MP4StreamInfoError
-from bs4 import BeautifulSoup
-
-try:
-    from transformers import pipeline as hf_pipeline  # type: ignore
-except ImportError:  # optional dependency
-    hf_pipeline = None  # type: ignore
-
-try:
-    import onnxruntime as ort  # type: ignore
-except ImportError:  # optional dependency
-    ort = None  # type: ignore
-
-
-try:
-    import optimum.onnxruntime  # type: ignore
-    OPTIMUM_AVAILABLE = True
-except ImportError:
-    OPTIMUM_AVAILABLE = False
 
 # â”€â”€â”€â”€â”€ colour (rich) or plain text â”€â”€â”€â”€â”€
 try:
     from rich import print as rprint
     from rich.prompt import Confirm
-except ImportError:  # plain console, strip tags like [bold]â€¦[/]
+except ImportError:  # plain console, strip tags like [bold]…[/]
     _TAGS = re.compile(r"\[/?[a-zA-Z].*?]")
     def rprint(*a, **k): print(_TAGS.sub("", " ".join(map(str, a))), **k)
     def Confirm(prompt: str, default=False):
@@ -107,41 +75,110 @@ LLM_SYSTEM_PROMPT = (
     "You analyse audiobook folders and files, respond with JSON metadata only."
 )
 
-IS_WINDOWS = sys.platform.startswith("win")
-DEFAULT_WHISPER_DEVICE = "dml" if IS_WINDOWS else "auto"
-DEFAULT_WHISPER_MODEL = "onnx-community/whisper-small.en"
-WHISPER_MODEL_NAME: Optional[str] = DEFAULT_WHISPER_MODEL
-WHISPER_DEVICE: str = DEFAULT_WHISPER_DEVICE
-WHISPER_PIPELINE: Optional[Any] = None
-WHISPER_PIPELINE_PROVIDER: Optional[str] = None
-WHISPER_PIPELINE_ERROR: Optional[str] = None
+MCP_SYSTEM_PROMPT = textwrap.dedent(
+    """
+    You route audiobook metadata lookups through the LM Studio MCP server.
+    Always satisfy user requests by calling the `full_web_search` tool with
+    an appropriate `site:` filter, then follow up with MCP summaries or page
+    fetches if needed. When you finish researching, respond with a single
+    JSON object describing the audiobook (title, authors[], year, series,
+    series_index, narrator, publisher, description).
+    """
+).strip()
 
+MCP_TOOLS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "full_web_search",
+            "description": "Run a web search via the LM Studio MCP server.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "num_results": {"type": "integer", "default": 5},
+                    "include_content": {"type": "boolean", "default": False},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_web_search_summaries",
+            "description": "Fetch summaries for prior MCP search results.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    }
+                },
+                "required": ["ids"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_single_web_page_content",
+            "description": "Retrieve the content of a web page by URL.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string"},
+                },
+                "required": ["url"],
+            },
+        },
+    },
+]
 
-def _call_llm(prompt: str, max_tokens: int | None = None, attempt: int = 0) -> Optional[str]:
+MCP_PROVIDER_SITES = {
+    "audible": ("Audible", "audible.com"),
+    "openlib": ("Open Library", "openlibrary.org"),
+    "gbooks": ("Google Books", "books.google.com"),
+    "goodreads": ("Goodreads", "goodreads.com"),
+}
+
+def _call_llm(
+    prompt: str,
+    *,
+    system_prompt: Optional[str] = None,
+    tools: Optional[list[dict[str, Any]]] = None,
+    max_tokens: int | None = None,
+    attempt: int = 0,
+) -> Optional[str]:
     if not LLM_ENDPOINT or not LLM_MODEL_NAME:
         return None
     token_budget = max_tokens or LLM_MAX_TOKENS
+    sys_prompt = system_prompt or LLM_SYSTEM_PROMPT
     payload = {
         "model": LLM_MODEL_NAME,
         "messages": [
-            {"role": "system", "content": LLM_SYSTEM_PROMPT},
+            {"role": "system", "content": sys_prompt},
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.0,
         "max_tokens": token_budget,
         "stream": False,
     }
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
     try:
         resp = SESSION.post(LLM_ENDPOINT, json=payload, timeout=LLM_TIMEOUT)
     except requests.RequestException as exc:  # pragma: no cover - network guard
         if DEBUG:
-            rprint(f"  [yellow]â€¢ LM Studio request failed: {exc}[/]")
+            rprint(f"  [yellow]• LM Studio request failed: {exc}[/]")
         return None
 
     if resp.status_code >= 400:
         if DEBUG:
             rprint(
-                f"  [yellow]â€¢ LM Studio returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
+                f"  [yellow]• LM Studio returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
             )
         return None
 
@@ -149,7 +186,7 @@ def _call_llm(prompt: str, max_tokens: int | None = None, attempt: int = 0) -> O
         data = resp.json()
     except ValueError:
         if DEBUG:
-            rprint("  [yellow]â€¢ LM Studio response was not valid JSON[/]")
+            rprint("  [yellow]• LM Studio response was not valid JSON[/]")
         return None
 
     choices = data.get("choices")
@@ -167,9 +204,15 @@ def _call_llm(prompt: str, max_tokens: int | None = None, attempt: int = 0) -> O
         new_budget = min(token_budget * 2, 2048)
         if DEBUG:
             rprint(
-                f"  [yellow]â€¢ LM Studio response hit max_tokens={token_budget}; retrying with {new_budget}[/]"
+                f"  [yellow]• LM Studio response hit max_tokens={token_budget}; retrying with {new_budget}[/]"
             )
-        return _call_llm(prompt, max_tokens=new_budget, attempt=1)
+        return _call_llm(
+            prompt,
+            system_prompt=system_prompt,
+            tools=tools,
+            max_tokens=new_budget,
+            attempt=1,
+        )
     return str(content)
 
 
@@ -186,13 +229,13 @@ def _tavily_search(query: str, *, max_results: int = 3) -> Optional[str]:
         resp = SESSION.post(TAVILY_ENDPOINT, json=payload, timeout=LLM_TIMEOUT)
     except requests.RequestException as exc:
         if DEBUG:
-            rprint(f"  [yellow]â€¢ Tavily search failed: {exc}[/]")
+            rprint(f"  [yellow]• Tavily search failed: {exc}[/]")
         return None
 
     if resp.status_code >= 400:
         if DEBUG:
             rprint(
-                f"  [yellow]â€¢ Tavily returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
+                f"  [yellow]• Tavily returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
             )
         return None
 
@@ -200,7 +243,7 @@ def _tavily_search(query: str, *, max_results: int = 3) -> Optional[str]:
         data = resp.json()
     except ValueError:
         if DEBUG:
-            rprint("  [yellow]â€¢ Tavily response was not valid JSON[/]")
+            rprint("  [yellow]• Tavily response was not valid JSON[/]")
         return None
 
     results = data.get("results")
@@ -216,7 +259,7 @@ def _tavily_search(query: str, *, max_results: int = 3) -> Optional[str]:
         url = item.get("url")
         chunk = content.strip()
         if len(chunk) > 500:
-            chunk = chunk[:500].rsplit(" ", 1)[0] + "â€¦"
+            chunk = chunk[:500].rsplit(" ", 1)[0] + "…"
         line = f"- {title.strip()}"
         if url:
             line += f" ({url.strip()})"
@@ -225,117 +268,6 @@ def _tavily_search(query: str, *, max_results: int = 3) -> Optional[str]:
         snippets.append(line)
     return "\n".join(snippets[:max_results]) if snippets else None
 
-
-
-def _resolve_provider_candidates(device: str) -> List[Optional[str]]:
-    if ort is None:
-        return [None]
-    requested = (device or "auto").lower()
-    order: List[str] = []
-    if requested in {"auto", ""}:
-        if IS_WINDOWS:
-            order.append("DmlExecutionProvider")
-        order.extend(["CUDAExecutionProvider", "ROCMExecutionProvider", "CPUExecutionProvider"])
-    elif requested in {"dml", "directml", "amd"}:
-        order = ["DmlExecutionProvider", "CPUExecutionProvider"]
-    elif requested == "cuda":
-        order = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-    elif requested == "rocm":
-        order = ["ROCMExecutionProvider", "CPUExecutionProvider"]
-    elif requested == "cpu":
-        order = ["CPUExecutionProvider"]
-    else:
-        order = [requested, "CPUExecutionProvider"]
-
-    available_list: List[str] = []
-    try:
-        available_list = list(getattr(ort, "get_available_providers", lambda: [])())
-    except Exception:
-        available_list = []
-    available = set(available_list)
-    providers: List[Optional[str]] = []
-    for prov in order:
-        if prov in available and prov not in providers:
-            providers.append(prov)
-    if not providers:
-        for prov in ["DmlExecutionProvider", "CUDAExecutionProvider", "ROCMExecutionProvider", "CPUExecutionProvider"]:
-            if prov in available and prov not in providers:
-                providers.append(prov)
-        if not providers:
-            providers.append(None)
-    if "CPUExecutionProvider" in available and "CPUExecutionProvider" not in providers:
-        providers.append("CPUExecutionProvider")
-    seen: set[Optional[str]] = set()
-    deduped: List[Optional[str]] = []
-    for prov in providers:
-        if prov not in seen:
-            deduped.append(prov)
-            seen.add(prov)
-    return deduped or [None]
-
-
-def get_whisper_pipeline() -> Optional[Any]:
-    global WHISPER_PIPELINE, WHISPER_PIPELINE_ERROR, WHISPER_PIPELINE_PROVIDER
-    if WHISPER_PIPELINE is not None:
-        return WHISPER_PIPELINE
-    if WHISPER_PIPELINE_ERROR:
-        return None
-    if hf_pipeline is None:
-        WHISPER_PIPELINE_ERROR = "transformers not installed"
-        return None
-    model_name = (WHISPER_MODEL_NAME or DEFAULT_WHISPER_MODEL or "").strip()
-    if not model_name:
-        WHISPER_PIPELINE_ERROR = "whisper model not specified"
-        return None
-
-    if ort is not None and not OPTIMUM_AVAILABLE:
-        WHISPER_PIPELINE_ERROR = 'optimum not installed'
-        if DEBUG:
-            rprint("  [yellow]* Install 'optimum' to enable ONNX Whisper transcripts[/]")
-        return None
-
-    provider_candidates = _resolve_provider_candidates(WHISPER_DEVICE)
-    errors: List[tuple[Optional[str], str]] = []
-    for provider in provider_candidates:
-        model_kwargs: Dict[str, Any] = {}
-        if provider:
-            model_kwargs["provider"] = provider
-
-        pipeline_kwargs: Dict[str, Any] = {
-            "task": "automatic-speech-recognition",
-            "model": model_name,
-            "tokenizer": model_name,
-            "feature_extractor": model_name,
-        }
-        if ort is not None:
-            pipeline_kwargs["framework"] = "onnx"
-        if model_kwargs:
-            pipeline_kwargs["model_kwargs"] = model_kwargs
-        try:
-            asr = hf_pipeline(**pipeline_kwargs)
-            actual_provider = provider or "auto"
-            if ort is not None:
-                try:
-                    provs = getattr(asr.model, "providers", None) or getattr(asr.model, "_providers", None)
-                    if provs:
-                        actual_provider = provs[0]
-                except Exception:
-                    pass
-            WHISPER_PIPELINE = asr
-            WHISPER_PIPELINE_PROVIDER = actual_provider
-            label = actual_provider or "transformers"
-            rprint(f"  [green]* Whisper transcripts via {label}[/]")
-            return asr
-        except Exception as exc:
-            errors.append((provider, str(exc)))
-
-    WHISPER_PIPELINE_ERROR = errors[-1][1] if errors else "unknown"
-    if DEBUG and errors:
-        for provider, message in errors:
-            label = provider or "auto"
-            rprint(f"  [yellow]* Whisper pipeline provider '{label}' failed: {message}[/]")
-    rprint("  [yellow]* Whisper pipeline unavailable - transcripts disabled[/]")
-    return None
 
 
 def log(status: str, message: str):
@@ -580,40 +512,6 @@ def _normalise_value(value: Any) -> Optional[str]:
 
 
 
-def _transcribe_first_snippet(files: list[Path]) -> Optional[str]:
-    if not files:
-        return None
-    pipeline = get_whisper_pipeline()
-    if pipeline is None:
-        return None
-    sample = files[0]
-    try:
-        result = pipeline(
-            str(sample),
-            chunk_length_s=30,
-            return_timestamps=False,
-        )
-    except Exception as exc:  # pragma: no cover - runtime dependency guard
-        if DEBUG:
-            rprint(f"  [yellow]�?� Whisper pipeline failed on {sample.name}: {exc}[/]")
-        return None
-
-    if isinstance(result, dict):
-        transcript = str(result.get("text", "") or "").strip()
-    else:
-        transcript = str(result).strip()
-    if not transcript:
-        return None
-    if len(transcript) > 400:
-        transcript = transcript[:400].rsplit(" ", 1)[0] + "�?�"
-    provider_label = WHISPER_PIPELINE_PROVIDER or "transformers"
-    try:
-        log("DBG", f"whisper transcript ({provider_label}) for {sample.name}")
-    except Exception:
-        pass
-    return transcript
-
-
 def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]:
     if not files:
         return None
@@ -623,14 +521,7 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
     folder_label = folder.name or folder.stem or str(folder)
     file_lines = "\n".join(f"- {f.name}" for f in files[:25])
     if len(files) > 25:
-        file_lines += f"\n- â€¦ (+{len(files) - 25} more)"
-
-    transcript = _transcribe_first_snippet(files)
-    if transcript:
-        transcript_block = textwrap.fill(transcript, width=96)
-    else:
-        transcript_block = "(transcript unavailable)"
-    sample_name = files[0].name
+        file_lines += f"\n- … (+{len(files) - 25} more)"
 
     prompt = textwrap.dedent(
         f"""
@@ -640,10 +531,9 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
         Audio files:
         {file_lines}
 
-        Transcript (first 15 seconds of {sample_name}):
-        {transcript_block}
-
-        Provide a single JSON object with these keys:
+        Use the LM Studio MCP tools (full_web_search with site filters for audible.com, openlibrary.org,
+        books.google.com, and goodreads.com) to research the matching audiobook edition. Respond with a
+        single JSON object containing:
           - "title" (required)
           - "author" (required)
           - "series" (optional)
@@ -688,7 +578,7 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
             payload = json.loads(cleaned)
         except json.JSONDecodeError:
             if DEBUG:
-                rprint("  [yellow]â€¢ LM Studio returned non-JSON metadata[/]")
+                rprint("  [yellow]• LM Studio returned non-JSON metadata[/]")
             return None
         if not isinstance(payload, dict):
             return None
@@ -729,10 +619,15 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
             if not (str(meta.get(key)).strip() if meta.get(key) is not None else "")
         }
 
-    primary_raw = _call_llm(prompt)
+    primary_raw = _call_llm(
+        prompt,
+        system_prompt=MCP_SYSTEM_PROMPT,
+        tools=MCP_TOOLS,
+        max_tokens=1024,
+    )
     if primary_raw is None:
         if DEBUG:
-            rprint("  [yellow]â€¢ LM Studio metadata request returned no content[/]")
+            rprint("  [yellow]• LM Studio metadata request returned no content[/]")
         return None
 
     result = parse_llm_raw(primary_raw)
@@ -754,7 +649,7 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
             if query:
                 tavily_context = _tavily_search(query)
                 if DEBUG and tavily_context:
-                    rprint(f"  [cyan]â€¢ Tavily search context fetched for '{query}'[/]")
+                    rprint(f"  [cyan]• Tavily search context fetched for '{query}'[/]")
         retry_prompt = (
             prompt
             + "\n\nThe previous response was missing these fields: "
@@ -771,15 +666,23 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
             retry_prompt += "\n\nIf needed, consult the Tavily Search API when gathering details."
         if DEBUG:
             rprint(
-                "  [cyan]â€¢ retrying LM Studio metadata request to fill: "
+                "  [cyan]• retrying LM Studio metadata request to fill: "
                 + missing_list
                 + "[/]"
             )
-        retry_raw = _call_llm(retry_prompt)
+        retry_raw = _call_llm(
+            retry_prompt,
+            system_prompt=MCP_SYSTEM_PROMPT,
+            tools=MCP_TOOLS,
+            max_tokens=1024,
+        )
         retry_result = parse_llm_raw(retry_raw)
         if retry_result:
-            # Prefer the result with fewer missing optional fields.
-            if not result or len(missing_optional(retry_result)) <= len(missing_optional(result)):
+            if result:
+                for key, value in retry_result.items():
+                    if value and not (result.get(key) and result.get(key).strip()):
+                        result[key] = value
+            else:
                 result = retry_result
 
     if not result:
@@ -789,7 +692,6 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
     result["source"] = "llm"
     return result
 
-# â”€â”€â”€â”€â”€ tag / strip functions â”€â”€â”€â”€â”€
 def strip_tags(file: Path):
     audio = MFile(str(file))
     if audio:
@@ -843,7 +745,7 @@ def export_metadata(path: Path, meta: dict):
 def process_leaf(path: Path, args):
     # skip Unknown Author
     if path.name == "Unknown Author" or path.parent.name == "Unknown Author":
-        rprint("â€¢ skip Unknown Author:", path)
+        rprint("• skip Unknown Author:", path)
         log("SKIP", str(path)); return
 
     # strip mode
@@ -871,7 +773,7 @@ def process_leaf(path: Path, args):
             [f for f in path.rglob("*") if f.suffix.lower() in AUDIO_EXTS]
         )
     if not targets:
-        rprint("  [yellow]â€¢ no audio files found[/]")
+        rprint("  [yellow]• no audio files found[/]")
         log("SKIP", f"{path}  no_audio")
         return
 
@@ -880,10 +782,10 @@ def process_leaf(path: Path, args):
     result, scores = best_match(a_guess, t_guess)
     llm_used = False
     if not result:
-        rprint("  [red] â€¢ no match[/]")
+        rprint("  [red] • no match[/]")
         llm_meta = generate_metadata_via_llm(folder, targets)
         if llm_meta:
-            rprint("  [magenta]â€¢ metadata supplied by local LLM[/]")
+            rprint("  [magenta]• metadata supplied by local LLM[/]")
             meta = llm_meta
             llm_used = True
         else:
@@ -916,7 +818,7 @@ def process_leaf(path: Path, args):
             llm_meta = generate_metadata_via_llm(folder, targets)
             if llm_meta:
                 rprint(
-                    f"  [magenta]â€¢ metadata supplied by local LLM (score {score} < {args.llm_threshold})[/]"
+                    f"  [magenta]• metadata supplied by local LLM (score {score} < {args.llm_threshold})[/]"
                 )
                 meta = llm_meta
                 llm_used = True
@@ -973,8 +875,6 @@ def main():
               --llm-model NAME     model to request from the endpoint (default: mistral-7b-instruct-q4)
               --llm-threshold SCORE  confidence score before using the LLM (default: 75)
               --tavily-key KEY     Tavily Search API key for supplemental research
-              --whisper-model MODEL   Transformers/ONNX Whisper model id (default: onnx-community/whisper-small.en)
-              --whisper-device DEV    Preferred ONNX Runtime provider (auto/cpu/cuda/rocm/dml)
             """))
 
     ap.add_argument("root", type=Path, help="file or folder")
@@ -993,14 +893,9 @@ def main():
                     help="use the local LLM when provider score falls below SCORE (default: 75)")
     ap.add_argument("--tavily-key", default=None,
                     help="Tavily Search API key for supplemental research (use 'none' to disable)")
-    ap.add_argument("--whisper-model", default=DEFAULT_WHISPER_MODEL, metavar="MODEL",
-                    help="Transformers/ONNX Whisper model id for ~30-second transcripts (use 'none' to disable; default: %(default)s)")
-    ap.add_argument("--whisper-device", default=DEFAULT_WHISPER_DEVICE, metavar="DEV",
-                    help="Preferred ONNX Runtime provider (auto, cpu, cuda, rocm, dml; default: %(default)s)")
     args = ap.parse_args()
 
     global LOG_PATH, REVIEW_PATH, DEBUG, LLM_ENDPOINT, LLM_MODEL_NAME
-    global WHISPER_MODEL_NAME, WHISPER_DEVICE, WHISPER_PIPELINE, WHISPER_PIPELINE_ERROR, WHISPER_PIPELINE_PROVIDER
     global TAVILY_API_KEY
     DEBUG = args.debug
     base = args.root if args.root.is_dir() else args.root.parent
@@ -1022,23 +917,6 @@ def main():
             TAVILY_API_KEY = None
         else:
             TAVILY_API_KEY = tavily_arg
-
-    whisper_arg = args.whisper_model.strip() if args.whisper_model else ""
-    if whisper_arg.lower() == "none":
-        WHISPER_MODEL_NAME = None
-    elif whisper_arg:
-        WHISPER_MODEL_NAME = whisper_arg
-    else:
-        WHISPER_MODEL_NAME = DEFAULT_WHISPER_MODEL
-
-    device_arg = (args.whisper_device or DEFAULT_WHISPER_DEVICE).strip().lower() or DEFAULT_WHISPER_DEVICE
-    if device_arg in {"amd", "directml"}:
-        device_arg = "dml"
-    WHISPER_DEVICE = device_arg
-
-    WHISPER_PIPELINE = None
-    WHISPER_PIPELINE_ERROR = None
-    WHISPER_PIPELINE_PROVIDER = None
 
     args.llm_threshold = max(0, min(100, args.llm_threshold))
 
