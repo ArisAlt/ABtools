@@ -1,4 +1,4 @@
-<!-- ABtools/scaffold.md · v2.4 · 2025-09-09 -->
+﻿<!-- ABtools/scaffold.md · v2.8 · 2025-09-10 -->
 # Audiobook Tagging & Organization – Scaffold
 
 ## Project Structure
@@ -9,11 +9,9 @@ Audiobooks/
 ├── search_and_tag.py       # Tags files using metadata providers
 ├── flatten_discs.py        # Merges "Disc" folders into one
 ├── combobook.py            # Combines tagging and restructuring
-├── AbtoolsGui.py           # Tkinter GUI with live output, planning controls and duplicate finder
+├── AbtoolsGui.py           # Tkinter GUI with live output and duplicate finder
 ├── restructure_for_audiobookshelf.py  # Reorganizes folders into Audiobookshelf layout
 ├── find_duplicates.py      # Reports duplicate audio files
-├── planning.py             # Build restructure plans with scoring
-├── transaction.py          # Execute plans atomically with rollback
 ├── catalog.py              # SQLite catalog for duplicate detection
 ├── metadata.json           # Optional: sample metadata format
 ├── requirements.txt        # Pip requirements
@@ -42,7 +40,8 @@ Audiobooks/
   - `--version` prints the script version and file path
   - Experimental switches stored in `~/.abclient.json` (used by `AbClient`)
   - Prints scores from all metadata providers
-  - Optional LM Studio fallback via `--llm-endpoint` / `--llm-model` / `--llm-threshold` supplies metadata when lookups fail, feeding an LM Studio server (default `http://127.0.0.1:1234/v1/chat/completions`) a Faster-Whisper transcript from the first minute of audio (configurable with `--whisper-model`, `--whisper-device`, and `--whisper-compute-type`)
+  - Optional LM Studio fallback via `--llm-endpoint` / `--llm-model` / `--llm-threshold` supplies metadata when lookups fail, feeding an LM Studio server (default `http://127.0.0.1:1234/v1/chat/completions`) a transcript from the first ~15 seconds of audio. Whisper settings are configurable with `--whisper-model`, `--whisper-device`, `--whisper-compute-type`, `--whisper-engine`, and the whisper.cpp flags; the toolkit tries Faster-Whisper first and falls back to ONNX Runtime/DirectML or an external `whisper.cpp` DirectML build when available.
+  - Provide a Tavily Search API key (`--tavily-key` or `TAVILY_API_KEY`) to feed web snippets into second-pass LLM retries when metadata fields are missing.
 
 ### `flatten_discs.py`
 
@@ -76,10 +75,10 @@ Audiobooks/
 - Output grouped by folder (matches CLI grouped logs)
 - "Restructure" button that reorganizes folders via `restructure_for_audiobookshelf.py`
 - "Network Mode" toggle with a timeout field to prevent stalls when reading from network shares during duplicate scans
-- Buttons to generate restructure plans, apply them atomically and undo the last run
 - Processes output queue in small batches so the window remains responsive during large scans
-- Saves plan files with UTF-8 encoding for cross-platform compatibility
-- Dedicated "LLM fallback" panel mirrors CLI flags: endpoint, model, low-score threshold and Faster-Whisper device/compute (enter `none` to disable endpoint or whisper model)
+- Operation settings are grouped, CLI arguments are exposed via drop-downs, primary actions are styled for emphasis, and the LLM fallback toggle lives alongside its model settings
+- Debug output is written to `AudioBooks_tools/AbtoolsGui.debug.log` for troubleshooting
+- Dedicated "LLM fallback" panel mirrors CLI flags: endpoint, model, low-score threshold, Tavily key, whisper model, device/compute, engine selector, and whisper.cpp binary/model/args (enter `none` to disable endpoint or whisper model; set `dml` for DirectML on Windows AMD GPUs).
 
 ### `restructure_for_audiobookshelf.py`
 
@@ -101,9 +100,6 @@ python restructure_for_audiobookshelf.py "Downloads" "Audiobooks"
 # commit changes
 python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --commit
 
-# create and apply plan
-python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --plan-json plan.json
-python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --apply-plan plan.json
 ```
 
 ### `find_duplicates.py`
@@ -142,14 +138,17 @@ python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --apply-plan p
 
 | Script | Version | Path |
 |-------|---------|------|
-| `combobook.py` | v1.17 | `ABtools/combobook.py` |
-| `AbtoolsGui.py` | v0.12 | `ABtools/AbtoolsGui.py` |
+| `combobook.py` | v1.18 | `ABtools/combobook.py` |
+| `AbtoolsGui.py` | v0.15 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v5.3 | `ABtools/restructure_for_audiobookshelf.py` |
+| `restructure_for_audiobookshelf.py` | v5.4 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.21 | `ABtools/search_and_tag.py` |
 | `find_duplicates.py` | v0.5 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
-| `planning.py` | v0.2 | `ABtools/planning.py` |
-| `transaction.py` | v0.2 | `ABtools/transaction.py` |
 | `catalog.py` | v0.1 | `ABtools/catalog.py` |
+
+
+
+
+
 

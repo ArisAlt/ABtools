@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-ABtools/search_and_tag.py – v2.21  (2025-09-08)
+ABtools/search_and_tag.py â€“ v2.21  (2025-09-08)
 Tag (or strip) audiobook files using multiple metadata providers.
 
     The script queries Audible, Open Library and Google Books, ranks the
@@ -16,10 +16,10 @@ Supply ``--llm-endpoint``/``--llm-model`` to let a local LM Studio
 instance (tested with Mistral-7B Q4 on port 1234) suggest metadata when
 online providers fail or return low scores. Adjust the trigger with
 ``--llm-threshold`` (default: 75). When the fallback is used the script
-transcribes the first minute of audio with Faster-Whisper
-(``--whisper-model``) and feeds that transcript to the LLM. Use
-``--whisper-device`` (``auto``/``cpu``/``cuda``/``rocm``) and
-``--whisper-compute-type`` to steer GPU acceleration where supported.
+transcribes roughly the first 30 seconds of audio via a ``transformers``
+Whisper pipeline (``--whisper-model``) running on ONNX Runtime. Use
+``--whisper-device`` (``auto``/``cpu``/``cuda``/``rocm``/``dml``) to steer the
+execution provider (DirectML on Windows by default for AMD GPUs).
 
 examples
 --------
@@ -37,10 +37,11 @@ python search_and_tag.py "E:\\Audio Books" --recurse --striptags --commit
 """
 
 from __future__ import annotations
-import argparse, datetime, re, sys, textwrap
+import argparse, datetime, os, re, sys, textwrap
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
 from abclient import AbClient
+from dataclasses import dataclass
 
 VERSION = "2.21"
 FILE_PATH = Path(__file__).resolve()
@@ -61,22 +62,34 @@ from mutagen.mp4 import MP4, MP4StreamInfoError
 from bs4 import BeautifulSoup
 
 try:
-    from faster_whisper import WhisperModel  # type: ignore
+    from transformers import pipeline as hf_pipeline  # type: ignore
 except ImportError:  # optional dependency
-    WhisperModel = None  # type: ignore
+    hf_pipeline = None  # type: ignore
 
-# ───── colour (rich) or plain text ─────
+try:
+    import onnxruntime as ort  # type: ignore
+except ImportError:  # optional dependency
+    ort = None  # type: ignore
+
+
+try:
+    import optimum.onnxruntime  # type: ignore
+    OPTIMUM_AVAILABLE = True
+except ImportError:
+    OPTIMUM_AVAILABLE = False
+
+# â”€â”€â”€â”€â”€ colour (rich) or plain text â”€â”€â”€â”€â”€
 try:
     from rich import print as rprint
     from rich.prompt import Confirm
-except ImportError:  # plain console, strip tags like [bold]…[/]
+except ImportError:  # plain console, strip tags like [bold]â€¦[/]
     _TAGS = re.compile(r"\[/?[a-zA-Z].*?]")
     def rprint(*a, **k): print(_TAGS.sub("", " ".join(map(str, a))), **k)
     def Confirm(prompt: str, default=False):
         ans = input(f"{prompt} [{'Y/n' if default else 'y/N'}] ").lower().strip()
         return default if ans == "" else ans in {"y", "yes"}
 
-# ───── constants ─────
+# â”€â”€â”€â”€â”€ constants â”€â”€â”€â”€â”€
 AUDIO_EXTS = {".mp3", ".m4a", ".m4b"}
 TAIL_RX    = re.compile(r"(?:\{[^}]*\})?(?:\s*\d+\.\d{2}\.\d{2})?(?:\s*\d+\s*[kK])?\s*$")
 PAREN_RX   = re.compile(r"\([^)]*\)")
@@ -85,34 +98,29 @@ LOG_PATH   = Path("tag_log.txt")
 REVIEW_PATH = Path("review_log.txt")
 
 LLM_ENDPOINT: Optional[str] = "http://127.0.0.1:1234/v1/chat/completions"
-LLM_MODEL_NAME: Optional[str] = "mistral-7b-instruct-q4"
+LLM_MODEL_NAME: Optional[str] = "llama-3-8b-instruct-abliterated-v2"
 LLM_TIMEOUT: int = 90
+LLM_MAX_TOKENS: int = 8000
+TAVILY_API_KEY: Optional[str] = os.environ.get("TAVILY_API_KEY")
+TAVILY_ENDPOINT: str = os.environ.get("TAVILY_ENDPOINT", "https://api.tavily.com/search")
 LLM_SYSTEM_PROMPT = (
-    "You analyse audiobook folders and respond with JSON metadata only."
+    "You analyse audiobook folders and files, respond with JSON metadata only."
 )
 
-WHISPER_MODEL_NAME: Optional[str] = None
-WHISPER_DEVICE: str = "auto"
-WHISPER_COMPUTE_TYPE: str = "auto"
-WHISPER_MODEL: Optional["WhisperModel"] = None
-WHISPER_LOAD_ERROR: Optional[str] = None
+IS_WINDOWS = sys.platform.startswith("win")
+DEFAULT_WHISPER_DEVICE = "dml" if IS_WINDOWS else "auto"
+DEFAULT_WHISPER_MODEL = "onnx-community/whisper-small.en"
+WHISPER_MODEL_NAME: Optional[str] = DEFAULT_WHISPER_MODEL
+WHISPER_DEVICE: str = DEFAULT_WHISPER_DEVICE
+WHISPER_PIPELINE: Optional[Any] = None
+WHISPER_PIPELINE_PROVIDER: Optional[str] = None
+WHISPER_PIPELINE_ERROR: Optional[str] = None
 
 
-def _whisper_compute_candidates(device: str) -> List[Optional[str]]:
-    choice = (WHISPER_COMPUTE_TYPE or "auto").lower()
-    device_key = (device or "auto").lower()
-    if choice and choice != "auto":
-        return [WHISPER_COMPUTE_TYPE]
-    if device_key == "cpu":
-        return ["int8", "int8_float16", None]
-    if device_key in {"cuda", "rocm"}:
-        return ["float16", "int8_float16", None, "int8"]
-    # device="auto" or anything else: try library default first then fallbacks
-    return [None, "float16", "int8_float16", "int8"]
-
-def _call_llm(prompt: str) -> Optional[str]:
+def _call_llm(prompt: str, max_tokens: int | None = None, attempt: int = 0) -> Optional[str]:
     if not LLM_ENDPOINT or not LLM_MODEL_NAME:
         return None
+    token_budget = max_tokens or LLM_MAX_TOKENS
     payload = {
         "model": LLM_MODEL_NAME,
         "messages": [
@@ -120,20 +128,20 @@ def _call_llm(prompt: str) -> Optional[str]:
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.0,
-        "max_tokens": 512,
+        "max_tokens": token_budget,
         "stream": False,
     }
     try:
         resp = SESSION.post(LLM_ENDPOINT, json=payload, timeout=LLM_TIMEOUT)
     except requests.RequestException as exc:  # pragma: no cover - network guard
         if DEBUG:
-            rprint(f"  [yellow]• LM Studio request failed: {exc}[/]")
+            rprint(f"  [yellow]â€¢ LM Studio request failed: {exc}[/]")
         return None
 
     if resp.status_code >= 400:
         if DEBUG:
             rprint(
-                f"  [yellow]• LM Studio returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
+                f"  [yellow]â€¢ LM Studio returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
             )
         return None
 
@@ -141,77 +149,195 @@ def _call_llm(prompt: str) -> Optional[str]:
         data = resp.json()
     except ValueError:
         if DEBUG:
-            rprint("  [yellow]• LM Studio response was not valid JSON[/]")
+            rprint("  [yellow]â€¢ LM Studio response was not valid JSON[/]")
         return None
 
     choices = data.get("choices")
     if not choices:
         return None
-    message = choices[0].get("message") if isinstance(choices[0], dict) else None
+    first_choice = choices[0] if isinstance(choices[0], dict) else {}
+    message = first_choice.get("message") if isinstance(first_choice, dict) else None
     if not message:
         return None
     content = message.get("content") if isinstance(message, dict) else None
     if not content:
         return None
+    finish_reason = first_choice.get("finish_reason") if isinstance(first_choice, dict) else None
+    if finish_reason == "length" and attempt == 0:
+        new_budget = min(token_budget * 2, 2048)
+        if DEBUG:
+            rprint(
+                f"  [yellow]â€¢ LM Studio response hit max_tokens={token_budget}; retrying with {new_budget}[/]"
+            )
+        return _call_llm(prompt, max_tokens=new_budget, attempt=1)
     return str(content)
 
 
-def get_whisper_model() -> Optional["WhisperModel"]:
-    global WHISPER_MODEL, WHISPER_LOAD_ERROR
-    if WHISPER_MODEL_NAME is None:
+def _tavily_search(query: str, *, max_results: int = 3) -> Optional[str]:
+    if not TAVILY_API_KEY:
         return None
-    if WHISPER_MODEL is not None:
-        return WHISPER_MODEL
-    if WHISPER_LOAD_ERROR:
+    payload = {
+        "api_key": TAVILY_API_KEY,
+        "query": query,
+        "search_depth": "advanced",
+        "max_results": max_results,
+    }
+    try:
+        resp = SESSION.post(TAVILY_ENDPOINT, json=payload, timeout=LLM_TIMEOUT)
+    except requests.RequestException as exc:
+        if DEBUG:
+            rprint(f"  [yellow]â€¢ Tavily search failed: {exc}[/]")
         return None
-    if WhisperModel is None:
-        WHISPER_LOAD_ERROR = "faster-whisper not installed"
-        rprint("  [yellow]• install 'faster-whisper' to enable local transcription[/]")
-        return None
-    target = WHISPER_MODEL_NAME
-    expanded = Path(target).expanduser()
-    model_source = str(expanded) if expanded.exists() else target
-    requested_device = WHISPER_DEVICE or "auto"
-    device_candidates = [requested_device]
-    if requested_device.lower() not in {"cpu"}:
-        device_candidates.append("cpu")
 
-    last_exc: Optional[Exception] = None
-    for device in device_candidates:
-        compute_candidates = _whisper_compute_candidates(device)
-        for compute_type in compute_candidates:
-            kwargs: Dict[str, Any] = {"device": device}
-            if compute_type is not None:
-                kwargs["compute_type"] = compute_type
-            try:
-                WHISPER_MODEL = WhisperModel(model_source, **kwargs)
-                if device != requested_device:
-                    rprint(
-                        f"  [yellow]• Faster-Whisper fell back to device '{device}' (requested '{requested_device}')[/]"
-                    )
-                elif (
-                    (WHISPER_COMPUTE_TYPE or "auto").lower() == "auto"
-                    and compute_candidates
-                    and compute_type != compute_candidates[0]
-                ):
-                    chosen = compute_type or "default"
-                    rprint(f"  [yellow]• Faster-Whisper compute_type auto-selected '{chosen}'[/]")
-                return WHISPER_MODEL
-            except Exception as exc:  # pragma: no cover - optional dependency guard
-                last_exc = exc
-                if DEBUG:
-                    chosen = compute_type or "default"
-                    rprint(
-                        f"  [yellow]• Faster-Whisper load failed with device='{device}' compute_type='{chosen}': {exc}[/]"
-                    )
-                continue
-    if last_exc is not None:
-        WHISPER_LOAD_ERROR = str(last_exc)
-    detail = f" ({last_exc})" if DEBUG and last_exc else ""
-    rprint(f"  [yellow]• failed to load Faster-Whisper model{detail}[/]")
+    if resp.status_code >= 400:
+        if DEBUG:
+            rprint(
+                f"  [yellow]â€¢ Tavily returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
+            )
+        return None
+
+    try:
+        data = resp.json()
+    except ValueError:
+        if DEBUG:
+            rprint("  [yellow]â€¢ Tavily response was not valid JSON[/]")
+        return None
+
+    results = data.get("results")
+    if not results:
+        return None
+
+    snippets: List[str] = []
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        title = item.get("title") or item.get("url") or "Result"
+        content = item.get("content") or item.get("snippet") or ""
+        url = item.get("url")
+        chunk = content.strip()
+        if len(chunk) > 500:
+            chunk = chunk[:500].rsplit(" ", 1)[0] + "â€¦"
+        line = f"- {title.strip()}"
+        if url:
+            line += f" ({url.strip()})"
+        if chunk:
+            line += f": {chunk}"
+        snippets.append(line)
+    return "\n".join(snippets[:max_results]) if snippets else None
+
+
+
+def _resolve_provider_candidates(device: str) -> List[Optional[str]]:
+    if ort is None:
+        return [None]
+    requested = (device or "auto").lower()
+    order: List[str] = []
+    if requested in {"auto", ""}:
+        if IS_WINDOWS:
+            order.append("DmlExecutionProvider")
+        order.extend(["CUDAExecutionProvider", "ROCMExecutionProvider", "CPUExecutionProvider"])
+    elif requested in {"dml", "directml", "amd"}:
+        order = ["DmlExecutionProvider", "CPUExecutionProvider"]
+    elif requested == "cuda":
+        order = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    elif requested == "rocm":
+        order = ["ROCMExecutionProvider", "CPUExecutionProvider"]
+    elif requested == "cpu":
+        order = ["CPUExecutionProvider"]
+    else:
+        order = [requested, "CPUExecutionProvider"]
+
+    available_list: List[str] = []
+    try:
+        available_list = list(getattr(ort, "get_available_providers", lambda: [])())
+    except Exception:
+        available_list = []
+    available = set(available_list)
+    providers: List[Optional[str]] = []
+    for prov in order:
+        if prov in available and prov not in providers:
+            providers.append(prov)
+    if not providers:
+        for prov in ["DmlExecutionProvider", "CUDAExecutionProvider", "ROCMExecutionProvider", "CPUExecutionProvider"]:
+            if prov in available and prov not in providers:
+                providers.append(prov)
+        if not providers:
+            providers.append(None)
+    if "CPUExecutionProvider" in available and "CPUExecutionProvider" not in providers:
+        providers.append("CPUExecutionProvider")
+    seen: set[Optional[str]] = set()
+    deduped: List[Optional[str]] = []
+    for prov in providers:
+        if prov not in seen:
+            deduped.append(prov)
+            seen.add(prov)
+    return deduped or [None]
+
+
+def get_whisper_pipeline() -> Optional[Any]:
+    global WHISPER_PIPELINE, WHISPER_PIPELINE_ERROR, WHISPER_PIPELINE_PROVIDER
+    if WHISPER_PIPELINE is not None:
+        return WHISPER_PIPELINE
+    if WHISPER_PIPELINE_ERROR:
+        return None
+    if hf_pipeline is None:
+        WHISPER_PIPELINE_ERROR = "transformers not installed"
+        return None
+    model_name = (WHISPER_MODEL_NAME or DEFAULT_WHISPER_MODEL or "").strip()
+    if not model_name:
+        WHISPER_PIPELINE_ERROR = "whisper model not specified"
+        return None
+
+    if ort is not None and not OPTIMUM_AVAILABLE:
+        WHISPER_PIPELINE_ERROR = 'optimum not installed'
+        if DEBUG:
+            rprint("  [yellow]* Install 'optimum' to enable ONNX Whisper transcripts[/]")
+        return None
+
+    provider_candidates = _resolve_provider_candidates(WHISPER_DEVICE)
+    errors: List[tuple[Optional[str], str]] = []
+    for provider in provider_candidates:
+        model_kwargs: Dict[str, Any] = {}
+        if provider:
+            model_kwargs["provider"] = provider
+
+        pipeline_kwargs: Dict[str, Any] = {
+            "task": "automatic-speech-recognition",
+            "model": model_name,
+            "tokenizer": model_name,
+            "feature_extractor": model_name,
+        }
+        if ort is not None:
+            pipeline_kwargs["framework"] = "onnx"
+        if model_kwargs:
+            pipeline_kwargs["model_kwargs"] = model_kwargs
+        try:
+            asr = hf_pipeline(**pipeline_kwargs)
+            actual_provider = provider or "auto"
+            if ort is not None:
+                try:
+                    provs = getattr(asr.model, "providers", None) or getattr(asr.model, "_providers", None)
+                    if provs:
+                        actual_provider = provs[0]
+                except Exception:
+                    pass
+            WHISPER_PIPELINE = asr
+            WHISPER_PIPELINE_PROVIDER = actual_provider
+            label = actual_provider or "transformers"
+            rprint(f"  [green]* Whisper transcripts via {label}[/]")
+            return asr
+        except Exception as exc:
+            errors.append((provider, str(exc)))
+
+    WHISPER_PIPELINE_ERROR = errors[-1][1] if errors else "unknown"
+    if DEBUG and errors:
+        for provider, message in errors:
+            label = provider or "auto"
+            rprint(f"  [yellow]* Whisper pipeline provider '{label}' failed: {message}[/]")
+    rprint("  [yellow]* Whisper pipeline unavailable - transcripts disabled[/]")
     return None
 
-# ───── logging helper ─────
+
 def log(status: str, message: str):
     LOG_PATH.parent.mkdir(exist_ok=True)
     with LOG_PATH.open("a", encoding="utf-8") as fh:
@@ -222,14 +348,14 @@ def review_log(path: Path, reason: str):
     with REVIEW_PATH.open("a", encoding="utf-8") as fh:
         fh.write(f"{datetime.datetime.now():%F %T}  {reason:<9}  {path}\n")
 
-# ───── tiny helpers ─────
+# â”€â”€â”€â”€â”€ tiny helpers â”€â”€â”€â”€â”€
 def clean_tail(s: str) -> str:
     return TAIL_RX.sub("", s).strip()
 
 def has_audio(folder: Path) -> bool:
     return any(c.suffix.lower() in AUDIO_EXTS for c in folder.iterdir())
 
-# ───── filename guess ─────
+# â”€â”€â”€â”€â”€ filename guess â”€â”€â”€â”€â”€
 def guess_from_path(p: Path) -> Tuple[Optional[str], str, Optional[str]]:
     """Return (author, title, year).  Author may be None."""
     leaf = clean_tail(p.stem if p.is_file() else p.name)
@@ -252,7 +378,7 @@ def guess_from_path(p: Path) -> Tuple[Optional[str], str, Optional[str]]:
     title = PAREN_RX.sub("", title).strip()
     return author, title, year
 
-# ───── online lookup helpers ─────
+# â”€â”€â”€â”€â”€ online lookup helpers â”€â”€â”€â”€â”€
 def openlib(author: Optional[str], title: str) -> Optional[dict]:
     try:
         q = f"title:{title}" + (f" author:{author}" if author else "")
@@ -393,6 +519,38 @@ def best_match(author: Optional[str], title: str, client: AbClient = AB) -> tupl
     return max(candidates, key=lambda x: x[0]), results
 
 
+def _enrich_metadata_with_providers(meta: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
+    """Fill missing metadata fields using provider lookups."""
+    title = meta.get("title")
+    if not title:
+        return meta
+
+    needed_keys = {key for key in ("author", "year", "series") if not (meta.get(key) or "")}
+    if not needed_keys:
+        return meta
+
+    author = meta.get("author")
+    providers = (audible, openlib, gbooks)
+    for fn in providers:
+        info = fn(author, title)
+        if not info:
+            continue
+        if "author" in needed_keys:
+            authors = info.get("authors")
+            if authors:
+                meta["author"] = ", ".join(a for a in authors if a)
+        if "year" in needed_keys and info.get("year"):
+            meta["year"] = info["year"]
+        if "series" in needed_keys and info.get("series"):
+            meta["series"] = info["series"]
+
+        needed_keys = {key for key in ("author", "year", "series") if not (meta.get(key) or "")}
+        if not needed_keys:
+            break
+        author = meta.get("author")
+    return meta
+
+
 def _strip_fence(text: str) -> str:
     text = text.strip()
     if text.startswith("```"):
@@ -421,45 +579,39 @@ def _normalise_value(value: Any) -> Optional[str]:
     return value or None
 
 
-def _transcribe_first_minute(files: list[Path]) -> Optional[str]:
+
+def _transcribe_first_snippet(files: list[Path]) -> Optional[str]:
     if not files:
         return None
-    whisper = get_whisper_model()
-    if whisper is None:
+    pipeline = get_whisper_pipeline()
+    if pipeline is None:
         return None
     sample = files[0]
     try:
-        segments, _ = whisper.transcribe(
+        result = pipeline(
             str(sample),
-            beam_size=1,
-            temperature=0.0,
-            vad_filter=True,
-            word_timestamps=False,
+            chunk_length_s=30,
+            return_timestamps=False,
         )
     except Exception as exc:  # pragma: no cover - runtime dependency guard
         if DEBUG:
-            rprint(f"  [yellow]• Faster-Whisper failed on {sample.name}: {exc}[/]")
+            rprint(f"  [yellow]�?� Whisper pipeline failed on {sample.name}: {exc}[/]")
         return None
 
-    pieces: list[str] = []
-    total_chars = 0
-    for segment in segments:
-        text = segment.text.strip()
-        if not text:
-            continue
-        pieces.append(text)
-        total_chars += len(text)
-        # stop once we reach roughly the first minute of audio
-        if getattr(segment, "end", None) is not None and segment.end >= 60:
-            break
-        if total_chars >= 1600:
-            break
-    if not pieces:
+    if isinstance(result, dict):
+        transcript = str(result.get("text", "") or "").strip()
+    else:
+        transcript = str(result).strip()
+    if not transcript:
         return None
-    transcript = " ".join(pieces).strip()
-    if len(transcript) > 1600:
-        transcript = transcript[:1600].rsplit(" ", 1)[0] + "…"
-    return transcript or None
+    if len(transcript) > 400:
+        transcript = transcript[:400].rsplit(" ", 1)[0] + "�?�"
+    provider_label = WHISPER_PIPELINE_PROVIDER or "transformers"
+    try:
+        log("DBG", f"whisper transcript ({provider_label}) for {sample.name}")
+    except Exception:
+        pass
+    return transcript
 
 
 def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]:
@@ -471,9 +623,9 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
     folder_label = folder.name or folder.stem or str(folder)
     file_lines = "\n".join(f"- {f.name}" for f in files[:25])
     if len(files) > 25:
-        file_lines += f"\n- … (+{len(files) - 25} more)"
+        file_lines += f"\n- â€¦ (+{len(files) - 25} more)"
 
-    transcript = _transcribe_first_minute(files)
+    transcript = _transcribe_first_snippet(files)
     if transcript:
         transcript_block = textwrap.fill(transcript, width=96)
     else:
@@ -488,7 +640,7 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
         Audio files:
         {file_lines}
 
-        Transcript (first minute of {sample_name}):
+        Transcript (first 15 seconds of {sample_name}):
         {transcript_block}
 
         Provide a single JSON object with these keys:
@@ -506,23 +658,6 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
         """
     ).strip()
 
-    raw = _call_llm(prompt)
-    if raw is None:
-        if DEBUG:
-            rprint("  [yellow]• LM Studio metadata request returned no content[/]")
-        return None
-
-    cleaned = _strip_fence(raw)
-    try:
-        payload = json.loads(cleaned)
-    except json.JSONDecodeError:
-        if DEBUG:
-            rprint("  [yellow]• LM Studio returned non-JSON metadata[/]")
-        return None
-
-    if not isinstance(payload, dict):
-        return None
-
     allowed = {
         "title",
         "author",
@@ -535,37 +670,126 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
         "publisher",
     }
 
-    meta: Dict[str, Optional[str]] = {}
-    for key in allowed:
-        if key in payload:
-            meta[key] = _normalise_value(payload[key])
+    optional_keys = {
+        "series",
+        "series_index",
+        "year",
+        "narrator",
+        "language",
+        "description",
+        "publisher",
+    }
 
-    if not meta.get("title") or not meta.get("author"):
+    def parse_llm_raw(raw: Optional[str]) -> Optional[Dict[str, Optional[str]]]:
+        if raw is None:
+            return None
+        cleaned = _strip_fence(raw)
+        try:
+            payload = json.loads(cleaned)
+        except json.JSONDecodeError:
+            if DEBUG:
+                rprint("  [yellow]â€¢ LM Studio returned non-JSON metadata[/]")
+            return None
+        if not isinstance(payload, dict):
+            return None
+
+        meta: Dict[str, Optional[str]] = {}
+        for key in allowed:
+            if key in payload:
+                meta[key] = _normalise_value(payload[key])
+
+        if not meta.get("title") or not meta.get("author"):
+            return None
+
+        year_value = meta.get("year")
+        if year_value:
+            match = re.search(r"\b(\d{4})\b", year_value)
+            meta["year"] = match.group(1) if match else None
+
+        if meta.get("series_index"):
+            meta["series_index"] = _normalise_value(meta["series_index"])
+
+        result_meta: Dict[str, Optional[str]] = {
+            "title": meta["title"],
+            "author": meta["author"],
+            "year": meta.get("year"),
+            "series": meta.get("series"),
+        }
+        if meta.get("series_index"):
+            result_meta["series_index"] = meta["series_index"]
+        for extra in ("narrator", "language", "description", "publisher"):
+            if meta.get(extra):
+                result_meta[extra] = meta[extra]
+        return result_meta
+
+    def missing_optional(meta: Dict[str, Optional[str]]) -> set[str]:
+        return {
+            key
+            for key in optional_keys
+            if not (str(meta.get(key)).strip() if meta.get(key) is not None else "")
+        }
+
+    primary_raw = _call_llm(prompt)
+    if primary_raw is None:
+        if DEBUG:
+            rprint("  [yellow]â€¢ LM Studio metadata request returned no content[/]")
         return None
 
-    year_value = meta.get("year")
-    if year_value:
-        match = re.search(r"\b(\d{4})\b", year_value)
-        meta["year"] = match.group(1) if match else None
+    result = parse_llm_raw(primary_raw)
+    missing_fields = missing_optional(result) if result else optional_keys
 
-    if meta.get("series_index"):
-        meta["series_index"] = _normalise_value(meta["series_index"])
+    # Retry once with a stronger instruction if important fields are missing.
+    if missing_fields:
+        missing_list = ", ".join(sorted(missing_fields))
+        tavily_context = None
+        if TAVILY_API_KEY:
+            query_terms: List[str] = []
+            if result and result.get("title"):
+                query_terms.append(str(result["title"]))
+            else:
+                query_terms.append(folder_label)
+            if result and result.get("author"):
+                query_terms.append(str(result["author"]))
+            query = " ".join(t for t in query_terms if t).strip()
+            if query:
+                tavily_context = _tavily_search(query)
+                if DEBUG and tavily_context:
+                    rprint(f"  [cyan]â€¢ Tavily search context fetched for '{query}'[/]")
+        retry_prompt = (
+            prompt
+            + "\n\nThe previous response was missing these fields: "
+            + missing_list
+            + ". Please research reputable audiobook sources (Audible, Open Library, Google Books, publisher sites) and try again."
+        )
+        if tavily_context:
+            retry_prompt += (
+                "\n\nExternal research via Tavily Search (summaries):\n"
+                + tavily_context
+                + "\nUse this information to fill the missing metadata fields."
+            )
+        else:
+            retry_prompt += "\n\nIf needed, consult the Tavily Search API when gathering details."
+        if DEBUG:
+            rprint(
+                "  [cyan]â€¢ retrying LM Studio metadata request to fill: "
+                + missing_list
+                + "[/]"
+            )
+        retry_raw = _call_llm(retry_prompt)
+        retry_result = parse_llm_raw(retry_raw)
+        if retry_result:
+            # Prefer the result with fewer missing optional fields.
+            if not result or len(missing_optional(retry_result)) <= len(missing_optional(result)):
+                result = retry_result
 
-    result: Dict[str, Optional[str]] = {
-        "title": meta["title"],
-        "author": meta["author"],
-        "year": meta.get("year"),
-        "series": meta.get("series"),
-    }
-    if meta.get("series_index"):
-        result["series_index"] = meta["series_index"]
-    for extra in ("narrator", "language", "description", "publisher"):
-        if meta.get(extra):
-            result[extra] = meta[extra]
+    if not result:
+        return None
+
+    result = _enrich_metadata_with_providers(result)
     result["source"] = "llm"
     return result
 
-# ───── tag / strip functions ─────
+# â”€â”€â”€â”€â”€ tag / strip functions â”€â”€â”€â”€â”€
 def strip_tags(file: Path):
     audio = MFile(str(file))
     if audio:
@@ -592,11 +816,11 @@ def write_tags(file: Path, meta: dict, index: int = 0, total: int = 0):
     elif ext in {".m4a", ".m4b"}:
         mp4 = MP4(str(file))
         mp4.clear()
-        mp4["©nam"] = meta["title"]
-        mp4["©alb"] = meta["title"]
-        mp4["©ART"] = meta["author"]
+        mp4["Â©nam"] = meta["title"]
+        mp4["Â©alb"] = meta["title"]
+        mp4["Â©ART"] = meta["author"]
         if meta["year"]:
-            mp4["©day"] = meta["year"]
+            mp4["Â©day"] = meta["year"]
         if meta.get("series"):
             mp4["----:com.apple.iTunes:series"] = [meta["series"].encode("utf-8")]
         if index:
@@ -615,11 +839,11 @@ def export_metadata(path: Path, meta: dict):
             child.text = v
     ET.ElementTree(root).write(target / "book.nfo", encoding="utf-8", xml_declaration=True)
 
-# ───── process one leaf ─────
+# â”€â”€â”€â”€â”€ process one leaf â”€â”€â”€â”€â”€
 def process_leaf(path: Path, args):
     # skip Unknown Author
     if path.name == "Unknown Author" or path.parent.name == "Unknown Author":
-        rprint("• skip Unknown Author:", path)
+        rprint("â€¢ skip Unknown Author:", path)
         log("SKIP", str(path)); return
 
     # strip mode
@@ -631,13 +855,13 @@ def process_leaf(path: Path, args):
                 strip_tags(f); ok += 1
             except MutagenError:
                 log("ERR", f"strip {f}")
-        rprint(f"[cyan]→[/] {path}  [green]tags stripped ({ok}/{len(targets)})[/]")
+        rprint(f"[cyan]â†’[/] {path}  [green]tags stripped ({ok}/{len(targets)})[/]")
         log("STRIP", f"{path}  ({ok}/{len(targets)})")
         return
 
     # guess
     a_guess, t_guess, y_guess = guess_from_path(path)
-    rprint(f"[cyan]→[/] {path}")
+    rprint(f"[cyan]â†’[/] {path}")
     rprint(f"  guess: [italic]{t_guess}[/] by {a_guess or '?'} ({y_guess or '?'})")
 
     if path.is_file():
@@ -647,7 +871,7 @@ def process_leaf(path: Path, args):
             [f for f in path.rglob("*") if f.suffix.lower() in AUDIO_EXTS]
         )
     if not targets:
-        rprint("  [yellow]• no audio files found[/]")
+        rprint("  [yellow]â€¢ no audio files found[/]")
         log("SKIP", f"{path}  no_audio")
         return
 
@@ -656,10 +880,10 @@ def process_leaf(path: Path, args):
     result, scores = best_match(a_guess, t_guess)
     llm_used = False
     if not result:
-        rprint("  [red] • no match[/]")
+        rprint("  [red] â€¢ no match[/]")
         llm_meta = generate_metadata_via_llm(folder, targets)
         if llm_meta:
-            rprint("  [magenta]• metadata supplied by local LLM[/]")
+            rprint("  [magenta]â€¢ metadata supplied by local LLM[/]")
             meta = llm_meta
             llm_used = True
         else:
@@ -679,7 +903,7 @@ def process_leaf(path: Path, args):
         rprint(f"  provider: {hit['source']}")
 
         if score < 60:
-            rprint("  [yellow]⚠ low confidence – double-check[/]")
+            rprint("  [yellow]âš  low confidence â€“ double-check[/]")
 
         meta = {
             "title": hit["title"],
@@ -692,7 +916,7 @@ def process_leaf(path: Path, args):
             llm_meta = generate_metadata_via_llm(folder, targets)
             if llm_meta:
                 rprint(
-                    f"  [magenta]• metadata supplied by local LLM (score {score} < {args.llm_threshold})[/]"
+                    f"  [magenta]â€¢ metadata supplied by local LLM (score {score} < {args.llm_threshold})[/]"
                 )
                 meta = llm_meta
                 llm_used = True
@@ -721,7 +945,7 @@ def process_leaf(path: Path, args):
     if label == "OK":
         export_metadata(path, meta)
 
-# ───── leaf finder ─────
+# â”€â”€â”€â”€â”€ leaf finder â”€â”€â”€â”€â”€
 def walk_leaves(root: Path) -> List[Path]:
     if root.is_file():
         return [root]
@@ -732,7 +956,7 @@ def walk_leaves(root: Path) -> List[Path]:
             leaves.append(p)
     return leaves
 
-# ───── cli / main ─────
+# â”€â”€â”€â”€â”€ cli / main â”€â”€â”€â”€â”€
 def main():
     ap = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -748,9 +972,11 @@ def main():
               --llm-endpoint URL   OpenAI-compatible endpoint (default: http://127.0.0.1:1234/v1/chat/completions)
               --llm-model NAME     model to request from the endpoint (default: mistral-7b-instruct-q4)
               --llm-threshold SCORE  confidence score before using the LLM (default: 75)
-              --whisper-device   target device for Faster-Whisper (auto/cpu/cuda/rocm)
-              --whisper-compute-type TYPE  compute precision for Faster-Whisper (auto/int8/float16…)
+              --tavily-key KEY     Tavily Search API key for supplemental research
+              --whisper-model MODEL   Transformers/ONNX Whisper model id (default: onnx-community/whisper-small.en)
+              --whisper-device DEV    Preferred ONNX Runtime provider (auto/cpu/cuda/rocm/dml)
             """))
+
     ap.add_argument("root", type=Path, help="file or folder")
     ap.add_argument("--debug", action="store_true",
                     help="print full tracebacks on errors")
@@ -765,17 +991,17 @@ def main():
                     help="Model name to request from the LM Studio endpoint (default: %(default)s)")
     ap.add_argument("--llm-threshold", type=int, default=75, metavar="SCORE",
                     help="use the local LLM when provider score falls below SCORE (default: 75)")
-    ap.add_argument("--whisper-model", default="medium.en", metavar="MODEL",
-                    help="Faster-Whisper model size or path used to transcribe a 1-minute sample (default: medium.en; use 'none' to disable)")
-    ap.add_argument("--whisper-device", default="auto", metavar="DEV",
-                    help="device passed to Faster-Whisper (auto, cpu, cuda, rocm; default: auto)")
-    ap.add_argument("--whisper-compute-type", default="auto", metavar="TYPE",
-                    help="compute precision for Faster-Whisper (auto chooses a sensible default)")
-    ap.add_argument("--version", action="version", version=VERSION_INFO)
+    ap.add_argument("--tavily-key", default=None,
+                    help="Tavily Search API key for supplemental research (use 'none' to disable)")
+    ap.add_argument("--whisper-model", default=DEFAULT_WHISPER_MODEL, metavar="MODEL",
+                    help="Transformers/ONNX Whisper model id for ~30-second transcripts (use 'none' to disable; default: %(default)s)")
+    ap.add_argument("--whisper-device", default=DEFAULT_WHISPER_DEVICE, metavar="DEV",
+                    help="Preferred ONNX Runtime provider (auto, cpu, cuda, rocm, dml; default: %(default)s)")
     args = ap.parse_args()
 
     global LOG_PATH, REVIEW_PATH, DEBUG, LLM_ENDPOINT, LLM_MODEL_NAME
-    global WHISPER_MODEL_NAME, WHISPER_DEVICE, WHISPER_COMPUTE_TYPE, WHISPER_MODEL, WHISPER_LOAD_ERROR
+    global WHISPER_MODEL_NAME, WHISPER_DEVICE, WHISPER_PIPELINE, WHISPER_PIPELINE_ERROR, WHISPER_PIPELINE_PROVIDER
+    global TAVILY_API_KEY
     DEBUG = args.debug
     base = args.root if args.root.is_dir() else args.root.parent
     LOG_PATH = base / "tag_log.txt"
@@ -790,17 +1016,30 @@ def main():
     model_arg = (args.llm_model or "").strip()
     LLM_MODEL_NAME = model_arg or None
 
+    if args.tavily_key is not None:
+        tavily_arg = args.tavily_key.strip()
+        if tavily_arg.lower() in {"", "none", "null"}:
+            TAVILY_API_KEY = None
+        else:
+            TAVILY_API_KEY = tavily_arg
+
     whisper_arg = args.whisper_model.strip() if args.whisper_model else ""
     if whisper_arg.lower() == "none":
         WHISPER_MODEL_NAME = None
     elif whisper_arg:
         WHISPER_MODEL_NAME = whisper_arg
     else:
-        WHISPER_MODEL_NAME = None
-    WHISPER_DEVICE = (args.whisper_device or "auto").strip().lower() or "auto"
-    WHISPER_COMPUTE_TYPE = (args.whisper_compute_type or "auto").strip().lower() or "auto"
-    WHISPER_MODEL = None
-    WHISPER_LOAD_ERROR = None
+        WHISPER_MODEL_NAME = DEFAULT_WHISPER_MODEL
+
+    device_arg = (args.whisper_device or DEFAULT_WHISPER_DEVICE).strip().lower() or DEFAULT_WHISPER_DEVICE
+    if device_arg in {"amd", "directml"}:
+        device_arg = "dml"
+    WHISPER_DEVICE = device_arg
+
+    WHISPER_PIPELINE = None
+    WHISPER_PIPELINE_ERROR = None
+    WHISPER_PIPELINE_PROVIDER = None
+
     args.llm_threshold = max(0, min(100, args.llm_threshold))
 
     if not args.root.exists():
@@ -814,14 +1053,31 @@ def main():
                 continue
             process_leaf(leaf, args)
         except Exception as e:
-            rprint(f"[red]ERR:[/] {leaf} – {e}")
+            rprint(f"[red]ERR:[/] {leaf} â€“ {e}")
             if DEBUG:
                 import traceback
                 tb = traceback.format_exc()
                 rprint(tb)
-                log("ERR", f"{leaf} – {type(e).__name__}: {tb.strip()}")
+                log("ERR", f"{leaf} â€“ {type(e).__name__}: {tb.strip()}")
             else:
-                log("ERR", f"{leaf} – {type(e).__name__}")
+                log("ERR", f"{leaf} â€“ {type(e).__name__}")
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

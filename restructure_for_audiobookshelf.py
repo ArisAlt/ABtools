@@ -1,34 +1,28 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-ABtools/restructure_for_audiobookshelf.py – v5.3  (2025-09-08)
+ABtools/restructure_for_audiobookshelf.py · v5.4  (2025-09-10)
 Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --commit 
-• Recursively scans source_root; every directory that *contains* audio but whose
-  sub-directories don’t is treated as one “book”.
-• Reads tags with mutagen. If ``metadata.json`` or ``book.nfo`` files are
+â€¢ Recursively scans source_root; every directory that *contains* audio but whose
+  sub-directories donâ€™t is treated as one â€œbookâ€.
+â€¢ Reads tags with mutagen. If ``metadata.json`` or ``book.nfo`` files are
   present, those values are used as well. If tags are missing yet the folder
   name matches one of seven patterns (see REGEX_PATTERNS), injects minimal tags
   with FFmpeg.
-• Flattens sub-folders named “Disc 01 / Disc-02 …” into the main folder and
-  (optionally) renames every track sequentially: Track 001.*, Track 002.* …
-• Moves/renames into Audiobookshelf layout:
+â€¢ Flattens sub-folders named â€œDisc 01 / Disc-02 â€¦â€ into the main folder and
+  (optionally) renames every track sequentially: Track 001.*, Track 002.* â€¦
+â€¢ Moves/renames into Audiobookshelf layout:
 
-      <library_root>/Author/Series?/Vol # - YYYY - Title {Narrator}/
-• Add --copy to duplicate folders instead of moving them
-• ``--version`` prints the script version and file path
-• ``--plan-json`` write restructure plan to a JSON file
-• ``--apply-plan`` execute a previously generated plan
-• ``--undo-last`` rollback the most recent transaction
-• Fuzzy series matching ("Book 3", "#3", "Volume III", etc.)
-• ``--interactive`` prompts for series info when uncertain
-• Part suffixes like “(1 of 6)” or “Part 1” are preserved when moving
+      <library_root>/Author/Series?/Title (Year)/
+â€¢ Add --copy to duplicate folders instead of moving them
+â€¢ ``--version`` prints the script version and file path
+â€¢ Fuzzy series matching ("Book 3", "#3", "Volume III", etc.)
+â€¢ ``--interactive`` prompts for series info when uncertain
+â€¢ Part suffixes like â€œ(1 of 6)â€ or â€œPart 1â€ are preserved when moving
 
 Examples::
 
     restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --commit
     restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --commit --copy
-    restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --plan-json plan.json
-    restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --apply-plan plan.json
-    restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --undo-last
 """
 
 from __future__ import annotations
@@ -39,13 +33,13 @@ from pathlib import Path
 from typing import List, Optional
 import xml.etree.ElementTree as ET
 
-VERSION = "5.3"
+VERSION = "5.4"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
-# ───────── configuration ─────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€ configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€
 AUDIO_EXTS: set[str]       = {".mp3", ".m4b", ".m4a", ".flac", ".ogg", ".opus"}
-RENAME_TRACKS              = True       # rename Track 001.* … inside each book?
+RENAME_TRACKS              = True       # rename Track 001.* â€¦ inside each book?
 WRITE_TAGS_WITH_FFMPEG     = False        # inject minimal tags when using folder info
 DISC_RX                    = re.compile(r"disc[ _-]?(\d+)", re.I)
 
@@ -58,10 +52,10 @@ except ImportError:
 
 FFMPEG = shutil.which("ffmpeg")
 if WRITE_TAGS_WITH_FFMPEG and not FFMPEG:
-    print("⚠️  FFmpeg not found – tag injection disabled.")
+    print("âš ï¸  FFmpeg not found â€“ tag injection disabled.")
     WRITE_TAGS_WITH_FFMPEG = False
 
-# ───────── helpers ─────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def slug(txt: str) -> str:
     txt = re.sub(r'[<>:"/\\|?*\x00-\x1F]', "", txt).strip()
     return txt.rstrip(" .")
@@ -91,10 +85,10 @@ def safe_move(src: Path, dst: Path, copy: bool = False) -> None:
     try:
         shutil.move(str(src), str(dst))
     except (PermissionError, OSError) as e:
-        # Windows “access denied / file in use” or cross-device rename → copy
+        # Windows â€œaccess denied / file in useâ€ or cross-device rename â†’ copy
         if isinstance(e, OSError) and e.errno not in (errno.EXDEV, errno.EACCES):
             raise
-        print("  ! rename failed – copying …")
+        print("  ! rename failed â€“ copying â€¦")
         if src.is_dir():
             shutil.copytree(str(src), str(dst))
             shutil.rmtree(src)
@@ -102,7 +96,7 @@ def safe_move(src: Path, dst: Path, copy: bool = False) -> None:
             shutil.copy2(str(src), str(dst))
             src.unlink()
 
-# ───────── fuzzy series helpers ─────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€ fuzzy series helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ROMAN_MAP = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
 
 def roman_to_int(s: str) -> Optional[int]:
@@ -142,7 +136,7 @@ def fuzzy_series(text: str) -> tuple[Optional[str], Optional[str]]:
         return None, m.group("num")
     return None, None
 
-# ───────── metadata ─────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€ metadata â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @dataclass
 class BookMeta:
     author: str
@@ -231,7 +225,7 @@ def merge_meta(primary: Optional[BookMeta], secondary: Optional[BookMeta]) -> Op
             setattr(primary, field, getattr(secondary, field))
     return primary
 
-# ───────── folder-name patterns ─────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€ folder-name patterns â”€â”€â”€â”€â”€â”€â”€â”€â”€
 REGEX_PATTERNS: list[re.Pattern[str]] = [
     # A  Author - (Series #) - YYYY - Title {Narrator}
     re.compile(r"""
@@ -339,7 +333,7 @@ def inject_tags(track: Path, meta: BookMeta, index: int = 0, total: int = 0):
                       stderr=subprocess.DEVNULL).returncode == 0 and tmp.exists():
         tmp.replace(track)
 
-# ───────── disc-flattener ─────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€ disc-flattener â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def flatten_discs(book_dir: Path, dry: bool):
     discs = sorted(
         [(int(m.group(1)), p) for p in book_dir.iterdir() if p.is_dir()
@@ -354,11 +348,11 @@ def flatten_discs(book_dir: Path, dry: bool):
         for t in sorted(p for p in d.iterdir() if p.suffix.lower() in AUDIO_EXTS)
     ]
     digits = len(str(len(tracks)))
-    print(f"  · Flattening {len(discs)} disc folders → {len(tracks)} tracks")
+    print(f"  Â· Flattening {len(discs)} disc folders â†’ {len(tracks)} tracks")
     for idx, p in enumerate(tracks, 1):
         new = book_dir / f"Track {idx:0{digits}d}{p.suffix.lower()}"
         if p != new:
-            print(f"    {'mv' if not dry else '↪'} {p.name} → {new.name}")
+            print(f"    {'mv' if not dry else 'â†ª'} {p.name} â†’ {new.name}")
             if not dry:
                 safe_move(p, new)
     if not dry:
@@ -383,13 +377,13 @@ def rename_tracks(folder: Path):
         final = folder / f"Track {i:0{digits}d}{tmp.suffix.lower()}"
         tmp.rename(final)
 
-# ───────── process one book ─────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€ process one book â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def process(book: Path, library: Path, dry: bool, copy: bool, st: defaultdict,
             interactive: bool = False):
     st["total"] += 1
     first = next((p for p in book.iterdir() if p.suffix.lower() in AUDIO_EXTS), None)
     if not first:
-        print("• Skipping (no audio):", book)
+        print("â€¢ Skipping (no audio):", book)
         st["no_audio"] += 1
         return
 
@@ -417,12 +411,12 @@ def process(book: Path, library: Path, dry: bool, copy: bool, st: defaultdict,
             title=clean_title(book.name, None),
             narr=None,
         )
-        print(f"  · No metadata found: using folder name “{meta.title}”")
+        print(f"  Â· No metadata found: using folder name â€œ{meta.title}â€")
     elif not read_tags(first):
-        print(f"  · Tags missing – derived metadata “{meta.title}”")
+        print(f"  Â· Tags missing â€“ derived metadata â€œ{meta.title}â€")
 
     if interactive and (not meta.series or not meta.seq):
-        print(f"  · Missing series info for {book.name}")
+        print(f"  Â· Missing series info for {book.name}")
         if not meta.series:
             ans = input("    Series name (blank to skip): ").strip()
             if ans:
@@ -441,26 +435,21 @@ def process(book: Path, library: Path, dry: bool, copy: bool, st: defaultdict,
             inject_tags(t, meta, idx, len(tracks))
 
     author_dir = slug(meta.author)
-    title_parts = [
-        f"Vol {meta.seq}" if meta.seq else None,
-        meta.year,
-        meta.title,
-        f"{{{meta.narr}}}" if meta.narr else None,
-    ]
-    title_dir = slug(" - ".join(p for p in title_parts if p))
-
     dest = library / author_dir
     if meta.series:
         dest /= slug(meta.series)
+    title_text = meta.title or clean_title(book.name, meta.year)
+    if meta.year:
+        title_text = f"{title_text} ({meta.year})"
+    title_dir = slug(title_text)
     dest /= title_dir
-
     if dest.exists():
-        print("• Destination exists, skipping:", dest)
+        print("â€¢ Destination exists, skipping:", dest)
         st["exists"] += 1
         return
 
     action = 'cp' if copy else 'mv'
-    print(f"{action if not dry else '↪'} {book} → {dest}")
+    print(f"{action if not dry else 'â†ª'} {book} â†’ {dest}")
     if dry:
         flatten_discs(book, dry=True)
         if RENAME_TRACKS:
@@ -474,17 +463,17 @@ def process(book: Path, library: Path, dry: bool, copy: bool, st: defaultdict,
         rename_tracks(dest)
     st["moved"] += 1
 
-# ───────── main driver ─────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€ main driver â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def main(src: Path, library: Path, commit: bool, copy: bool, interactive: bool):
     if not src.is_dir():
-        sys.exit(f"✗ Source folder not found: {src}")
+        sys.exit(f"âœ— Source folder not found: {src}")
 
     stats: defaultdict[str, int] = defaultdict(int)
     for bd in leaf_audio_dirs(src):
         process(bd, library, dry=not commit, copy=copy, st=stats,
                 interactive=interactive)
 
-    print("\n──── Summary ────")
+    print("\nâ”€â”€â”€â”€ Summary â”€â”€â”€â”€")
     print(f" Books scanned            : {stats['total']}")
     action_word = 'copied' if copy else 'moved'
     print(f" Books {action_word:20}: {stats['moved']}")
@@ -497,9 +486,9 @@ def main(src: Path, library: Path, commit: bool, copy: bool, interactive: bool):
     ):
         if stats[k]:
             print(f" {label:25}: {stats[k]}")
-    print("──── Done ────\n")
+    print("â”€â”€â”€â”€ Done â”€â”€â”€â”€\n")
 
-# ───────── CLI entry ─────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€ CLI entry â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(
         description="Recursively tidy audiobook folders for Audiobookshelf."
@@ -520,21 +509,6 @@ if __name__ == "__main__":
         action="store_true",
         help="Prompt for series info when not detected",
     )
-    ap.add_argument(
-        "--plan-json",
-        metavar="PATH",
-        help="write restructure plan to PATH and exit",
-    )
-    ap.add_argument(
-        "--apply-plan",
-        metavar="PATH",
-        help="apply moves from plan at PATH and exit",
-    )
-    ap.add_argument(
-        "--undo-last",
-        action="store_true",
-        help="rollback the most recent transaction and exit",
-    )
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args = ap.parse_args()
 
@@ -553,17 +527,6 @@ if __name__ == "__main__":
         src = Path(raw[0]).expanduser()
         dst = Path(" ".join(raw[1:])).expanduser()
 
-    if args.undo_last:
-        from transaction import undo_last
-        undo_last()
-        sys.exit(0)
-    if args.apply_plan:
-        from transaction import execute
-        execute(Path(args.apply_plan))
-        sys.exit(0)
-    if args.plan_json:
-        from planning import plan_library
-        plan = plan_library(src, dst, copy=args.copy)
-        json.dump(plan, open(args.plan_json, "w", encoding="utf-8"), indent=2)
-        sys.exit(0)
     main(src, dst, args.commit, args.copy, args.interactive)
+
+

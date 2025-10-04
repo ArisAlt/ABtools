@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 ABtools/combobook.py  ·  v1.17  ·  2025-09-08
 
@@ -20,18 +20,12 @@ python combo_abooks.py  "E:\\Audio Books"  "G:\\AudiobookShelf"  --commit  --yes
 # show version and file location
 python combo_abooks.py --version
 
-# plan without moving
-python combo_abooks.py "E:\\Audio Books" "G:\\AudiobookShelf" --plan-json plan.json
 
-# apply a previously generated plan
-python combo_abooks.py --apply-plan plan.json
 
-# undo the last applied plan
-python combo_abooks.py --undo-last
 """
 
 from __future__ import annotations
-import argparse, re, shutil, subprocess, sys, textwrap, json
+import argparse, re, shlex, shutil, subprocess, sys, textwrap
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,7 +36,7 @@ from difflib import SequenceMatcher
 
 import search_and_tag as tagger
 
-VERSION = "1.17"
+VERSION = "1.18"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -469,19 +463,13 @@ def dest_path(lib: Path, meta: Meta) -> Path:
         series_folder = _truncate(meta.series, MAX_SERIES_LEN)
         dest /= series_folder
 
-    # 3) Build the “Vol … – YYYY – Title {Narrator}” bits
-    bits = []
-    if meta.seq:
-        bits.append(f"Vol {meta.seq}")
+    # 3) Build the "Title (Year)" leaf
+    title_text = meta.title or "Unknown Title"
     if meta.year:
-        bits.append(meta.year)
-    bits.append(meta.title)
-    if meta.narr:
-        bits.append(f"{{{meta.narr}}}")
+        title_text = f"{title_text} ({meta.year})"
+    title_slug = _truncate(title_text, MAX_TITLE_LEN)
 
-    full_title = " - ".join(bits)
-    title_slug = _truncate(full_title, MAX_TITLE_LEN)
-
+    # 4) Append the truncated title slug
     # 4) Append the truncated title slug
     dest /= title_slug
     return dest
@@ -659,19 +647,16 @@ if __name__=="__main__":
     ap.add_argument("--commit", action="store_true")
     ap.add_argument("--yes",    action="store_true")
     ap.add_argument("--copy",   action="store_true", help="Copy instead of move when used with --commit")
-    ap.add_argument("--plan-json")
-    ap.add_argument("--apply-plan")
-    ap.add_argument("--undo-last", action="store_true")
     ap.add_argument("--llm-endpoint", default=None,
                     help="OpenAI-compatible endpoint for LM Studio fallback (use 'none' to disable)")
     ap.add_argument("--llm-model", default=None,
                     help="Model name to request from the LM Studio endpoint")
-    ap.add_argument("--whisper-model", default=None,
-                    help="Faster-Whisper model or path for transcripts before the LM Studio call (default: medium.en)")
-    ap.add_argument("--whisper-device", default=None,
-                    help="Device passed to Faster-Whisper (auto/cpu/cuda/rocm)")
-    ap.add_argument("--whisper-compute-type", default=None,
-                    help="Precision passed to Faster-Whisper (auto/int8/float16…)")
+    ap.add_argument("--tavily-key", default=None,
+                    help="Tavily Search API key for supplemental research (use 'none' to disable)")
+    ap.add_argument("--whisper-model", default=tagger.WHISPER_MODEL_NAME or tagger.DEFAULT_WHISPER_MODEL,
+                    help="Transformers/ONNX Whisper model id for transcripts (use 'none' to disable; default: %(default)s)")
+    ap.add_argument("--whisper-device", default=tagger.WHISPER_DEVICE or tagger.DEFAULT_WHISPER_DEVICE,
+                    help="Preferred ONNX Runtime provider (auto/cpu/cuda/rocm/dml; default: %(default)s)")
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args=ap.parse_args()
 
@@ -695,19 +680,6 @@ if __name__=="__main__":
     if not src.is_dir():
         sys.exit(f"source_root not found: {src}")
     lib.mkdir(exist_ok=True, parents=True)
-    if args.undo_last:
-        from transaction import undo_last
-        undo_last()
-        sys.exit(0)
-    if args.apply_plan:
-        from transaction import execute
-        execute(Path(args.apply_plan))
-        sys.exit(0)
-    if args.plan_json:
-        from planning import plan_library
-        plan = plan_library(src, lib, copy=args.copy)
-        json.dump(plan, open(args.plan_json, "w", encoding="utf-8"), indent=2)
-        sys.exit(0)
     if args.llm_endpoint is not None:
         val = args.llm_endpoint.strip()
         if val.lower() in {"", "none", "null"}:
@@ -716,18 +688,30 @@ if __name__=="__main__":
             tagger.LLM_ENDPOINT = val
     if args.llm_model:
         tagger.LLM_MODEL_NAME = args.llm_model.strip() or tagger.LLM_MODEL_NAME
+    if args.tavily_key is not None:
+        tavily_arg = (args.tavily_key or "").strip()
+        if tavily_arg.lower() in {"", "none", "null"}:
+            tagger.TAVILY_API_KEY = None
+        else:
+            tagger.TAVILY_API_KEY = tavily_arg
     if args.whisper_model is not None:
-        wm = args.whisper_model.strip()
+        wm = (args.whisper_model or "").strip()
         if wm.lower() == "none":
             tagger.WHISPER_MODEL_NAME = None
         elif wm:
             tagger.WHISPER_MODEL_NAME = wm
-    if args.whisper_device:
-        tagger.WHISPER_DEVICE = args.whisper_device.strip().lower() or tagger.WHISPER_DEVICE
-    if args.whisper_compute_type:
-        tagger.WHISPER_COMPUTE_TYPE = args.whisper_compute_type.strip().lower() or tagger.WHISPER_COMPUTE_TYPE
-    tagger.WHISPER_MODEL = None
-    tagger.WHISPER_LOAD_ERROR = None
-
+        else:
+            tagger.WHISPER_MODEL_NAME = tagger.DEFAULT_WHISPER_MODEL
+    if args.whisper_device is not None:
+        device_arg = (args.whisper_device or "").strip().lower()
+        if device_arg in {"amd", "directml"}:
+            device_arg = "dml"
+        if not device_arg:
+            device_arg = tagger.DEFAULT_WHISPER_DEVICE
+        tagger.WHISPER_DEVICE = device_arg
+    tagger.WHISPER_PIPELINE = None
+    tagger.WHISPER_PIPELINE_PROVIDER = None
+    tagger.WHISPER_PIPELINE_ERROR = None
     AUTO_YES = args.yes
     main(src, lib, args.commit, args.yes, args.copy)
+
