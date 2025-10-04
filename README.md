@@ -1,4 +1,4 @@
-﻿<!-- ABtools/README.md · v2.14 · 2025-09-09 -->
+<!-- ABtools/README.md · v2.15 · 2025-09-11 -->
 # Audiobook Organizer & Tagger
 
 This repository contains small utilities for preparing audiobook folders for [Audiobookshelf](https://www.audiobookshelf.org/).
@@ -35,7 +35,9 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - GUI front-end can run `find_duplicates.py` to scan source and destination for duplicate audio files
 - GUI duplicate finder adds: cross-compare Source <-> Destination, Compare-by selector (hash/name), Network Mode with timeout to avoid NAS stalls, adjustable hashing Threads, live "Checking:" current-file output, and output grouped by folder (matches CLI). Window is resizable and progress is smooth.
 - GUI front-end processes output in batches so the window stays responsive during large scans
-- GUI groups operation settings, introduces drop-down selectors for CLI arguments, styles primary actions (Move and Tag) for prominence, and keeps the LLM fallback toggle inside the model configuration panel
+- GUI wraps each configuration cluster in titled `ttk.LabelFrame` sections (File Paths, Operation Settings, Model Configuration, Actions, Log) with consistent padding and responsive `grid()` weights so inputs stretch cleanly.
+- GUI groups operation settings, introduces drop-down selectors for CLI arguments, styles primary actions (Move and Tag) for prominence, and keeps the LLM fallback toggle inside the model configuration panel.
+- GUI adds a dedicated Plan JSON picker alongside Source and Destination paths, swaps threshold and timeout entries for numeric `ttk.Spinbox` widgets, and upgrades model/device fields to comboboxes for clearer selection.
 - GUI exposes LM Studio fallback controls (endpoint, model, threshold, whisper model, and device selector) so the "Move and Tag" and "Tag Only" flows match the CLI
 - Duplicate catalog prevents importing the same book twice
 
@@ -83,7 +85,7 @@ pip install -r requirements.txt
 |-------|---------|------|
 
 | `combobook.py` | v1.18 | `ABtools/combobook.py` |
-| `AbtoolsGui.py` | v0.15 | `ABtools/AbtoolsGui.py` |
+| `AbtoolsGui.py` | v0.16 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.4 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.21 | `ABtools/search_and_tag.py` |
@@ -149,9 +151,8 @@ Folders are moved to `<library>/Author/Series?/Title (Year)/`.
 Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when run with `--copy` alongside `--commit`.
 
 ## `AbtoolsGui.py`
-`AbtoolsGui.py` offers a basic Tkinter interface for `combobook.py`. It provides text fields for selecting the source and library folders, checkboxes matching the `--commit`, `--copy` and `--yes` command-line options, and shows live `combobook` output in a scrolling pane. Progress messages that rely on carriage returns are normalized so each update appears on its own line. A progress bar displays overall progress with an estimated time remaining. Alongside buttons for "Restructure", "Tag Only" and "Find Duplicates", the GUI also includes a "Network Mode" toggle with a timeout field used by the duplicate finder to prevent stalls on slow or flaky network shares, and a "Compare by" selector (hash/name). When both Source and Destination are set, "Find Duplicates" compares them against each other; otherwise it scans the single folder.
+`AbtoolsGui.py` offers a Tkinter interface for `combobook.py` and related workflows. The layout now uses titled `ttk.LabelFrame` sections that stack vertically: File Paths (source, destination, Plan JSON pickers), Operation Settings (commit/copy/yes toggles, timeout, threads, compare-by, recurse, network and "only src log" switches), Model Configuration (LLM/Whisper controls with an enable toggle), Actions, and a Log panel with a `tk.Text` widget + scrollbar. Inputs expand with `grid()` weights, and padding is consistent across sections. Numeric inputs use `ttk.Spinbox`, model selectors are `ttk.Combobox`, and the primary "Move and Tag" action uses a bold ttk style for emphasis. The log pane shares space with the progress bar, and the ETA label sits at the bottom-right.
 Debug output is written to `AudioBooks_tools/AbtoolsGui.debug.log` so you can inspect the underlying CLI runs when troubleshooting.
-
 
 ## `search_and_tag.py`
 `search_and_tag.py` tags or strips audiobook files. It queries Audible,
