@@ -1,4 +1,4 @@
-<!-- ABtools/scaffold.md · v2.9 · 2025-09-11 -->
+<!-- ABtools/scaffold.md · v2.10 · 2025-09-12 -->
 # Audiobook Tagging & Organization – Scaffold
 
 ## Project Structure
@@ -40,7 +40,7 @@ Audiobooks/
   - `--version` prints the script version and file path
   - Experimental switches stored in `~/.abclient.json` (used by `AbClient`)
   - Prints scores from all metadata providers
-  - Optional LM Studio fallback via `--llm-endpoint` / `--llm-model` / `--llm-threshold` supplies metadata when lookups fail, feeding an LM Studio server (default `http://127.0.0.1:1234/v1/chat/completions`) a transcript from the first ~15 seconds of audio. Whisper settings are configurable with `--whisper-model`, `--whisper-device`, `--whisper-compute-type`, `--whisper-engine`, and the whisper.cpp flags; the toolkit tries Faster-Whisper first and falls back to ONNX Runtime/DirectML or an external `whisper.cpp` DirectML build when available.
+  - Optional LM Studio fallback via `--llm-endpoint` / `--llm-model` / `--llm-threshold` supplies metadata when lookups fail by asking LM Studio's MCP tools (notably `full_web_search`) to search Audible, Open Library, Google Books, and Goodreads with targeted `site:` filters—no audio transcription required.
   - Provide a Tavily Search API key (`--tavily-key` or `TAVILY_API_KEY`) to feed web snippets into second-pass LLM retries when metadata fields are missing.
 
 ### `flatten_discs.py`
@@ -79,7 +79,7 @@ Audiobooks/
 - Layout divides file paths, operation toggles, model configuration, actions and log output into titled `ttk.LabelFrame` sections with consistent padding and responsive `grid()` weights.
 - Plan JSON browsing joins the Source/Destination rows, timeout/threshold inputs use numeric `ttk.Spinbox`, model/device selectors use comboboxes, and the primary "Move and Tag" button uses a bold ttk style.
 - Debug output is written to `AudioBooks_tools/AbtoolsGui.debug.log` for troubleshooting
-- Model configuration frame includes an enable toggle and mirrors CLI flags (endpoint, model, threshold, whisper model/device) while keeping advanced whisper/engine fields together.
+- Model configuration frame includes an enable toggle and mirrors CLI flags (endpoint, model, threshold) while keeping advanced settings together.
 
 ### `restructure_for_audiobookshelf.py`
 
@@ -143,7 +143,7 @@ python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --commit
 | `AbtoolsGui.py` | v0.16 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.4 | `ABtools/restructure_for_audiobookshelf.py` |
-| `search_and_tag.py` | v2.21 | `ABtools/search_and_tag.py` |
+| `search_and_tag.py` | v2.30 | `ABtools/search_and_tag.py` |
 | `find_duplicates.py` | v0.5 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
 | `catalog.py` | v0.1 | `ABtools/catalog.py` |
