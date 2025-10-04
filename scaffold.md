@@ -1,4 +1,4 @@
-﻿<!-- ABtools/scaffold.md · v2.8 · 2025-09-10 -->
+<!-- ABtools/scaffold.md · v2.9 · 2025-09-11 -->
 # Audiobook Tagging & Organization – Scaffold
 
 ## Project Structure
@@ -76,9 +76,10 @@ Audiobooks/
 - "Restructure" button that reorganizes folders via `restructure_for_audiobookshelf.py`
 - "Network Mode" toggle with a timeout field to prevent stalls when reading from network shares during duplicate scans
 - Processes output queue in small batches so the window remains responsive during large scans
-- Operation settings are grouped, CLI arguments are exposed via drop-downs, primary actions are styled for emphasis, and the LLM fallback toggle lives alongside its model settings
+- Layout divides file paths, operation toggles, model configuration, actions and log output into titled `ttk.LabelFrame` sections with consistent padding and responsive `grid()` weights.
+- Plan JSON browsing joins the Source/Destination rows, timeout/threshold inputs use numeric `ttk.Spinbox`, model/device selectors use comboboxes, and the primary "Move and Tag" button uses a bold ttk style.
 - Debug output is written to `AudioBooks_tools/AbtoolsGui.debug.log` for troubleshooting
-- Dedicated "LLM fallback" panel mirrors CLI flags: endpoint, model, low-score threshold, Tavily key, whisper model, device/compute, engine selector, and whisper.cpp binary/model/args (enter `none` to disable endpoint or whisper model; set `dml` for DirectML on Windows AMD GPUs).
+- Model configuration frame includes an enable toggle and mirrors CLI flags (endpoint, model, threshold, whisper model/device) while keeping advanced whisper/engine fields together.
 
 ### `restructure_for_audiobookshelf.py`
 
@@ -139,7 +140,7 @@ python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --commit
 | Script | Version | Path |
 |-------|---------|------|
 | `combobook.py` | v1.18 | `ABtools/combobook.py` |
-| `AbtoolsGui.py` | v0.15 | `ABtools/AbtoolsGui.py` |
+| `AbtoolsGui.py` | v0.16 | `ABtools/AbtoolsGui.py` |
 | `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.4 | `ABtools/restructure_for_audiobookshelf.py` |
 | `search_and_tag.py` | v2.21 | `ABtools/search_and_tag.py` |

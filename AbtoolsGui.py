@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/AbtoolsGui.py  ·  v0.12  ·  2025-09-09
+ABtools/AbtoolsGui.py  ·  v0.16  ·  2025-09-11
 """
 from __future__ import annotations
 
@@ -8,14 +8,17 @@ import sys, threading, queue, time
 from collections import defaultdict
 from contextlib import redirect_stdout, redirect_stderr
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk, scrolledtext
+from tkinter import filedialog, messagebox, ttk
 from pathlib import Path
 from types import SimpleNamespace
 import combobook, search_and_tag, find_duplicates, restructure_for_audiobookshelf
 
-VERSION = "0.12"
+VERSION = "0.16"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
+
+PAD_X = 12
+PAD_Y = 8
 
 DEFAULT_LLM_ENDPOINT = (
     search_and_tag.LLM_ENDPOINT
@@ -33,123 +36,252 @@ if "--version" in sys.argv:
 root = tk.Tk()
 root.title("ABtools GUI")
 root.resizable(True, True)
-# Allow all visible columns to expand and make the output row stretchy
-for i in range(8):
-    root.grid_columnconfigure(i, weight=1)
-root.grid_rowconfigure(7, weight=1)
+root.columnconfigure(0, weight=1)
+root.rowconfigure(0, weight=1)
 
-# --- input fields ---
+style = ttk.Style(root)
+style.configure("Primary.TButton", font=("Segoe UI", 11, "bold"), padding=(14, 8))
+
+main = ttk.Frame(root, padding=PAD_X)
+main.grid(row=0, column=0, sticky="nsew")
+main.columnconfigure(0, weight=1)
+for i in range(5):
+    main.rowconfigure(i, weight=0)
+main.rowconfigure(4, weight=1)
+
 source_var = tk.StringVar()
 dest_var = tk.StringVar()
+plan_var = tk.StringVar()
+
 
 def browse_src():
     path = filedialog.askdirectory()
     if path:
         source_var.set(path)
 
+
 def browse_dst():
     path = filedialog.askdirectory()
     if path:
         dest_var.set(path)
 
-tk.Label(root, text="Source").grid(row=0, column=0, sticky="e")
-tk.Entry(root, textvariable=source_var, width=40).grid(row=0, column=1, columnspan=2, padx=5, pady=5)
-tk.Button(root, text="Browse", command=browse_src).grid(row=0, column=3, padx=5)
 
-tk.Label(root, text="Destination").grid(row=1, column=0, sticky="e")
-tk.Entry(root, textvariable=dest_var, width=40).grid(row=1, column=1, columnspan=2, padx=5, pady=5)
-tk.Button(root, text="Browse", command=browse_dst).grid(row=1, column=3, padx=5)
+def browse_plan():
+    path = filedialog.askopenfilename(filetypes=[("JSON Files", "*.json"), ("All Files", "*")])
+    if path:
+        plan_var.set(path)
 
 
-# --- options ---
+paths_frame = ttk.LabelFrame(main, text="File Paths", padding=PAD_X)
+paths_frame.grid(row=0, column=0, sticky="ew")
+paths_frame.columnconfigure(1, weight=1)
+
+ttk.Label(paths_frame, text="Source:").grid(row=0, column=0, sticky="w", padx=(0, PAD_X), pady=(0, PAD_Y))
+ttk.Entry(paths_frame, textvariable=source_var).grid(row=0, column=1, sticky="ew", pady=(0, PAD_Y))
+ttk.Button(paths_frame, text="Browse", command=browse_src).grid(row=0, column=2, sticky="ew", padx=(PAD_X, 0), pady=(0, PAD_Y))
+
+ttk.Label(paths_frame, text="Destination:").grid(row=1, column=0, sticky="w", padx=(0, PAD_X), pady=(0, PAD_Y))
+ttk.Entry(paths_frame, textvariable=dest_var).grid(row=1, column=1, sticky="ew", pady=(0, PAD_Y))
+ttk.Button(paths_frame, text="Browse", command=browse_dst).grid(row=1, column=2, sticky="ew", padx=(PAD_X, 0), pady=(0, PAD_Y))
+
+ttk.Label(paths_frame, text="Plan JSON:").grid(row=2, column=0, sticky="w", padx=(0, PAD_X))
+ttk.Entry(paths_frame, textvariable=plan_var).grid(row=2, column=1, sticky="ew")
+ttk.Button(paths_frame, text="Browse", command=browse_plan).grid(row=2, column=2, sticky="ew", padx=(PAD_X, 0))
+
 commit_var = tk.BooleanVar()
 copy_var = tk.BooleanVar()
 yes_var = tk.BooleanVar()
 network_var = tk.BooleanVar()
-timeout_var = tk.StringVar(value="30")
+timeout_var = tk.IntVar(value=30)
 compare_by_var = tk.StringVar(value="hash")
 threads_var = tk.IntVar(value=4)
 recurse_var = tk.BooleanVar(value=True)
 only_src_log_var = tk.BooleanVar()
 llm_endpoint_var = tk.StringVar(value=DEFAULT_LLM_ENDPOINT)
 llm_model_var = tk.StringVar(value=DEFAULT_LLM_MODEL)
-llm_threshold_var = tk.StringVar(value=str(DEFAULT_LLM_THRESHOLD))
+llm_threshold_var = tk.IntVar(value=DEFAULT_LLM_THRESHOLD)
 whisper_model_var = tk.StringVar(value=DEFAULT_WHISPER_MODEL)
 whisper_device_var = tk.StringVar(value=DEFAULT_WHISPER_DEVICE)
+use_llm_var = tk.BooleanVar(value=bool(DEFAULT_LLM_ENDPOINT))
 
-tk.Checkbutton(root, text="Commit", variable=commit_var).grid(row=3, column=0, sticky="w", padx=5)
-tk.Checkbutton(root, text="Copy", variable=copy_var).grid(row=3, column=1, sticky="w", padx=5)
-tk.Checkbutton(root, text="Yes", variable=yes_var).grid(row=3, column=2, sticky="w", padx=5)
-tk.Checkbutton(root, text="Network Mode", variable=network_var).grid(row=3, column=3, sticky="w", padx=5)
+operation_frame = ttk.LabelFrame(main, text="Operation Settings", padding=PAD_X)
+operation_frame.grid(row=1, column=0, sticky="ew", pady=(PAD_Y, 0))
+for col in (0, 2):
+    operation_frame.columnconfigure(col, weight=0)
+operation_frame.columnconfigure(1, weight=1)
+operation_frame.columnconfigure(3, weight=1)
 
-# compare-by controls
-tk.Label(root, text="Compare by").grid(row=3, column=4, sticky="e")
-ttk.Combobox(root, textvariable=compare_by_var, values=("hash", "name"), width=7, state="readonly").grid(row=3, column=5, sticky="w", padx=5)
+ttk.Label(operation_frame, text="Timeout (s):").grid(row=0, column=0, sticky="w")
+timeout_spin = ttk.Spinbox(
+    operation_frame,
+    from_=0,
+    to=600,
+    textvariable=timeout_var,
+    width=6,
+    increment=5,
+)
+timeout_spin.grid(row=0, column=1, sticky="w", padx=(0, PAD_X))
 
-# threads controls
-tk.Label(root, text="Threads").grid(row=3, column=6, sticky="e")
-tk.Spinbox(root, from_=1, to=16, textvariable=threads_var, width=4).grid(row=3, column=7, sticky="w", padx=5)
+ttk.Label(operation_frame, text="Threads:").grid(row=0, column=2, sticky="w")
+threads_spin = ttk.Spinbox(
+    operation_frame,
+    from_=1,
+    to=64,
+    textvariable=threads_var,
+    width=5,
+)
+threads_spin.grid(row=0, column=3, sticky="ew")
 
-# timeout + recurse controls
-tk.Label(root, text="Timeout (s)").grid(row=2, column=4, sticky="e")
-tk.Entry(root, textvariable=timeout_var, width=6).grid(row=2, column=5, sticky="w", padx=5)
-tk.Checkbutton(root, text="Recurse", variable=recurse_var).grid(row=2, column=6, sticky="w", padx=5)
-tk.Checkbutton(root, text="Only src log", variable=only_src_log_var).grid(row=2, column=6, columnspan=2, sticky="w", padx=5)
+ttk.Label(operation_frame, text="Compare by:").grid(row=1, column=0, sticky="w", pady=(PAD_Y, 0))
+compare_combo = ttk.Combobox(
+    operation_frame,
+    textvariable=compare_by_var,
+    values=("hash", "name"),
+    state="readonly",
+    width=8,
+)
+compare_combo.grid(row=1, column=1, sticky="w", pady=(PAD_Y, 0))
 
-llm_frame = ttk.LabelFrame(root, text="LLM fallback")
-llm_frame.grid(row=4, column=0, columnspan=8, padx=5, pady=(0, 5), sticky="ew")
+checkbox_frame = ttk.Frame(operation_frame)
+checkbox_frame.grid(row=2, column=0, columnspan=3, sticky="w", pady=(PAD_Y, 0))
+
+ttk.Checkbutton(checkbox_frame, text="Commit", variable=commit_var).grid(row=0, column=0, sticky="w", padx=(0, PAD_X))
+ttk.Checkbutton(checkbox_frame, text="Copy", variable=copy_var).grid(row=0, column=1, sticky="w", padx=(0, PAD_X))
+ttk.Checkbutton(checkbox_frame, text="Yes", variable=yes_var).grid(row=0, column=2, sticky="w", padx=(0, PAD_X))
+ttk.Checkbutton(checkbox_frame, text="Recurse", variable=recurse_var).grid(row=0, column=3, sticky="w", padx=(0, PAD_X))
+ttk.Checkbutton(checkbox_frame, text="Network Mode", variable=network_var).grid(row=1, column=0, sticky="w", padx=(0, PAD_X), pady=(PAD_Y // 2, 0))
+ttk.Checkbutton(checkbox_frame, text="Only src log", variable=only_src_log_var).grid(row=1, column=1, sticky="w", padx=(0, PAD_X), pady=(PAD_Y // 2, 0))
+
+MODEL_CHOICES = (
+    DEFAULT_LLM_MODEL,
+    "mistral-7b-instruct-q4",
+    "mixtral-8x7b-instruct",
+    "phi-3-medium-4k-instruct",
+)
+WHISPER_CHOICES = (
+    DEFAULT_WHISPER_MODEL,
+    "distil-large-v3",
+    "large-v3",
+    "medium.en",
+)
+DEVICE_CHOICES = (
+    DEFAULT_WHISPER_DEVICE,
+    "auto",
+    "cpu",
+    "cuda",
+    "dml",
+    "rocm",
+)
+
+llm_frame = ttk.LabelFrame(main, text="Model Configuration", padding=PAD_X)
+llm_frame.grid(row=2, column=0, sticky="ew", pady=(PAD_Y, 0))
 llm_frame.columnconfigure(1, weight=1)
 llm_frame.columnconfigure(3, weight=1)
 
-ttk.Label(llm_frame, text="Endpoint").grid(row=0, column=0, sticky="e", padx=5, pady=2)
-ttk.Entry(llm_frame, textvariable=llm_endpoint_var).grid(
-    row=0, column=1, columnspan=3, sticky="ew", padx=5, pady=2
-)
-ttk.Label(llm_frame, text="Model").grid(row=1, column=0, sticky="e", padx=5, pady=2)
-ttk.Entry(llm_frame, textvariable=llm_model_var).grid(
-    row=1, column=1, sticky="ew", padx=5, pady=2
-)
-ttk.Label(llm_frame, text="Threshold").grid(row=1, column=2, sticky="e", padx=5, pady=2)
-ttk.Spinbox(
+llm_controls: list[tk.Widget] = []
+
+ttk.Checkbutton(
+    llm_frame,
+    text="Enable LLM fallback",
+    variable=use_llm_var,
+    command=lambda: toggle_llm_controls(),
+).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, PAD_Y))
+
+ttk.Label(llm_frame, text="Endpoint:").grid(row=1, column=0, sticky="e", padx=(0, PAD_X), pady=(0, PAD_Y))
+endpoint_entry = ttk.Entry(llm_frame, textvariable=llm_endpoint_var)
+endpoint_entry.grid(row=1, column=1, columnspan=3, sticky="ew", pady=(0, PAD_Y))
+llm_controls.append(endpoint_entry)
+
+ttk.Label(llm_frame, text="Model:").grid(row=2, column=0, sticky="e", padx=(0, PAD_X), pady=(0, PAD_Y))
+model_combo = ttk.Combobox(llm_frame, textvariable=llm_model_var, values=MODEL_CHOICES, state="readonly")
+model_combo.grid(row=2, column=1, sticky="ew", pady=(0, PAD_Y))
+llm_controls.append(model_combo)
+
+ttk.Label(llm_frame, text="Threshold:").grid(row=2, column=2, sticky="e", padx=(PAD_X, PAD_X), pady=(0, PAD_Y))
+threshold_spin = ttk.Spinbox(
     llm_frame,
     from_=0,
     to=100,
     textvariable=llm_threshold_var,
-    width=5,)
-ttk.Label(llm_frame, text="Whisper model").grid(row=2, column=0, sticky="e", padx=5, pady=2)
-ttk.Entry(llm_frame, textvariable=whisper_model_var).grid(row=2, column=1, columnspan=3, sticky="ew", padx=5, pady=2)
+    width=5,
+)
+threshold_spin.grid(row=2, column=3, sticky="w", pady=(0, PAD_Y))
+llm_controls.append(threshold_spin)
 
-ttk.Label(llm_frame, text="Device").grid(row=3, column=0, sticky="e", padx=5, pady=2)
-ttk.Entry(llm_frame, textvariable=whisper_device_var, width=12).grid(row=3, column=1, sticky="w", padx=5, pady=2)
+ttk.Label(llm_frame, text="Whisper model:").grid(row=3, column=0, sticky="e", padx=(0, PAD_X), pady=(0, PAD_Y))
+whisper_combo = ttk.Combobox(llm_frame, textvariable=whisper_model_var, values=WHISPER_CHOICES)
+whisper_combo.grid(row=3, column=1, columnspan=3, sticky="ew", pady=(0, PAD_Y))
+llm_controls.append(whisper_combo)
+
+ttk.Label(llm_frame, text="Device:").grid(row=4, column=0, sticky="e", padx=(0, PAD_X))
+device_combo = ttk.Combobox(llm_frame, textvariable=whisper_device_var, values=DEVICE_CHOICES)
+device_combo.grid(row=4, column=1, sticky="w")
+llm_controls.append(device_combo)
 
 
-# --- output ---
+def toggle_llm_controls() -> None:
+    state = "normal" if use_llm_var.get() else "disabled"
+    for widget in llm_controls:
+        try:
+            widget.configure(state=state)
+        except tk.TclError:
+            pass
+
+
 output_queue: queue.Queue[tuple[str, object]] = queue.Queue()
 # Track whether the progress bar is running in indeterminate mode to avoid
 # flicker from redundant determinate updates during cross-compare.
 progress_is_indeterminate = False
 
-output_text = scrolledtext.ScrolledText(root, height=15, width=60, state="disabled")
-output_text.grid(row=7, column=0, columnspan=8, padx=5, pady=5, sticky="nsew")
+actions_frame = ttk.LabelFrame(main, text="Actions", padding=PAD_X)
+actions_frame.grid(row=3, column=0, sticky="ew", pady=(PAD_Y, 0))
+for i in range(4):
+    actions_frame.columnconfigure(i, weight=1)
+
+log_frame = ttk.LabelFrame(main, text="Log", padding=PAD_X)
+log_frame.grid(row=4, column=0, sticky="nsew", pady=(PAD_Y, 0))
+log_frame.columnconfigure(0, weight=1)
+log_frame.rowconfigure(0, weight=1)
+
+output_text = tk.Text(log_frame, height=15, wrap="word", state="disabled")
+output_text.grid(row=0, column=0, sticky="nsew")
+
+scrollbar = ttk.Scrollbar(log_frame, orient="vertical", command=output_text.yview)
+scrollbar.grid(row=0, column=1, sticky="ns", padx=(PAD_X // 2, 0))
+output_text.configure(yscrollcommand=scrollbar.set)
 
 progress_var = tk.IntVar(value=0)
-progress = ttk.Progressbar(root, variable=progress_var, maximum=100)
-progress.grid(row=8, column=0, columnspan=8, padx=5, pady=5, sticky="ew")
+progress = ttk.Progressbar(log_frame, variable=progress_var, maximum=100)
+progress.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(PAD_Y, 0))
+
 eta_var = tk.StringVar(value="ETA: --:--")
-tk.Label(root, textvariable=eta_var).grid(row=9, column=0, columnspan=8)
+ttk.Label(main, textvariable=eta_var).grid(row=5, column=0, sticky="e", pady=(PAD_Y, 0))
+
+toggle_llm_controls()
 
 
 def gather_llm_settings() -> dict[str, object]:
+    enabled = use_llm_var.get()
     endpoint = (llm_endpoint_var.get() or "").strip()
     model = (llm_model_var.get() or "").strip()
     whisper_model = (whisper_model_var.get() or "").strip()
     whisper_device = (whisper_device_var.get() or "").strip()
     try:
-        threshold = int((llm_threshold_var.get() or "").strip())
-    except ValueError:
+        threshold = int(llm_threshold_var.get())
+    except Exception:
         threshold = DEFAULT_LLM_THRESHOLD
     threshold = max(0, min(100, threshold))
+    if not enabled:
+        return {
+            "enabled": False,
+            "endpoint": "none",
+            "model": "",
+            "threshold": threshold,
+            "whisper_model": "",
+            "whisper_device": "",
+        }
     return {
+        "enabled": True,
         "endpoint": endpoint,
         "model": model,
         "threshold": threshold,
@@ -159,27 +291,28 @@ def gather_llm_settings() -> dict[str, object]:
 
 
 def apply_llm_settings(settings: dict[str, object]) -> int:
+    enabled = bool(settings.get("enabled", True))
     endpoint_raw = str(settings.get("endpoint", "") or "").strip()
     model_raw = str(settings.get("model", "") or "").strip()
     whisper_model_raw = str(settings.get("whisper_model", "") or "").strip()
     whisper_device_raw = str(settings.get("whisper_device", "") or "").strip()
     threshold = int(settings.get("threshold", DEFAULT_LLM_THRESHOLD))
 
-    if endpoint_raw.lower() in {"none", "null", "off"}:
+    if not enabled or endpoint_raw.lower() in {"none", "null", "off"}:
         search_and_tag.LLM_ENDPOINT = None
     elif endpoint_raw:
         search_and_tag.LLM_ENDPOINT = endpoint_raw
     else:
         search_and_tag.LLM_ENDPOINT = DEFAULT_LLM_ENDPOINT
 
-    if model_raw.lower() in {"none", "null", "off"}:
+    if not enabled or model_raw.lower() in {"none", "null", "off"}:
         search_and_tag.LLM_MODEL_NAME = None
     elif model_raw:
         search_and_tag.LLM_MODEL_NAME = model_raw
     else:
         search_and_tag.LLM_MODEL_NAME = DEFAULT_LLM_MODEL
 
-    if whisper_model_raw.lower() == "none":
+    if not enabled or whisper_model_raw.lower() == "none":
         search_and_tag.WHISPER_MODEL_NAME = None
     elif whisper_model_raw:
         search_and_tag.WHISPER_MODEL_NAME = whisper_model_raw
@@ -586,12 +719,18 @@ def find_dupes() -> None:
             output_queue.put(("status", f"error:{exc}"))
 
     threading.Thread(target=worker, daemon=True).start()
-
-
-tk.Button(root, text="Move and Tag", command=run).grid(row=5, column=0, pady=10)
-tk.Button(root, text="Restructure Folders", command=restructure).grid(row=5, column=1, pady=10)
-tk.Button(root, text="Tag Only", command=tag_only).grid(row=5, column=2, pady=10)
-tk.Button(root, text="Find Duplicates", command=find_dupes).grid(row=5, column=3, pady=10)
+ttk.Button(actions_frame, text="Move and Tag", style="Primary.TButton", command=run).grid(
+    row=0, column=0, sticky="ew", padx=(0, PAD_X), pady=(0, PAD_Y)
+)
+ttk.Button(actions_frame, text="Restructure Folders", command=restructure).grid(
+    row=0, column=1, sticky="ew", padx=(0, PAD_X), pady=(0, PAD_Y)
+)
+ttk.Button(actions_frame, text="Tag Only", command=tag_only).grid(
+    row=0, column=2, sticky="ew", padx=(0, PAD_X), pady=(0, PAD_Y)
+)
+ttk.Button(actions_frame, text="Find Duplicates", command=find_dupes).grid(
+    row=0, column=3, sticky="ew", pady=(0, PAD_Y)
+)
 
 
 
