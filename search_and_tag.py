@@ -19,7 +19,7 @@ instance (tested with Mistral-7B Q4 on port 1234) suggest metadata when
 online providers fail or return low scores. Adjust the trigger with
 ``--llm-threshold`` (default: 75). When the fallback is used the script
 shares folder context and file names with the model and expects JSON
-metadata in return; no local Whisper transcription is required anymore.
+metadata in return; no local transcription step is required anymore.
 """
 
 from __future__ import annotations

@@ -20,8 +20,6 @@ python combo_abooks.py  "E:\\Audio Books"  "G:\\AudiobookShelf"  --commit  --yes
 # show version and file location
 python combo_abooks.py --version
 
-
-
 """
 
 from __future__ import annotations
@@ -305,7 +303,6 @@ def _seq_in_text(seq: str, text: str) -> bool:
         r"\b" + re.escape(s) + r"\b",
     ]
     return any(re.search(p, t) for p in patterns)
-
 
 def _similarity(a: Meta, b: Meta) -> float:
     t1 = f"{a.author} {a.title}".lower()
@@ -618,7 +615,6 @@ def process(folder: Path, src: Path, lib: Path, dry: bool, yes: bool, copy: bool
         rename_tracks(dest)
     summary["moved"] += 1
 
-
 # ───────────── CLI driver ────────────────────────────────────────────────────
 def main(src:Path, lib:Path, commit:bool, yes:bool, copy: bool):
     summary=defaultdict(int)
@@ -653,10 +649,6 @@ if __name__=="__main__":
                     help="Model name to request from the LM Studio endpoint")
     ap.add_argument("--tavily-key", default=None,
                     help="Tavily Search API key for supplemental research (use 'none' to disable)")
-    ap.add_argument("--whisper-model", default=tagger.WHISPER_MODEL_NAME or tagger.DEFAULT_WHISPER_MODEL,
-                    help="Transformers/ONNX Whisper model id for transcripts (use 'none' to disable; default: %(default)s)")
-    ap.add_argument("--whisper-device", default=tagger.WHISPER_DEVICE or tagger.DEFAULT_WHISPER_DEVICE,
-                    help="Preferred ONNX Runtime provider (auto/cpu/cuda/rocm/dml; default: %(default)s)")
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args=ap.parse_args()
 
@@ -694,24 +686,6 @@ if __name__=="__main__":
             tagger.TAVILY_API_KEY = None
         else:
             tagger.TAVILY_API_KEY = tavily_arg
-    if args.whisper_model is not None:
-        wm = (args.whisper_model or "").strip()
-        if wm.lower() == "none":
-            tagger.WHISPER_MODEL_NAME = None
-        elif wm:
-            tagger.WHISPER_MODEL_NAME = wm
-        else:
-            tagger.WHISPER_MODEL_NAME = tagger.DEFAULT_WHISPER_MODEL
-    if args.whisper_device is not None:
-        device_arg = (args.whisper_device or "").strip().lower()
-        if device_arg in {"amd", "directml"}:
-            device_arg = "dml"
-        if not device_arg:
-            device_arg = tagger.DEFAULT_WHISPER_DEVICE
-        tagger.WHISPER_DEVICE = device_arg
-    tagger.WHISPER_PIPELINE = None
-    tagger.WHISPER_PIPELINE_PROVIDER = None
-    tagger.WHISPER_PIPELINE_ERROR = None
     AUTO_YES = args.yes
     main(src, lib, args.commit, args.yes, args.copy)
 

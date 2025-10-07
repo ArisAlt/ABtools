@@ -26,8 +26,6 @@ DEFAULT_LLM_ENDPOINT = (
 )
 DEFAULT_LLM_MODEL = search_and_tag.LLM_MODEL_NAME or "mistral-7b-instruct-q4"
 DEFAULT_LLM_THRESHOLD = 75
-DEFAULT_WHISPER_MODEL = search_and_tag.WHISPER_MODEL_NAME or search_and_tag.DEFAULT_WHISPER_MODEL
-DEFAULT_WHISPER_DEVICE = search_and_tag.WHISPER_DEVICE or search_and_tag.DEFAULT_WHISPER_DEVICE
 
 if "--version" in sys.argv:
     print(VERSION_INFO % {"prog": Path(sys.argv[0]).name})
@@ -53,24 +51,20 @@ source_var = tk.StringVar()
 dest_var = tk.StringVar()
 plan_var = tk.StringVar()
 
-
 def browse_src():
     path = filedialog.askdirectory()
     if path:
         source_var.set(path)
-
 
 def browse_dst():
     path = filedialog.askdirectory()
     if path:
         dest_var.set(path)
 
-
 def browse_plan():
     path = filedialog.askopenfilename(filetypes=[("JSON Files", "*.json"), ("All Files", "*")])
     if path:
         plan_var.set(path)
-
 
 paths_frame = ttk.LabelFrame(main, text="File Paths", padding=PAD_X)
 paths_frame.grid(row=0, column=0, sticky="ew")
@@ -100,8 +94,6 @@ only_src_log_var = tk.BooleanVar()
 llm_endpoint_var = tk.StringVar(value=DEFAULT_LLM_ENDPOINT)
 llm_model_var = tk.StringVar(value=DEFAULT_LLM_MODEL)
 llm_threshold_var = tk.IntVar(value=DEFAULT_LLM_THRESHOLD)
-whisper_model_var = tk.StringVar(value=DEFAULT_WHISPER_MODEL)
-whisper_device_var = tk.StringVar(value=DEFAULT_WHISPER_DEVICE)
 use_llm_var = tk.BooleanVar(value=bool(DEFAULT_LLM_ENDPOINT))
 
 operation_frame = ttk.LabelFrame(main, text="Operation Settings", padding=PAD_X)
@@ -158,20 +150,6 @@ MODEL_CHOICES = (
     "mixtral-8x7b-instruct",
     "phi-3-medium-4k-instruct",
 )
-WHISPER_CHOICES = (
-    DEFAULT_WHISPER_MODEL,
-    "distil-large-v3",
-    "large-v3",
-    "medium.en",
-)
-DEVICE_CHOICES = (
-    DEFAULT_WHISPER_DEVICE,
-    "auto",
-    "cpu",
-    "cuda",
-    "dml",
-    "rocm",
-)
 
 llm_frame = ttk.LabelFrame(main, text="Model Configuration", padding=PAD_X)
 llm_frame.grid(row=2, column=0, sticky="ew", pady=(PAD_Y, 0))
@@ -208,17 +186,6 @@ threshold_spin = ttk.Spinbox(
 threshold_spin.grid(row=2, column=3, sticky="w", pady=(0, PAD_Y))
 llm_controls.append(threshold_spin)
 
-ttk.Label(llm_frame, text="Whisper model:").grid(row=3, column=0, sticky="e", padx=(0, PAD_X), pady=(0, PAD_Y))
-whisper_combo = ttk.Combobox(llm_frame, textvariable=whisper_model_var, values=WHISPER_CHOICES)
-whisper_combo.grid(row=3, column=1, columnspan=3, sticky="ew", pady=(0, PAD_Y))
-llm_controls.append(whisper_combo)
-
-ttk.Label(llm_frame, text="Device:").grid(row=4, column=0, sticky="e", padx=(0, PAD_X))
-device_combo = ttk.Combobox(llm_frame, textvariable=whisper_device_var, values=DEVICE_CHOICES)
-device_combo.grid(row=4, column=1, sticky="w")
-llm_controls.append(device_combo)
-
-
 def toggle_llm_controls() -> None:
     state = "normal" if use_llm_var.get() else "disabled"
     for widget in llm_controls:
@@ -226,7 +193,6 @@ def toggle_llm_controls() -> None:
             widget.configure(state=state)
         except tk.TclError:
             pass
-
 
 output_queue: queue.Queue[tuple[str, object]] = queue.Queue()
 # Track whether the progress bar is running in indeterminate mode to avoid
@@ -259,13 +225,10 @@ ttk.Label(main, textvariable=eta_var).grid(row=5, column=0, sticky="e", pady=(PA
 
 toggle_llm_controls()
 
-
 def gather_llm_settings() -> dict[str, object]:
     enabled = use_llm_var.get()
     endpoint = (llm_endpoint_var.get() or "").strip()
     model = (llm_model_var.get() or "").strip()
-    whisper_model = (whisper_model_var.get() or "").strip()
-    whisper_device = (whisper_device_var.get() or "").strip()
     try:
         threshold = int(llm_threshold_var.get())
     except Exception:
@@ -277,25 +240,18 @@ def gather_llm_settings() -> dict[str, object]:
             "endpoint": "none",
             "model": "",
             "threshold": threshold,
-            "whisper_model": "",
-            "whisper_device": "",
         }
     return {
         "enabled": True,
         "endpoint": endpoint,
         "model": model,
         "threshold": threshold,
-        "whisper_model": whisper_model,
-        "whisper_device": whisper_device,
     }
-
 
 def apply_llm_settings(settings: dict[str, object]) -> int:
     enabled = bool(settings.get("enabled", True))
     endpoint_raw = str(settings.get("endpoint", "") or "").strip()
     model_raw = str(settings.get("model", "") or "").strip()
-    whisper_model_raw = str(settings.get("whisper_model", "") or "").strip()
-    whisper_device_raw = str(settings.get("whisper_device", "") or "").strip()
     threshold = int(settings.get("threshold", DEFAULT_LLM_THRESHOLD))
 
     if not enabled or endpoint_raw.lower() in {"none", "null", "off"}:
@@ -312,33 +268,12 @@ def apply_llm_settings(settings: dict[str, object]) -> int:
     else:
         search_and_tag.LLM_MODEL_NAME = DEFAULT_LLM_MODEL
 
-    if not enabled or whisper_model_raw.lower() == "none":
-        search_and_tag.WHISPER_MODEL_NAME = None
-    elif whisper_model_raw:
-        search_and_tag.WHISPER_MODEL_NAME = whisper_model_raw
-    else:
-        search_and_tag.WHISPER_MODEL_NAME = DEFAULT_WHISPER_MODEL
-
-    device_val = whisper_device_raw.lower() or DEFAULT_WHISPER_DEVICE
-    search_and_tag.WHISPER_DEVICE = device_val
-    search_and_tag.WHISPER_PIPELINE = None
-    search_and_tag.WHISPER_PIPELINE_PROVIDER = None
-    search_and_tag.WHISPER_PIPELINE_ERROR = None
-
     tagger_mod = getattr(combobook, "tagger", None)
     if tagger_mod is not None and tagger_mod is not search_and_tag:
         tagger_mod.LLM_ENDPOINT = search_and_tag.LLM_ENDPOINT
         tagger_mod.LLM_MODEL_NAME = search_and_tag.LLM_MODEL_NAME
-        tagger_mod.WHISPER_MODEL_NAME = search_and_tag.WHISPER_MODEL_NAME
-        tagger_mod.WHISPER_DEVICE = search_and_tag.WHISPER_DEVICE
-        tagger_mod.WHISPER_PIPELINE = None
-        tagger_mod.WHISPER_PIPELINE_PROVIDER = None
-        tagger_mod.WHISPER_PIPELINE_ERROR = None
 
     return threshold
-
-
-
 
 def append_output(text: str) -> None:
     output_text.configure(state="normal")
@@ -507,7 +442,6 @@ def run() -> None:
 
     threading.Thread(target=worker, daemon=True).start()
 
-
 def restructure() -> None:
     src_str = (source_var.get() or "").strip()
     dst_str = (dest_var.get() or "").strip()
@@ -546,7 +480,6 @@ def restructure() -> None:
             output_queue.put(("status", f"error:{exc}"))
 
     threading.Thread(target=worker, daemon=True).start()
-
 
 def tag_only() -> None:
     src_str = (source_var.get() or "").strip()
@@ -601,8 +534,6 @@ def tag_only() -> None:
                     llm_threshold=llm_threshold,
                     llm_endpoint=search_and_tag.LLM_ENDPOINT,
                     llm_model=search_and_tag.LLM_MODEL_NAME,
-                    whisper_model=search_and_tag.WHISPER_MODEL_NAME,
-                    whisper_device=search_and_tag.WHISPER_DEVICE,
                 )
 
                 total = len(leaves)
@@ -621,7 +552,6 @@ def tag_only() -> None:
             output_queue.put(("status", f"error:{exc}"))
 
     threading.Thread(target=worker, daemon=True).start()
-
 
 def find_dupes() -> None:
     src_str = (source_var.get() or "").strip()
@@ -732,14 +662,7 @@ ttk.Button(actions_frame, text="Find Duplicates", command=find_dupes).grid(
     row=0, column=3, sticky="ew", pady=(0, PAD_Y)
 )
 
-
-
 if __name__ == "__main__":
     poll_queue()
     root.mainloop()
-
-
-
-
-
 

@@ -37,8 +37,9 @@ This repository contains small utilities for preparing audiobook folders for [Au
 - GUI front-end processes output in batches so the window stays responsive during large scans
 - GUI wraps each configuration cluster in titled `ttk.LabelFrame` sections (File Paths, Operation Settings, Model Configuration, Actions, Log) with consistent padding and responsive `grid()` weights so inputs stretch cleanly.
 - GUI groups operation settings, introduces drop-down selectors for CLI arguments, styles primary actions (Move and Tag) for prominence, and keeps the LLM fallback toggle inside the model configuration panel.
-- GUI adds a dedicated Plan JSON picker alongside Source and Destination paths, swaps threshold and timeout entries for numeric `ttk.Spinbox` widgets, and upgrades model/device fields to comboboxes for clearer selection.
+- GUI adds a dedicated Plan JSON picker alongside Source and Destination paths, swaps threshold and timeout entries for numeric `ttk.Spinbox` widgets, and keeps the LLM model selector as a combobox for clearer selection.
 - GUI exposes LM Studio fallback controls (endpoint, model, threshold) so the "Move and Tag" and "Tag Only" flows match the CLI
+- Whisper transcription settings have been retired from the GUI and CLI; tagging now relies solely on metadata lookups and LM Studio research.
 - Duplicate catalog prevents importing the same book twice
 
 ## Requirements
