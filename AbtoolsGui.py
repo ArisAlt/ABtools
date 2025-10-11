@@ -26,7 +26,6 @@ DEFAULT_LLM_ENDPOINT = (
     or "http://127.0.0.1:1234/v1/chat/completions"
 )
 DEFAULT_LLM_MODEL = search_and_tag.LLM_MODEL_NAME or "deepseek/deepseek-r1-0528-qwen3-8b"
-DEFAULT_LLM_THRESHOLD = 75
 
 if "--version" in sys.argv:
     print(VERSION_INFO % {"prog": Path(sys.argv[0]).name})
@@ -50,7 +49,6 @@ main.rowconfigure(4, weight=1)
 
 source_var = tk.StringVar()
 dest_var = tk.StringVar()
-plan_var = tk.StringVar()
 
 def browse_src():
     path = filedialog.askdirectory()
@@ -62,10 +60,6 @@ def browse_dst():
     if path:
         dest_var.set(path)
 
-def browse_plan():
-    path = filedialog.askopenfilename(filetypes=[("JSON Files", "*.json"), ("All Files", "*")])
-    if path:
-        plan_var.set(path)
 
 paths_frame = ttk.LabelFrame(main, text="File Paths", padding=PAD_X)
 paths_frame.grid(row=0, column=0, sticky="ew")
@@ -79,9 +73,6 @@ ttk.Label(paths_frame, text="Destination:").grid(row=1, column=0, sticky="w", pa
 ttk.Entry(paths_frame, textvariable=dest_var).grid(row=1, column=1, sticky="ew", pady=(0, PAD_Y))
 ttk.Button(paths_frame, text="Browse", command=browse_dst).grid(row=1, column=2, sticky="ew", padx=(PAD_X, 0), pady=(0, PAD_Y))
 
-ttk.Label(paths_frame, text="Plan JSON:").grid(row=2, column=0, sticky="w", padx=(0, PAD_X))
-ttk.Entry(paths_frame, textvariable=plan_var).grid(row=2, column=1, sticky="ew")
-ttk.Button(paths_frame, text="Browse", command=browse_plan).grid(row=2, column=2, sticky="ew", padx=(PAD_X, 0))
 
 commit_var = tk.BooleanVar()
 copy_var = tk.BooleanVar()
@@ -94,7 +85,6 @@ recurse_var = tk.BooleanVar(value=True)
 only_src_log_var = tk.BooleanVar()
 llm_endpoint_var = tk.StringVar(value=DEFAULT_LLM_ENDPOINT)
 llm_model_var = tk.StringVar(value=DEFAULT_LLM_MODEL)
-llm_threshold_var = tk.IntVar(value=DEFAULT_LLM_THRESHOLD)
 use_llm_var = tk.BooleanVar(value=bool(DEFAULT_LLM_ENDPOINT))
 
 operation_frame = ttk.LabelFrame(main, text="Operation Settings", padding=PAD_X)
@@ -176,16 +166,6 @@ model_combo = ttk.Combobox(llm_frame, textvariable=llm_model_var, values=MODEL_C
 model_combo.grid(row=2, column=1, sticky="ew", pady=(0, PAD_Y))
 llm_controls.append(model_combo)
 
-ttk.Label(llm_frame, text="Threshold:").grid(row=2, column=2, sticky="e", padx=(PAD_X, PAD_X), pady=(0, PAD_Y))
-threshold_spin = ttk.Spinbox(
-    llm_frame,
-    from_=0,
-    to=100,
-    textvariable=llm_threshold_var,
-    width=5,
-)
-threshold_spin.grid(row=2, column=3, sticky="w", pady=(0, PAD_Y))
-llm_controls.append(threshold_spin)
 
 
 def toggle_llm_controls() -> None:
@@ -277,33 +257,18 @@ ttk.Label(main, textvariable=eta_var).grid(row=5, column=0, sticky="e", pady=(PA
 toggle_llm_controls()
 
 def gather_llm_settings() -> dict[str, object]:
-    enabled = use_llm_var.get()
+    enabled = bool(use_llm_var.get())
     endpoint = (llm_endpoint_var.get() or "").strip()
     model = (llm_model_var.get() or "").strip()
-    try:
-        threshold = int(llm_threshold_var.get())
-    except Exception:
-        threshold = DEFAULT_LLM_THRESHOLD
-    threshold = max(0, min(100, threshold))
     if not enabled:
-        return {
-            "enabled": False,
-            "endpoint": "none",
-            "model": "",
-            "threshold": threshold,
-        }
-    return {
-        "enabled": True,
-        "endpoint": endpoint,
-        "model": model,
-        "threshold": threshold,
-    }
+        return {"enabled": False, "endpoint": "none", "model": ""}
+    return {"enabled": True, "endpoint": endpoint, "model": model}
 
-def apply_llm_settings(settings: dict[str, object]) -> int:
+
+def apply_llm_settings(settings: dict[str, object]) -> None:
     enabled = bool(settings.get("enabled", True))
     endpoint_raw = str(settings.get("endpoint", "") or "").strip()
     model_raw = str(settings.get("model", "") or "").strip()
-    threshold = int(settings.get("threshold", DEFAULT_LLM_THRESHOLD))
 
     if not enabled or endpoint_raw.lower() in {"none", "null", "off"}:
         search_and_tag.LLM_ENDPOINT = None
@@ -323,8 +288,6 @@ def apply_llm_settings(settings: dict[str, object]) -> int:
     if tagger_mod is not None and tagger_mod is not search_and_tag:
         tagger_mod.LLM_ENDPOINT = search_and_tag.LLM_ENDPOINT
         tagger_mod.LLM_MODEL_NAME = search_and_tag.LLM_MODEL_NAME
-
-    return threshold
 
 
 def _normalise_output_text(text: str) -> str:
@@ -498,8 +461,9 @@ def _run_combobook(mode: str) -> None:
                     f"[cyan]Starting {mode_label} run | commit={'yes' if commit_flag and not skip_move else 'no'} | "
                     f"copy={'yes' if copy_flag else 'no'} | auto-yes={'yes' if auto_yes_flag else 'no'} | dry-run={'yes' if dry_run else 'no'}[/]"
                 )
+                llm_state = "enabled" if llm_settings.get("enabled") else "disabled"
                 combobook.rprint(
-                    f"[cyan]Tagger LLM endpoint: {llm_endpoint} | model: {llm_model} | threshold={llm_settings['threshold']}[/]"
+                    f"[cyan]Tagger LLM endpoint: {llm_endpoint} | model: {llm_model} | fallback={llm_state}[/]"
                 )
 
                 if skip_tags:
@@ -651,16 +615,17 @@ def tag_only() -> None:
     def worker() -> None:
         try:
             with redirect_stdout(QueueWriter(output_queue)), redirect_stderr(QueueWriter(output_queue)):
-                llm_threshold = apply_llm_settings(llm_settings)
+                apply_llm_settings(llm_settings)
                 commit_flag = commit_var.get()
                 auto_yes_flag = yes_var.get()
                 endpoint = search_and_tag.LLM_ENDPOINT or "disabled"
                 model = search_and_tag.LLM_MODEL_NAME or "default"
+                fallback_state = "enabled" if llm_settings.get("enabled") else "disabled"
                 search_and_tag.rprint(
                     f"[cyan]Starting Tag run (providers + LM Studio + SequentialThinking) | commit={'yes' if commit_flag else 'no'} | auto-yes={'yes' if auto_yes_flag else 'no'}[/]"
                 )
                 search_and_tag.rprint(
-                    f"[cyan]LLM endpoint: {endpoint} | model: {model} | threshold={llm_threshold}[/]"
+                    f"[cyan]LLM endpoint: {endpoint} | model: {model} | fallback={fallback_state}[/]"
                 )
 
                 def gui_confirm(question: str, default: bool = False) -> bool:
@@ -689,7 +654,6 @@ def tag_only() -> None:
                     yes=yes_var.get(),
                     no=False,
                     striptags=False,
-                    llm_threshold=llm_threshold,
                     llm_endpoint=search_and_tag.LLM_ENDPOINT,
                     llm_model=search_and_tag.LLM_MODEL_NAME,
                 )
