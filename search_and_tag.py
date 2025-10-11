@@ -1,6 +1,6 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
-ABtools/search_and_tag.py ΓÇô v2.30  (2025-09-12)
+ABtools/search_and_tag.py - v2.30 (2025-09-12)
 Tag (or strip) audiobook files using multiple metadata providers.
 
     The script queries Audible, Open Library, Google Books and Goodreads
@@ -46,18 +46,18 @@ from mutagen import File as MFile, MutagenError
 from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TALB, TPE1, TDRC, TXXX, TRCK
 from mutagen.mp4 import MP4, MP4StreamInfoError
 
-# ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼ colour (rich) or plain text ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼
+# ----- colour (rich) or plain text -----
 try:
     from rich import print as rprint
     from rich.prompt import Confirm
-except ImportError:  # plain console, strip tags like [bold]ΓÇª[/]
+except ImportError:  # plain console, strip tags like [bold]...[/]
     _TAGS = re.compile(r"\[/?[a-zA-Z].*?]")
     def rprint(*a, **k): print(_TAGS.sub("", " ".join(map(str, a))), **k)
     def Confirm(prompt: str, default=False):
         ans = input(f"{prompt} [{'Y/n' if default else 'y/N'}] ").lower().strip()
         return default if ans == "" else ans in {"y", "yes"}
 
-# ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼ constants ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼
+# ----- constants -----
 AUDIO_EXTS = {".mp3", ".m4a", ".m4b"}
 TAIL_RX    = re.compile(r"(?:\{[^}]*\})?(?:\s*\d+\.\d{2}\.\d{2})?(?:\s*\d+\s*[kK])?\s*$")
 PAREN_RX   = re.compile(r"\([^)]*\)")
@@ -172,13 +172,13 @@ def _call_llm(
         resp = SESSION.post(LLM_ENDPOINT, json=payload, timeout=LLM_TIMEOUT)
     except requests.RequestException as exc:  # pragma: no cover - network guard
         if DEBUG:
-            rprint(f"  [yellow]ΓÇó LM Studio request failed: {exc}[/]")
+            rprint(f"  [yellow]- LM Studio request failed: {exc}[/]")
         return None
 
     if resp.status_code >= 400:
         if DEBUG:
             rprint(
-                f"  [yellow]ΓÇó LM Studio returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
+                f"  [yellow]- LM Studio returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
             )
         return None
 
@@ -186,7 +186,7 @@ def _call_llm(
         data = resp.json()
     except ValueError:
         if DEBUG:
-            rprint("  [yellow]ΓÇó LM Studio response was not valid JSON[/]")
+            rprint("  [yellow]- LM Studio response was not valid JSON[/]")
         return None
 
     choices = data.get("choices")
@@ -204,7 +204,7 @@ def _call_llm(
         new_budget = min(token_budget * 2, 2048)
         if DEBUG:
             rprint(
-                f"  [yellow]ΓÇó LM Studio response hit max_tokens={token_budget}; retrying with {new_budget}[/]"
+                f"  [yellow]- LM Studio response hit max_tokens={token_budget}; retrying with {new_budget}[/]"
             )
         return _call_llm(
             prompt,
@@ -229,13 +229,13 @@ def _tavily_search(query: str, *, max_results: int = 3) -> Optional[str]:
         resp = SESSION.post(TAVILY_ENDPOINT, json=payload, timeout=LLM_TIMEOUT)
     except requests.RequestException as exc:
         if DEBUG:
-            rprint(f"  [yellow]ΓÇó Tavily search failed: {exc}[/]")
+            rprint(f"  [yellow]- Tavily search failed: {exc}[/]")
         return None
 
     if resp.status_code >= 400:
         if DEBUG:
             rprint(
-                f"  [yellow]ΓÇó Tavily returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
+                f"  [yellow]- Tavily returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
             )
         return None
 
@@ -243,7 +243,7 @@ def _tavily_search(query: str, *, max_results: int = 3) -> Optional[str]:
         data = resp.json()
     except ValueError:
         if DEBUG:
-            rprint("  [yellow]ΓÇó Tavily response was not valid JSON[/]")
+            rprint("  [yellow]- Tavily response was not valid JSON[/]")
         return None
 
     results = data.get("results")
@@ -259,7 +259,7 @@ def _tavily_search(query: str, *, max_results: int = 3) -> Optional[str]:
         url = item.get("url")
         chunk = content.strip()
         if len(chunk) > 500:
-            chunk = chunk[:500].rsplit(" ", 1)[0] + "ΓÇª"
+            chunk = chunk[:500].rsplit(" ", 1)[0] + "..."
         line = f"- {title.strip()}"
         if url:
             line += f" ({url.strip()})"
@@ -280,14 +280,14 @@ def review_log(path: Path, reason: str):
     with REVIEW_PATH.open("a", encoding="utf-8") as fh:
         fh.write(f"{datetime.datetime.now():%F %T}  {reason:<9}  {path}\n")
 
-# ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼ tiny helpers ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼
+# ----- tiny helpers -----
 def clean_tail(s: str) -> str:
     return TAIL_RX.sub("", s).strip()
 
 def has_audio(folder: Path) -> bool:
     return any(c.suffix.lower() in AUDIO_EXTS for c in folder.iterdir())
 
-# ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼ filename guess ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼
+# ----- filename guess -----
 def guess_from_path(p: Path) -> Tuple[Optional[str], str, Optional[str]]:
     """Return (author, title, year).  Author may be None."""
     leaf = clean_tail(p.stem if p.is_file() else p.name)
@@ -310,7 +310,7 @@ def guess_from_path(p: Path) -> Tuple[Optional[str], str, Optional[str]]:
     title = PAREN_RX.sub("", title).strip()
     return author, title, year
 
-# ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼ online lookup helpers ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼
+# ----- online lookup helpers -----
 def openlib(author: Optional[str], title: str) -> Optional[dict]:
     try:
         q = f"title:{title}" + (f" author:{author}" if author else "")
@@ -521,7 +521,7 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
     folder_label = folder.name or folder.stem or str(folder)
     file_lines = "\n".join(f"- {f.name}" for f in files[:25])
     if len(files) > 25:
-        file_lines += f"\n- ΓÇª (+{len(files) - 25} more)"
+        file_lines += f"\n- ... (+{len(files) - 25} more)"
 
     prompt = textwrap.dedent(
         f"""
@@ -578,7 +578,7 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
             payload = json.loads(cleaned)
         except json.JSONDecodeError:
             if DEBUG:
-                rprint("  [yellow]ΓÇó LM Studio returned non-JSON metadata[/]")
+                rprint("  [yellow]- LM Studio returned non-JSON metadata[/]")
             return None
         if not isinstance(payload, dict):
             return None
@@ -627,7 +627,7 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
     )
     if primary_raw is None:
         if DEBUG:
-            rprint("  [yellow]ΓÇó LM Studio metadata request returned no content[/]")
+            rprint("  [yellow]- LM Studio metadata request returned no content[/]")
         return None
 
     result = parse_llm_raw(primary_raw)
@@ -649,7 +649,7 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
             if query:
                 tavily_context = _tavily_search(query)
                 if DEBUG and tavily_context:
-                    rprint(f"  [cyan]ΓÇó Tavily search context fetched for '{query}'[/]")
+                    rprint(f"  [cyan]- Tavily search context fetched for '{query}'[/]")
         retry_prompt = (
             prompt
             + "\n\nThe previous response was missing these fields: "
@@ -666,7 +666,7 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
             retry_prompt += "\n\nIf needed, consult the Tavily Search API when gathering details."
         if DEBUG:
             rprint(
-                "  [cyan]ΓÇó retrying LM Studio metadata request to fill: "
+                "  [cyan]- retrying LM Studio metadata request to fill: "
                 + missing_list
                 + "[/]"
             )
@@ -718,11 +718,11 @@ def write_tags(file: Path, meta: dict, index: int = 0, total: int = 0):
     elif ext in {".m4a", ".m4b"}:
         mp4 = MP4(str(file))
         mp4.clear()
-        mp4["├é┬⌐nam"] = meta["title"]
-        mp4["├é┬⌐alb"] = meta["title"]
-        mp4["├é┬⌐ART"] = meta["author"]
+        mp4["\u00a9nam"] = meta["title"]
+        mp4["\u00a9alb"] = meta["title"]
+        mp4["\u00a9ART"] = meta["author"]
         if meta["year"]:
-            mp4["├é┬⌐day"] = meta["year"]
+            mp4["\u00a9day"] = meta["year"]
         if meta.get("series"):
             mp4["----:com.apple.iTunes:series"] = [meta["series"].encode("utf-8")]
         if index:
@@ -741,11 +741,17 @@ def export_metadata(path: Path, meta: dict):
             child.text = v
     ET.ElementTree(root).write(target / "book.nfo", encoding="utf-8", xml_declaration=True)
 
-# ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼ process one leaf ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼
+# ----- process one leaf -----
 def process_leaf(path: Path, args):
+    try:
+        llm_threshold = int(getattr(args, "llm_threshold", 75))
+    except (TypeError, ValueError):
+        llm_threshold = 75
+    llm_threshold = max(0, min(100, llm_threshold))
+    setattr(args, "llm_threshold", llm_threshold)
     # skip Unknown Author
     if path.name == "Unknown Author" or path.parent.name == "Unknown Author":
-        rprint("ΓÇó skip Unknown Author:", path)
+        rprint("- skip Unknown Author:", path)
         log("SKIP", str(path)); return
 
     # strip mode
@@ -757,13 +763,13 @@ def process_leaf(path: Path, args):
                 strip_tags(f); ok += 1
             except MutagenError:
                 log("ERR", f"strip {f}")
-        rprint(f"[cyan]├óΓÇáΓÇÖ[/] {path}  [green]tags stripped ({ok}/{len(targets)})[/]")
+        rprint(f"[cyan]->[/] {path}  [green]tags stripped ({ok}/{len(targets)})[/]")
         log("STRIP", f"{path}  ({ok}/{len(targets)})")
         return
 
     # guess
     a_guess, t_guess, y_guess = guess_from_path(path)
-    rprint(f"[cyan]├óΓÇáΓÇÖ[/] {path}")
+    rprint(f"[cyan]->[/] {path}")
     rprint(f"  guess: [italic]{t_guess}[/] by {a_guess or '?'} ({y_guess or '?'})")
 
     if path.is_file():
@@ -773,7 +779,7 @@ def process_leaf(path: Path, args):
             [f for f in path.rglob("*") if f.suffix.lower() in AUDIO_EXTS]
         )
     if not targets:
-        rprint("  [yellow]ΓÇó no audio files found[/]")
+        rprint("  [yellow]- no audio files found[/]")
         log("SKIP", f"{path}  no_audio")
         return
 
@@ -782,10 +788,10 @@ def process_leaf(path: Path, args):
     result, scores = best_match(a_guess, t_guess)
     llm_used = False
     if not result:
-        rprint("  [red] ΓÇó no match[/]")
+        rprint("  [red] - no match[/]")
         llm_meta = generate_metadata_via_llm(folder, targets)
         if llm_meta:
-            rprint("  [magenta]ΓÇó metadata supplied by local LLM[/]")
+            rprint("  [magenta]- metadata supplied by local LLM[/]")
             meta = llm_meta
             llm_used = True
         else:
@@ -805,7 +811,7 @@ def process_leaf(path: Path, args):
         rprint(f"  provider: {hit['source']}")
 
         if score < 60:
-            rprint("  [yellow]├ó┼í┬á low confidence ├óΓé¼ΓÇ£ double-check[/]")
+            rprint("  [yellow]!! low confidence - double-check[/]")
 
         meta = {
             "title": hit["title"],
@@ -814,22 +820,37 @@ def process_leaf(path: Path, args):
             "series": hit.get("series"),
         }
 
-        if score < args.llm_threshold:
+        if score < llm_threshold:
             llm_meta = generate_metadata_via_llm(folder, targets)
             if llm_meta:
                 rprint(
-                    f"  [magenta]ΓÇó metadata supplied by local LLM (score {score} < {args.llm_threshold})[/]"
+                    f"  [magenta]- metadata supplied by local LLM (score {score} < {llm_threshold})[/]"
                 )
                 meta = llm_meta
                 llm_used = True
 
         if not llm_used and score < 70 and not args.yes:
+            score_val = f"{score:.1f}" if isinstance(score, float) else str(score)
+            summary_lines = [
+                "Tag with this metadata?",
+                "",
+                f"Title   : {meta.get('title') or 'Unknown'}",
+                f"Author  : {meta.get('author') or 'Unknown'}",
+            ]
+            if meta.get("series"):
+                summary_lines.append(f"Series  : {meta['series']}")
+            if meta.get("year"):
+                summary_lines.append(f"Year    : {meta['year']}")
+            summary_lines.append(f"Provider: {hit.get('source', '?')}")
+            summary_lines.append(f"Score   : {score_val} (threshold {llm_threshold})")
+            summary_lines.append(f"Path    : {path}")
+            prompt_message = "\n".join(summary_lines)
             if args.no:
                 proceed = False
             elif hasattr(Confirm, "ask"):
-                proceed = Confirm.ask("  tag with this metadata?", default=False)
+                proceed = Confirm.ask(prompt_message, default=False)
             else:
-                proceed = Confirm("tag with this metadata?", default=False)
+                proceed = Confirm(prompt_message, default=False)
             if not proceed:
                 log("SKIP", str(path))
                 review_log(path, "user_skip")
@@ -847,7 +868,7 @@ def process_leaf(path: Path, args):
     if label == "OK":
         export_metadata(path, meta)
 
-# ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼ leaf finder ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼
+# ----- leaf finder -----
 def walk_leaves(root: Path) -> List[Path]:
     if root.is_file():
         return [root]
@@ -858,7 +879,7 @@ def walk_leaves(root: Path) -> List[Path]:
             leaves.append(p)
     return leaves
 
-# ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼ cli / main ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼
+# ----- cli / main -----
 def main():
     ap = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -931,14 +952,14 @@ def main():
                 continue
             process_leaf(leaf, args)
         except Exception as e:
-            rprint(f"[red]ERR:[/] {leaf} ├óΓé¼ΓÇ£ {e}")
+            rprint(f"[red]ERR:[/] {leaf} - {e}")
             if DEBUG:
                 import traceback
                 tb = traceback.format_exc()
                 rprint(tb)
-                log("ERR", f"{leaf} ├óΓé¼ΓÇ£ {type(e).__name__}: {tb.strip()}")
+                log("ERR", f"{leaf} - {type(e).__name__}: {tb.strip()}")
             else:
-                log("ERR", f"{leaf} ├óΓé¼ΓÇ£ {type(e).__name__}")
+                log("ERR", f"{leaf} - {type(e).__name__}")
 
 if __name__ == "__main__":
     main()
