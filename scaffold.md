@@ -40,7 +40,7 @@ Audiobooks/
   - `--version` prints the script version and file path
   - Experimental switches stored in `~/.abclient.json` (used by `AbClient`)
   - Prints scores from all metadata providers
-  - Optional LM Studio fallback via `--llm-endpoint` / `--llm-model` / `--llm-threshold` supplies metadata when lookups fail by asking LM Studio's MCP tools (via the provider search functions) to search Audible, Open Library, Google Books, and Goodreads with targeted `site:` filters—no audio transcription required.
+  - Optional LM Studio fallback runs the staged Metadata Refiner -> SequentialThinking -> Tag Evaluator pipeline once provider scores drop below 90. It calls the MCP provider tools (`search_audible_tool`, `search_openlibrary_tool`, `search_google_books_tool`, `search_goodreads_tool`) plus the generic `search`/`fetch_content` helpers and can pull DuckDuckGo snippets before returning structured JSON (no transcription required).
   - Provide a DuckDuckGo Search API key (`(no key required)` or `DUCKDUCKGO_MCP`) to feed web snippets into second-pass LLM retries when metadata fields are missing.
 
 ### `flatten_discs.py`
