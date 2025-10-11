@@ -11,6 +11,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Callable
 import combobook, search_and_tag, find_duplicates, restructure_for_audiobookshelf
 
 VERSION = "0.16"
@@ -24,7 +25,7 @@ DEFAULT_LLM_ENDPOINT = (
     search_and_tag.LLM_ENDPOINT
     or "http://127.0.0.1:1234/v1/chat/completions"
 )
-DEFAULT_LLM_MODEL = search_and_tag.LLM_MODEL_NAME or "mistral-7b-instruct-q4"
+DEFAULT_LLM_MODEL = search_and_tag.LLM_MODEL_NAME or "deepseek/deepseek-r1-0528-qwen3-8b"
 DEFAULT_LLM_THRESHOLD = 75
 
 if "--version" in sys.argv:
@@ -186,6 +187,7 @@ threshold_spin = ttk.Spinbox(
 threshold_spin.grid(row=2, column=3, sticky="w", pady=(0, PAD_Y))
 llm_controls.append(threshold_spin)
 
+
 def toggle_llm_controls() -> None:
     state = "normal" if use_llm_var.get() else "disabled"
     for widget in llm_controls:
@@ -198,10 +200,59 @@ output_queue: queue.Queue[tuple[str, object]] = queue.Queue()
 # Track whether the progress bar is running in indeterminate mode to avoid
 # flicker from redundant determinate updates during cross-compare.
 progress_is_indeterminate = False
+current_worker: threading.Thread | None = None
+stop_event = threading.Event()
+action_buttons: list[ttk.Button] = []
+stop_button: ttk.Button | None = None
+
+def set_running(running: bool) -> None:
+    global current_worker, progress_is_indeterminate
+    state = "disabled" if running else "normal"
+    for btn in action_buttons:
+        try:
+            btn.configure(state=state)
+        except tk.TclError:
+            pass
+    if stop_button is not None:
+        try:
+            stop_button.configure(state="normal" if running else "disabled")
+        except tk.TclError:
+            pass
+    if not running:
+        current_worker = None
+        stop_event.clear()
+        try:
+            progress.stop()
+            progress.configure(mode="determinate")
+        except Exception:
+            pass
+        progress_is_indeterminate = False
+
+def start_worker(target: Callable[[], None]) -> None:
+    global current_worker
+    if current_worker is not None and current_worker.is_alive():
+        return
+    stop_event.clear()
+    set_running(True)
+    worker_thread = threading.Thread(target=target, daemon=True)
+    current_worker = worker_thread
+    worker_thread.start()
+
+def stop_current() -> None:
+    if current_worker is None or not current_worker.is_alive():
+        return
+    if stop_event.is_set():
+        return
+    stop_event.set()
+    try:
+        eta_var.set("Stopping...")
+    except Exception:
+        pass
+    output_queue.put(("stdout", "\nStop requested. Waiting for current task to finish...\n"))
 
 actions_frame = ttk.LabelFrame(main, text="Actions", padding=PAD_X)
 actions_frame.grid(row=3, column=0, sticky="ew", pady=(PAD_Y, 0))
-for i in range(4):
+for i in range(5):
     actions_frame.columnconfigure(i, weight=1)
 
 log_frame = ttk.LabelFrame(main, text="Log", padding=PAD_X)
@@ -275,7 +326,19 @@ def apply_llm_settings(settings: dict[str, object]) -> int:
 
     return threshold
 
+
+def _normalise_output_text(text: str) -> str:
+    """Best-effort fix for mojibake sequences in captured CLI output."""
+    if not text or "â" not in text:
+        return text
+    try:
+        return text.encode("cp1252").decode("utf-8")
+    except UnicodeError:
+        return text
+
+
 def append_output(text: str) -> None:
+    text = _normalise_output_text(text)
     output_text.configure(state="normal")
     output_text.insert(tk.END, text.replace("\r", "\n"))
     output_text.see(tk.END)
@@ -291,6 +354,10 @@ class QueueWriter:
 
     def flush(self) -> None:  # pragma: no cover - required for file-like API
         pass
+
+    def isatty(self) -> bool:
+        """Mirror TTY interface so libraries that check stdout.isatty() do not crash."""
+        return False
 
 def poll_queue() -> None:
     global progress_is_indeterminate
@@ -359,12 +426,31 @@ def poll_queue() -> None:
                 pass
         elif typ == "status":
             if msg == "done":
-                messagebox.showinfo("Done", "Processing finished")
+                set_running(False)
+                eta_var.set("ETA: --:--")
+                try:
+                    messagebox.showinfo("Done", "Processing finished")
+                except Exception:
+                    pass
+            elif msg == "stopped":
+                set_running(False)
+                eta_var.set("Stopped")
+                try:
+                    messagebox.showinfo("Stopped", "Processing cancelled")
+                except Exception:
+                    pass
             elif msg.startswith("error:"):
-                messagebox.showerror("Error", msg[6:])
+                set_running(False)
+                eta_var.set("Error")
+                try:
+                    messagebox.showerror("Error", msg[6:])
+                except Exception:
+                    pass
     root.after(100, poll_queue)
 
-def run() -> None:
+def _run_combobook(mode: str) -> None:
+    if mode not in {"tag_move", "tag_only", "move_only"}:
+        raise ValueError(f"Unsupported combobook mode: {mode}")
     src_str = (source_var.get() or "").strip()
     dst_str = (dest_var.get() or "").strip()
     if not src_str:
@@ -382,6 +468,14 @@ def run() -> None:
 
     combobook.AUTO_YES = yes_var.get()
     llm_settings = gather_llm_settings()
+    skip_move = mode == "tag_only"
+    skip_tags = mode == "move_only"
+    dry_run = skip_move or not commit_var.get()
+    mode_label = {
+        "tag_move": "Tag + Move",
+        "tag_only": "Tag (no move)",
+        "move_only": "Move (no retag)",
+    }[mode]
 
     output_text.configure(state="normal")
     output_text.delete("1.0", tk.END)
@@ -391,9 +485,25 @@ def run() -> None:
     eta_var.set("ETA: --:--")
 
     def worker() -> None:
+        original_write_tags = getattr(combobook, "WRITE_TAGS", True)
         try:
             with redirect_stdout(QueueWriter(output_queue)), redirect_stderr(QueueWriter(output_queue)):
                 apply_llm_settings(llm_settings)
+                commit_flag = commit_var.get()
+                copy_flag = copy_var.get()
+                auto_yes_flag = yes_var.get()
+                llm_endpoint = search_and_tag.LLM_ENDPOINT or "disabled"
+                llm_model = search_and_tag.LLM_MODEL_NAME or "default"
+                combobook.rprint(
+                    f"[cyan]Starting {mode_label} run | commit={'yes' if commit_flag and not skip_move else 'no'} | "
+                    f"copy={'yes' if copy_flag else 'no'} | auto-yes={'yes' if auto_yes_flag else 'no'} | dry-run={'yes' if dry_run else 'no'}[/]"
+                )
+                combobook.rprint(
+                    f"[cyan]Tagger LLM endpoint: {llm_endpoint} | model: {llm_model} | threshold={llm_settings['threshold']}[/]"
+                )
+
+                if skip_tags:
+                    combobook.WRITE_TAGS = False
 
                 def gui_confirm(question: str, default: bool = False) -> bool:
                     resp_q: queue.Queue[bool] = queue.Queue()
@@ -409,16 +519,33 @@ def run() -> None:
                 except Exception:
                     pass
 
+                if skip_tags:
+                    combobook.rprint("[cyan]Tag writing disabled (move-only mode).[/]")
+                elif skip_move:
+                    combobook.rprint("[cyan]Moves are disabled (tag-only mode).[/]")
+
                 leaves = combobook.leaf_dirs(src)
                 total = len(leaves)
+                combobook.rprint(f"[cyan]Discovered {total} leaf folder(s) to handle.[/]")
                 summary: defaultdict[str, int] = defaultdict(int)
                 start = time.time()
                 for idx, leaf in enumerate(leaves, 1):
+                    if stop_event.is_set():
+                        combobook.rprint(f"\n[yellow]Stop requested; halting {mode_label} run.[/]")
+                        output_queue.put(("status", "stopped"))
+                        combobook.WRITE_TAGS = original_write_tags
+                        return
+                    try:
+                        rel = leaf.relative_to(src)
+                    except Exception:
+                        rel = leaf
+                    phase = "preview" if dry_run else "processing"
+                    combobook.rprint(f"[cyan]({idx}/{total}) {phase}: {rel}[/]")
                     combobook.process(
                         leaf,
                         src,
                         dst,
-                        dry=not commit_var.get(),
+                        dry=dry_run,
                         yes=yes_var.get(),
                         copy=copy_var.get(),
                         summary=summary,
@@ -428,19 +555,36 @@ def run() -> None:
                     eta = (total - idx) / rate if rate else 0.0
                     output_queue.put(("progress", (idx, total, eta)))
 
-                combobook.rprint("\n[bold]summary[/]")
+                if stop_event.is_set():
+                    combobook.rprint("\n[yellow]Stop requested; skipping summary.[/]")
+                    output_queue.put(("status", "stopped"))
+                    combobook.WRITE_TAGS = original_write_tags
+                    return
+
+                combobook.rprint(f"\n[bold]{mode_label} summary[/]")
                 action_word = "copied" if copy_var.get() else "moved"
-                combobook.rprint(f"  total        : {summary['total']}")
+                combobook.rprint(f"  processed    : {summary['total']}")
                 combobook.rprint(f"  {action_word:12}: {summary['moved']}")
-                if not commit_var.get():
-                    combobook.rprint(f"  would_move   : {summary['would_move']}")
+                combobook.rprint(f"  would_move   : {summary['would_move']}")
                 for key in ("exists", "skip", "unmatched"):
                     combobook.rprint(f"  {key:12}: {summary[key]}")
+                if skip_move:
+                    combobook.rprint("  moves skipped (tag-only mode)")
+                if skip_tags:
+                    combobook.rprint("  tags not updated (move-only mode)")
+                combobook.WRITE_TAGS = original_write_tags
             output_queue.put(("status", "done"))
         except Exception as exc:
+            try:
+                combobook.WRITE_TAGS = original_write_tags
+            except Exception:
+                pass
             output_queue.put(("status", f"error:{exc}"))
 
-    threading.Thread(target=worker, daemon=True).start()
+    start_worker(worker)
+
+def run() -> None:
+    _run_combobook("tag_move")
 
 def restructure() -> None:
     src_str = (source_var.get() or "").strip()
@@ -474,12 +618,16 @@ def restructure() -> None:
                     commit=commit_var.get(),
                     copy=copy_var.get(),
                     interactive=False,
+                    stop_event=stop_event,
                 )
-            output_queue.put(("status", "done"))
+            if stop_event.is_set():
+                output_queue.put(("status", "stopped"))
+            else:
+                output_queue.put(("status", "done"))
         except Exception as exc:
             output_queue.put(("status", f"error:{exc}"))
 
-    threading.Thread(target=worker, daemon=True).start()
+    start_worker(worker)
 
 def tag_only() -> None:
     src_str = (source_var.get() or "").strip()
@@ -504,6 +652,16 @@ def tag_only() -> None:
         try:
             with redirect_stdout(QueueWriter(output_queue)), redirect_stderr(QueueWriter(output_queue)):
                 llm_threshold = apply_llm_settings(llm_settings)
+                commit_flag = commit_var.get()
+                auto_yes_flag = yes_var.get()
+                endpoint = search_and_tag.LLM_ENDPOINT or "disabled"
+                model = search_and_tag.LLM_MODEL_NAME or "default"
+                search_and_tag.rprint(
+                    f"[cyan]Starting Tag run (providers + LM Studio + SequentialThinking) | commit={'yes' if commit_flag else 'no'} | auto-yes={'yes' if auto_yes_flag else 'no'}[/]"
+                )
+                search_and_tag.rprint(
+                    f"[cyan]LLM endpoint: {endpoint} | model: {model} | threshold={llm_threshold}[/]"
+                )
 
                 def gui_confirm(question: str, default: bool = False) -> bool:
                     resp_q: queue.Queue[bool] = queue.Queue()
@@ -537,8 +695,19 @@ def tag_only() -> None:
                 )
 
                 total = len(leaves)
+                search_and_tag.rprint(f"[cyan]Scanning {total} leaf folder(s).[/]")
                 start = time.time()
                 for idx, leaf in enumerate(leaves, 1):
+                    if stop_event.is_set():
+                        search_and_tag.rprint("\n[yellow]Stop requested; halting Tag Only run.[/]")
+                        output_queue.put(("status", "stopped"))
+                        return
+                    try:
+                        rel = leaf.relative_to(src)
+                    except Exception:
+                        rel = leaf
+                    action = "Previewing" if not commit_flag else "Tagging"
+                    search_and_tag.rprint(f"[cyan]({idx}/{total}) {action} {rel}[/]")
                     if not commit_var.get():
                         search_and_tag.rprint(f"[dim]preview:[/] {leaf}")
                     else:
@@ -547,11 +716,14 @@ def tag_only() -> None:
                     rate = idx / elapsed if elapsed else 0.0
                     eta = (total - idx) / rate if rate else 0.0
                     output_queue.put(("progress", (idx, total, eta)))
+                if stop_event.is_set():
+                    output_queue.put(("status", "stopped"))
+                    return
             output_queue.put(("status", "done"))
         except Exception as exc:
             output_queue.put(("status", f"error:{exc}"))
 
-    threading.Thread(target=worker, daemon=True).start()
+    start_worker(worker)
 
 def find_dupes() -> None:
     src_str = (source_var.get() or "").strip()
@@ -609,7 +781,11 @@ def find_dupes() -> None:
                         on_file=on_file,
                         threads=threads,
                         limit_src=limit_set,
+                        stop_event=stop_event,
                     )
+                    if stop_event.is_set():
+                        output_queue.put(("status", "stopped"))
+                        return
                     if not dupes:
                         print("No duplicates found.")
                     else:
@@ -630,7 +806,11 @@ def find_dupes() -> None:
                         on_file=on_file,
                         threads=threads,
                         recursive=recurse_var.get(),
+                        stop_event=stop_event,
                     )
+                    if stop_event.is_set():
+                        output_queue.put(("status", "stopped"))
+                        return
                     if not dupes:
                         print("No duplicates found.")
                     else:
@@ -644,25 +824,26 @@ def find_dupes() -> None:
 
                 mode = "cross-compare" if dst is not None else "single-folder"
                 print(f"\nMode: {mode} | by: {by}")
+                if stop_event.is_set():
+                    output_queue.put(("status", "stopped"))
+                    return
             output_queue.put(("status", "done"))
         except Exception as exc:
             output_queue.put(("status", f"error:{exc}"))
 
-    threading.Thread(target=worker, daemon=True).start()
-ttk.Button(actions_frame, text="Move and Tag", style="Primary.TButton", command=run).grid(
-    row=0, column=0, sticky="ew", padx=(0, PAD_X), pady=(0, PAD_Y)
-)
-ttk.Button(actions_frame, text="Restructure Folders", command=restructure).grid(
-    row=0, column=1, sticky="ew", padx=(0, PAD_X), pady=(0, PAD_Y)
-)
-ttk.Button(actions_frame, text="Tag Only", command=tag_only).grid(
-    row=0, column=2, sticky="ew", padx=(0, PAD_X), pady=(0, PAD_Y)
-)
-ttk.Button(actions_frame, text="Find Duplicates", command=find_dupes).grid(
-    row=0, column=3, sticky="ew", pady=(0, PAD_Y)
-)
+    start_worker(worker)
+tag_button = ttk.Button(actions_frame, text="Tag", style="Primary.TButton", command=tag_only)
+tag_button.grid(row=0, column=0, sticky="ew", padx=(0, PAD_X), pady=(0, PAD_Y))
+move_button = ttk.Button(actions_frame, text="Move", command=run)
+move_button.grid(row=0, column=1, sticky="ew", padx=(0, PAD_X), pady=(0, PAD_Y))
+restructure_button = ttk.Button(actions_frame, text="Restructure Folders", command=restructure)
+restructure_button.grid(row=0, column=2, sticky="ew", padx=(0, PAD_X), pady=(0, PAD_Y))
+dup_button = ttk.Button(actions_frame, text="Find Duplicates", command=find_dupes)
+dup_button.grid(row=0, column=3, sticky="ew", pady=(0, PAD_Y))
+stop_button = ttk.Button(actions_frame, text="Stop", command=stop_current, state="disabled")
+stop_button.grid(row=0, column=4, sticky="ew", padx=(PAD_X, 0), pady=(0, PAD_Y))
+action_buttons.extend([tag_button, move_button, restructure_button, dup_button])
 
 if __name__ == "__main__":
     poll_queue()
     root.mainloop()
-

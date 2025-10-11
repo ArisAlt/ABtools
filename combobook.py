@@ -24,13 +24,16 @@ python combo_abooks.py --version
 
 from __future__ import annotations
 import argparse, re, shlex, shutil, subprocess, sys, textwrap
+import contextlib, threading, time
+import os
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from difflib import SequenceMatcher
 import errno
-from difflib import SequenceMatcher
+import stat
 
 import search_and_tag as tagger
 
@@ -45,6 +48,17 @@ RENAME_TRACKS = False          # Track 001.*, Track 002.* …
 WRITE_TAGS    = True           # needs ffmpeg on PATH
 AUTO_YES      = False          # --yes overrides per-run
 UNMATCHED_DIR = "_unmatched"   # destination for folders with no metadata match
+
+def _coerce_positive_int(value: str | None, default: int) -> int:
+    try:
+        num = int(value) if value is not None else default
+    except (TypeError, ValueError):
+        return default
+    return num if num > 0 else default
+
+COPY_BUFFER_SIZE = _coerce_positive_int(os.getenv("ABTOOLS_COPY_BUFFER_MB"), 16) * 1024 * 1024
+COPY_WORKERS = _coerce_positive_int(os.getenv("ABTOOLS_COPY_WORKERS"), 3)
+COPY_RETRIES = _coerce_positive_int(os.getenv("ABTOOLS_COPY_RETRIES"), 3)
 
 # “disc / disk / cd / part” + optional ()[]{}
 DISC_RX = re.compile(
@@ -81,6 +95,11 @@ except ImportError as e:
             e.name
         )
     )
+
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None
 
 # colour
 try:
@@ -122,32 +141,211 @@ def leaf_dirs(root:Path)->List[Path]:
             and not any(c.is_dir() and any(g.suffix.lower() in AUDIO_EXTS for g in c.iterdir())
                         for c in p.iterdir())]
 
+class ProgressTracker:
+    def __init__(self, total: int, desc: str) -> None:
+        self._lock = threading.Lock()
+        self._bar = None
+        if tqdm is not None and total > 0 and sys.stderr.isatty():
+            self._bar = tqdm(total=total, unit="B", unit_scale=True, desc=desc, leave=False)
+
+    def update(self, amount: int) -> None:
+        if amount <= 0 or self._bar is None:
+            return
+        with self._lock:
+            self._bar.update(amount)
+
+    def rollback(self, amount: int) -> None:
+        if amount <= 0 or self._bar is None:
+            return
+        with self._lock:
+            self._bar.update(-amount)
+
+    def close(self) -> None:
+        if self._bar is not None:
+            self._bar.close()
+
+
+def _temporary_file_path(dst: Path) -> Path:
+    candidate = dst.with_name(dst.name + ".tmp")
+    counter = 1
+    while candidate.exists():
+        counter += 1
+        candidate = dst.with_name(f"{dst.name}.tmp{counter}")
+    return candidate
+
+
+def _temporary_dir_path(dst: Path) -> Path:
+    if os.name == "nt":
+        base = f"_{dst.name}.tmp"
+        candidate = dst.parent / base
+        counter = 1
+        while candidate.exists():
+            counter += 1
+            candidate = dst.parent / f"_{dst.name}.tmp{counter}"
+        return candidate
+    candidate = dst.parent / f".{dst.name}.tmp"
+    counter = 1
+    while candidate.exists():
+        counter += 1
+        candidate = dst.parent / f".{dst.name}.tmp{counter}"
+    return candidate
+
+
+def _copy_file_once(src: Path, dst: Path, progress: ProgressTracker) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = _temporary_file_path(dst)
+    copied = 0
+    try:
+        with src.open("rb", buffering=0) as fin, tmp.open("wb", buffering=0) as fout:
+            while True:
+                chunk = fin.read(COPY_BUFFER_SIZE)
+                if not chunk:
+                    break
+                fout.write(chunk)
+                copied += len(chunk)
+                progress.update(len(chunk))
+        with contextlib.suppress(OSError):
+            shutil.copystat(src, tmp, follow_symlinks=False)
+        tmp.replace(dst)
+    except Exception:
+        progress.rollback(copied)
+        with contextlib.suppress(FileNotFoundError):
+            tmp.unlink()
+        raise
+
+
+def _copy_file_with_retries(src: Path, dst: Path, progress: ProgressTracker) -> None:
+    delay = 0.5
+    for attempt in range(1, COPY_RETRIES + 1):
+        try:
+            _copy_file_once(src, dst, progress)
+            return
+        except Exception:
+            if attempt == COPY_RETRIES:
+                raise
+            time.sleep(delay)
+            delay = min(delay * 2, 5.0)
+
+
+def _copy_directory(src: Path, dst: Path, copy: bool) -> None:
+    temp_root = _temporary_dir_path(dst)
+    temp_root.mkdir(parents=True, exist_ok=True)
+
+    dirs: List[Path] = []
+    files: List[Tuple[Path, int]] = []
+    total = 0
+    for path in src.rglob("*"):
+        try:
+            info = path.stat()
+        except OSError:
+            continue
+        if stat.S_ISDIR(info.st_mode):
+            dirs.append(path)
+        elif stat.S_ISREG(info.st_mode):
+            files.append((path, info.st_size))
+            total += info.st_size
+
+    for directory in dirs:
+        (temp_root / directory.relative_to(src)).mkdir(parents=True, exist_ok=True)
+
+    progress = ProgressTracker(total, desc=f"{'copy' if copy else 'move'} {src.name}")
+    try:
+        if files:
+            with ThreadPoolExecutor(max_workers=COPY_WORKERS) as pool:
+                futures = [
+                    pool.submit(
+                        _copy_file_with_retries,
+                        file_path,
+                        temp_root / file_path.relative_to(src),
+                        progress,
+                    )
+                    for file_path, _ in files
+                ]
+                for future in as_completed(futures):
+                    future.result()
+        with contextlib.suppress(OSError):
+            shutil.copystat(src, temp_root, follow_symlinks=False)
+        temp_root.replace(dst)
+    except Exception:
+        with contextlib.suppress(Exception):
+            shutil.rmtree(temp_root, ignore_errors=True)
+        raise
+    finally:
+        progress.close()
+
+
+def _copy_file(src: Path, dst: Path, copy: bool) -> None:
+    try:
+        total = src.stat().st_size
+    except OSError:
+        total = 0
+    progress = ProgressTracker(total, desc=f"{'copy' if copy else 'move'} {src.name}")
+    try:
+        _copy_file_with_retries(src, dst, progress)
+    finally:
+        progress.close()
+
+
+
+
+def _can_use_rename(src: Path, dst: Path) -> bool:
+    if os.name == "nt":
+        # On Windows, only attempt rename when source and destination share a drive.
+        return src.drive.lower() == dst.drive.lower()
+    try:
+        return src.stat().st_dev == dst.parent.stat().st_dev
+    except OSError:
+        return False
+
 def safe_move(src: Path, dst: Path, copy: bool = False) -> None:
-    """Move ``src`` to ``dst`` (or copy when ``copy`` is True) ensuring no
-    destination collision."""
     if dst.exists():
         raise FileExistsError(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
-    if copy:
-        if src.is_dir():
-            shutil.copytree(src, dst)
-        else:
-            shutil.copy2(src, dst)
-        return
-    try:
-        shutil.move(str(src), str(dst))
-    except (PermissionError, OSError) as e:
-        if isinstance(e, OSError) and e.errno not in (errno.EXDEV, errno.EACCES):
-            raise
-        rprint("  ! rename failed – copying …")
-        if src.is_dir():
-            shutil.copytree(src, dst)
-            shutil.rmtree(src)
-        else:
-            shutil.copy2(src, dst)
-            src.unlink()
 
-# ───────────── existing tag reader ──────────────────────────────────────────
+    rename_failed = False
+    rename_attempted = False
+    can_rename = not copy and _can_use_rename(src, dst)
+    if can_rename:
+        rename_attempted = True
+        allowed = {errno.EXDEV, errno.EACCES, errno.EPERM}
+        if hasattr(errno, 'EBUSY'):
+            allowed.add(errno.EBUSY)
+        delay = 0.5
+        for attempt in range(1, COPY_RETRIES + 1):
+            try:
+                src.replace(dst)
+                return
+            except OSError as exc:
+                err_no = getattr(exc, 'errno', None)
+                if err_no not in allowed:
+                    raise
+                if attempt == COPY_RETRIES:
+                    rename_failed = True
+                else:
+                    time.sleep(delay)
+                    delay = min(delay * 2, 2.0)
+                    continue
+        if rename_failed:
+            rprint("  ! rename failed - copying ...")
+            with contextlib.suppress(FileNotFoundError):
+                if dst.is_dir():
+                    shutil.rmtree(dst, ignore_errors=True)
+                else:
+                    dst.unlink()
+    elif not copy:
+        rename_failed = True
+        rprint("  - cross-device move; copying ...")
+
+    if src.is_dir():
+        _copy_directory(src, dst, copy)
+        if not copy:
+            shutil.rmtree(src)
+    else:
+        _copy_file(src, dst, copy)
+        if not copy:
+            with contextlib.suppress(FileNotFoundError):
+                src.unlink()
+
 def tags_from_track(track:Path)->Optional[Meta]:
     try:
         au = MFile(str(track), easy=True)
@@ -647,10 +845,21 @@ if __name__=="__main__":
                     help="OpenAI-compatible endpoint for LM Studio fallback (use 'none' to disable)")
     ap.add_argument("--llm-model", default=None,
                     help="Model name to request from the LM Studio endpoint")
-    ap.add_argument("--tavily-key", default=None,
-                    help="Tavily Search API key for supplemental research (use 'none' to disable)")
+    ap.add_argument("--copy-buffer-mb", type=int, default=None,
+                    help="Override chunk size for copy/move (MiB); default sourced from environment or 16")
+    ap.add_argument("--copy-workers", type=int, default=None,
+                    help="Override number of parallel copy workers (default from env or 3)")
+    ap.add_argument("--copy-retries", type=int, default=None,
+                    help="Override retry attempts for copy chunks and renames (default from env or 3)")
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args=ap.parse_args()
+
+    if args.copy_buffer_mb is not None:
+        COPY_BUFFER_SIZE = max(1, args.copy_buffer_mb) * 1024 * 1024
+    if args.copy_workers is not None:
+        COPY_WORKERS = max(1, args.copy_workers)
+    if args.copy_retries is not None:
+        COPY_RETRIES = max(1, args.copy_retries)
 
     if len(args.paths) < 2:
         ap.error("source_root and library_root required")
@@ -680,12 +889,6 @@ if __name__=="__main__":
             tagger.LLM_ENDPOINT = val
     if args.llm_model:
         tagger.LLM_MODEL_NAME = args.llm_model.strip() or tagger.LLM_MODEL_NAME
-    if args.tavily_key is not None:
-        tavily_arg = (args.tavily_key or "").strip()
-        if tavily_arg.lower() in {"", "none", "null"}:
-            tagger.TAVILY_API_KEY = None
-        else:
-            tagger.TAVILY_API_KEY = tavily_arg
     AUTO_YES = args.yes
     main(src, lib, args.commit, args.yes, args.copy)
 

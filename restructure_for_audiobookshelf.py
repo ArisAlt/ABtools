@@ -464,30 +464,37 @@ def process(book: Path, library: Path, dry: bool, copy: bool, st: defaultdict,
     st["moved"] += 1
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€ main driver â”€â”€â”€â”€â”€â”€â”€â”€â”€
-def main(src: Path, library: Path, commit: bool, copy: bool, interactive: bool):
+def main(src: Path, library: Path, commit: bool, copy: bool, interactive: bool, stop_event=None):
     if not src.is_dir():
-        sys.exit(f"âœ— Source folder not found: {src}")
+        sys.exit(f"source_root not found: {src}")
 
     stats: defaultdict[str, int] = defaultdict(int)
+    cancelled = False
     for bd in leaf_audio_dirs(src):
-        process(bd, library, dry=not commit, copy=copy, st=stats,
-                interactive=interactive)
+        if stop_event is not None and stop_event.is_set():
+            print("\n!! Stop requested -- cancelling restructure.\n")
+            cancelled = True
+            break
+        process(bd, library, dry=not commit, copy=copy, st=stats, interactive=interactive)
 
-    print("\nâ”€â”€â”€â”€ Summary â”€â”€â”€â”€")
+    divider = "\u2500" * 4
+    print(f"\n{divider} Summary {divider}")
     print(f" Books scanned            : {stats['total']}")
     action_word = 'copied' if copy else 'moved'
     print(f" Books {action_word:20}: {stats['moved']}")
     if not commit:
         print(f" Books that would move    : {stats['would_move']}")
-    for k, label in (
+    for key, label in (
         ("exists", "Destination exists"),
         ("no_audio", "No audio"),
         ("tag_fail", "Tag/name unreadable"),
     ):
-        if stats[k]:
-            print(f" {label:25}: {stats[k]}")
-    print("â”€â”€â”€â”€ Done â”€â”€â”€â”€\n")
-
+        if stats[key]:
+            print(f" {label:25}: {stats[key]}")
+    if cancelled:
+        print("Cancelled before completion\n")
+    else:
+        print(f"{divider} Done {divider}\n")
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€ CLI entry â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(

@@ -18,7 +18,7 @@ sizes for faster scans.
 """
 
 from __future__ import annotations
-import argparse, hashlib, sys, multiprocessing as mp
+import argparse, hashlib, sys, multiprocessing as mp, threading
 from pathlib import Path
 from collections import defaultdict
 from contextlib import contextmanager
@@ -129,6 +129,7 @@ def _iter_audio_files(
     stage: str = 'enum',
     limit_paths: Optional[set[Path]] = None,
     recursive: bool = True,
+    stop_event: Optional["threading.Event"] = None,
 ) -> list[Path]:
     def _is_subpath(child: Path, parent: Path) -> bool:
         try:
@@ -140,6 +141,8 @@ def _iter_audio_files(
     files: list[Path] = []
     if limit_paths:
         for p in limit_paths:
+            if stop_event is not None and stop_event.is_set():
+                break
             try:
                 if p.exists() and p.is_file() and is_audio(p) and _is_subpath(p, root):
                     _notify(on_file, stage, p)
@@ -150,6 +153,8 @@ def _iter_audio_files(
 
     it = root.rglob("*") if recursive else root.iterdir()
     for p in it:
+        if stop_event is not None and stop_event.is_set():
+            break
         if p.is_file() and is_audio(p):
             _notify(on_file, stage, p)
             files.append(p)
@@ -230,13 +235,25 @@ def find_dupes(
     threads: int = 4,
     limit_paths: Optional[set[Path]] = None,
     recursive: bool = True,
+    stop_event: Optional["threading.Event"] = None,
 ) -> dict[str, list[Path]]:
-    files = _iter_audio_files(root, on_file=on_file, stage='enum', limit_paths=limit_paths, recursive=recursive)
+    files = _iter_audio_files(
+        root,
+        on_file=on_file,
+        stage='enum',
+        limit_paths=limit_paths,
+        recursive=recursive,
+        stop_event=stop_event,
+    )
+    if stop_event is not None and stop_event.is_set():
+        return {}
     total = len(files)
     if by == 'name':
         groups: dict[str, list[Path]] = defaultdict(list)
         with progress_bar(total, 'Grouping by name') as upd:
             for p in files:
+                if stop_event is not None and stop_event.is_set():
+                    return {}
                 _notify(on_file, 'name', p)
                 groups[p.name].append(p)
                 upd(1)
@@ -246,6 +263,8 @@ def find_dupes(
     size_map: dict[int, list[Path]] = defaultdict(list)
     with progress_bar(total, 'Scanning files') as upd:
         for p in files:
+            if stop_event is not None and stop_event.is_set():
+                return {}
             try:
                 _notify(on_file, 'scan', p)
                 size_map[p.stat().st_size].append(p)
@@ -260,6 +279,8 @@ def find_dupes(
     to_hash = len(work)
 
     def _task(p: Path):
+        if stop_event is not None and stop_event.is_set():
+            return ('CANCEL', '', p)
         try:
             _notify(on_file, 'hash', p)
             d = sha1sum_with_timeout(p, timeout_s)
@@ -275,6 +296,12 @@ def find_dupes(
                 futures = [ex.submit(_task, p) for p in work]
                 for fut in as_completed(futures):
                     status, payload, p = fut.result()
+                    if stop_event is not None and stop_event.is_set():
+                        for pending in futures:
+                            pending.cancel()
+                        return {}
+                    if status == 'CANCEL':
+                        return {}
                     if status == 'OK':
                         hashes[payload].append(p)
                     else:
@@ -292,14 +319,32 @@ def find_cross_dupes(
     threads: int = 4,
     limit_src: Optional[set[Path]] = None,
     recursive: bool = True,
+    stop_event: Optional["threading.Event"] = None,
 ) -> dict[str, list[Path]]:
     """Find duplicates that exist in BOTH ``src`` and ``dst``.
 
     Returns a dict mapping match key (sha1 or name) to a combined list of
     files from both roots. Only keys present in both sides are returned.
     """
-    src_files = _iter_audio_files(src, on_file=on_file, stage='enum-src', limit_paths=limit_src, recursive=recursive)
-    dst_files = _iter_audio_files(dst, on_file=on_file, stage='enum-dst', recursive=recursive)
+    src_files = _iter_audio_files(
+        src,
+        on_file=on_file,
+        stage='enum-src',
+        limit_paths=limit_src,
+        recursive=recursive,
+        stop_event=stop_event,
+    )
+    if stop_event is not None and stop_event.is_set():
+        return {}
+    dst_files = _iter_audio_files(
+        dst,
+        on_file=on_file,
+        stage='enum-dst',
+        recursive=recursive,
+        stop_event=stop_event,
+    )
+    if stop_event is not None and stop_event.is_set():
+        return {}
 
     # Name-based matching is straightforward
     if by == 'name':
@@ -307,10 +352,14 @@ def find_cross_dupes(
         dst_by_name: dict[str, list[Path]] = defaultdict(list)
         with progress_bar(len(src_files) + len(dst_files), 'Indexing names') as upd:
             for p in src_files:
+                if stop_event is not None and stop_event.is_set():
+                    return {}
                 _notify(on_file, 'name-src', p)
                 src_by_name[p.name].append(p)
                 upd(1)
             for p in dst_files:
+                if stop_event is not None and stop_event.is_set():
+                    return {}
                 _notify(on_file, 'name-dst', p)
                 dst_by_name[p.name].append(p)
                 upd(1)
@@ -321,12 +370,16 @@ def find_cross_dupes(
     src_sizes: dict[int, list[Path]] = defaultdict(list)
     dst_sizes: dict[int, list[Path]] = defaultdict(list)
     for p in src_files:
+        if stop_event is not None and stop_event.is_set():
+            return {}
         try:
             _notify(on_file, 'scan-src', p)
             src_sizes[p.stat().st_size].append(p)
         except OSError as e:
             print(f"Could not stat {p}: {e}", file=sys.stderr)
     for p in dst_files:
+        if stop_event is not None and stop_event.is_set():
+            return {}
         try:
             _notify(on_file, 'scan-dst', p)
             dst_sizes[p.stat().st_size].append(p)
@@ -349,6 +402,8 @@ def find_cross_dupes(
     total = len(src_candidates) + len(dst_candidates)
 
     def _task(p: Path, stage: str, timeout_s: float):
+        if stop_event is not None and stop_event.is_set():
+            return ('CANCEL', '', p, stage)
         try:
             _notify(on_file, stage, p)
             d = sha1sum_with_timeout(p, timeout_s)
@@ -368,11 +423,17 @@ def find_cross_dupes(
                     futures.append(ex.submit(_task, p, 'hash-dst', timeout_s_dst))
                 for fut in as_completed(futures):
                     status, payload, p, stage = fut.result()
+                    if stop_event is not None and stop_event.is_set():
+                        for pending in futures:
+                            pending.cancel()
+                        return {}
                     if status == 'OK':
                         if stage == 'hash-src':
                             src_hashes[payload].append(p)
                         else:
                             dst_hashes[payload].append(p)
+                    elif status == 'CANCEL':
+                        return {}
                     else:
                         print(f"\nCould not read {p}: {payload}", file=sys.stderr)
                     upd(1)

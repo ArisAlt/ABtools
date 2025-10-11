@@ -1,22 +1,22 @@
-<!-- ABtools/scaffold.md · v2.10 · 2025-09-12 -->
-# Audiobook Tagging & Organization – Scaffold
+<!-- ABtools/scaffold.md � v2.10 � 2025-09-12 -->
+# Audiobook Tagging & Organization � Scaffold
 
 ## Project Structure
 
 ```
 Audiobooks/
-│
-├── search_and_tag.py       # Tags files using metadata providers
-├── flatten_discs.py        # Merges "Disc" folders into one
-├── combobook.py            # Combines tagging and restructuring
-├── AbtoolsGui.py           # Tkinter GUI with live output and duplicate finder
-├── restructure_for_audiobookshelf.py  # Reorganizes folders into Audiobookshelf layout
-├── find_duplicates.py      # Reports duplicate audio files
-├── catalog.py              # SQLite catalog for duplicate detection
-├── metadata.json           # Optional: sample metadata format
-├── requirements.txt        # Pip requirements
-├── README.md
-└── SCAFFOLD.md
+�
++-- search_and_tag.py       # Tags files using metadata providers
++-- flatten_discs.py        # Merges "Disc" folders into one
++-- combobook.py            # Combines tagging and restructuring
++-- AbtoolsGui.py           # Tkinter GUI with live output and duplicate finder
++-- restructure_for_audiobookshelf.py  # Reorganizes folders into Audiobookshelf layout
++-- find_duplicates.py      # Reports duplicate audio files
++-- catalog.py              # SQLite catalog for duplicate detection
++-- metadata.json           # Optional: sample metadata format
++-- requirements.txt        # Pip requirements
++-- README.md
++-- SCAFFOLD.md
 ```
 
 ## Scripts Overview
@@ -40,8 +40,8 @@ Audiobooks/
   - `--version` prints the script version and file path
   - Experimental switches stored in `~/.abclient.json` (used by `AbClient`)
   - Prints scores from all metadata providers
-  - Optional LM Studio fallback via `--llm-endpoint` / `--llm-model` / `--llm-threshold` supplies metadata when lookups fail by asking LM Studio's MCP tools (notably `full_web_search`) to search Audible, Open Library, Google Books, and Goodreads with targeted `site:` filters—no audio transcription required.
-  - Provide a Tavily Search API key (`--tavily-key` or `TAVILY_API_KEY`) to feed web snippets into second-pass LLM retries when metadata fields are missing.
+  - Optional LM Studio fallback via `--llm-endpoint` / `--llm-model` / `--llm-threshold` supplies metadata when lookups fail by asking LM Studio's MCP tools (via the provider search functions) to search Audible, Open Library, Google Books, and Goodreads with targeted `site:` filters�no audio transcription required.
+  - Provide a DuckDuckGo Search API key (`(no key required)` or `DUCKDUCKGO_MCP`) to feed web snippets into second-pass LLM retries when metadata fields are missing.
 
 ### `flatten_discs.py`
 
@@ -147,6 +147,7 @@ python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --commit
 | `find_duplicates.py` | v0.5 | `ABtools/find_duplicates.py` |
 | `abclient.py` | v0.2 | `ABtools/abclient.py` |
 | `catalog.py` | v0.1 | `ABtools/catalog.py` |
+
 
 
 
