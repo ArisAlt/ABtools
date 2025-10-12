@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-ABtools/AbtoolsGui.py  ·  v0.16  ·  2025-09-11
+ABtools/AbtoolsGui.py - v0.16 - 2025-09-11
 """
 from __future__ import annotations
 
+import re
 import sys, threading, queue, time
 from collections import defaultdict
 from contextlib import redirect_stdout, redirect_stderr
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, ttk, font as tkfont
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Callable
@@ -176,6 +177,19 @@ def toggle_llm_controls() -> None:
         except tk.TclError:
             pass
 
+LOG_TAG_STYLES: dict[str, dict[str, object]] = {
+    "red": {"foreground": "#d13c3c"},
+    "green": {"foreground": "#1d7a3a"},
+    "yellow": {"foreground": "#b58900"},
+    "cyan": {"foreground": "#0ea5e9"},
+    "magenta": {"foreground": "#a855f7"},
+    "blue": {"foreground": "#2563eb"},
+    "dim": {"foreground": "#6c757d"},
+}
+LOG_SUPPORTED_TAGS = set(LOG_TAG_STYLES) | {"bold"}
+LOG_TAG_FONT_CACHE: dict[str, tkfont.Font] = {}
+RICH_TAG_PATTERN = re.compile(r"\[(/?)([a-zA-Z0-9_+-]*)]")
+
 output_queue: queue.Queue[tuple[str, object]] = queue.Queue()
 # Track whether the progress bar is running in indeterminate mode to avoid
 # flicker from redundant determinate updates during cross-compare.
@@ -247,6 +261,15 @@ scrollbar = ttk.Scrollbar(log_frame, orient="vertical", command=output_text.yvie
 scrollbar.grid(row=0, column=1, sticky="ns", padx=(PAD_X // 2, 0))
 output_text.configure(yscrollcommand=scrollbar.set)
 
+_log_base_font = tkfont.nametofont("TkDefaultFont")
+output_text.configure(font=_log_base_font)
+_bold_font = _log_base_font.copy()
+_bold_font.configure(weight="bold")
+LOG_TAG_FONT_CACHE["bold"] = _bold_font
+output_text.tag_configure("bold", font=_bold_font)
+for tag_name, style_opts in LOG_TAG_STYLES.items():
+    output_text.tag_configure(tag_name, **style_opts)
+
 progress_var = tk.IntVar(value=0)
 progress = ttk.Progressbar(log_frame, variable=progress_var, maximum=100)
 progress.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(PAD_Y, 0))
@@ -300,10 +323,44 @@ def _normalise_output_text(text: str) -> str:
         return text
 
 
+def _insert_segment(widget: tk.Text, segment: str, active_tags: list[str]) -> None:
+    if not segment:
+        return
+    widget.insert(tk.END, segment.replace("\r", "\n"), tuple(active_tags))
+
+
+def _render_markup(widget: tk.Text, text: str) -> None:
+    if "[" not in text:
+        _insert_segment(widget, text, [])
+        return
+    active: list[str] = []
+    cursor = 0
+    for match in RICH_TAG_PATTERN.finditer(text):
+        start, end = match.span()
+        if start > cursor:
+            _insert_segment(widget, text[cursor:start], active)
+        is_closing = match.group(1) == "/"
+        tag_name = match.group(2).lower()
+        if is_closing:
+            if not tag_name:
+                active.clear()
+            else:
+                for idx in range(len(active) - 1, -1, -1):
+                    if active[idx] == tag_name:
+                        del active[idx]
+                        break
+        else:
+            if tag_name in LOG_SUPPORTED_TAGS:
+                active.append(tag_name)
+        cursor = end
+    if cursor < len(text):
+        _insert_segment(widget, text[cursor:], active)
+
+
 def append_output(text: str) -> None:
     text = _normalise_output_text(text)
     output_text.configure(state="normal")
-    output_text.insert(tk.END, text.replace("\r", "\n"))
+    _render_markup(output_text, text)
     output_text.see(tk.END)
     output_text.configure(state="disabled")
 
