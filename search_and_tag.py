@@ -75,7 +75,7 @@ SERIES_PATTERNS = [
 ]
 
 LLM_ENDPOINT: Optional[str] = "http://127.0.0.1:1234/v1/chat/completions"
-LLM_MODEL_NAME: Optional[str] = "llama-3-8b-instruct-abliterated-v2"
+LLM_MODEL_NAME: Optional[str] = "llama-3.2-8b-instruct"
 LLM_TIMEOUT: int = 90
 LLM_MAX_TOKENS: int = 8000
 TAVILY_API_KEY: Optional[str] = os.environ.get("TAVILY_API_KEY")
@@ -433,14 +433,45 @@ def mcp_get_single_page_content(url: Optional[str]) -> dict[str, Any]:
 
 
 def mcp_sequential_thinking(query: str, context: Optional[str]) -> dict[str, Any]:
-    summary_lines = []
-    if query:
-        summary_lines.append(f"query: {query}")
+    hints = _derive_label_hints(query)
+    notes: list[str] = []
+
+    title_hint = hints.get("title")
+    author_hint = hints.get("author")
+    year_hint = hints.get("year")
+    series_hint = hints.get("series")
+    series_index_hint = hints.get("series_index")
+
+    if title_hint:
+        notes.append(f"Normalized title candidate: {title_hint}")
+    if author_hint:
+        notes.append(f"Possible author fragment: {author_hint}")
+    if year_hint:
+        notes.append(f"Year detected in label: {year_hint}")
+    if series_hint:
+        seq_display = f" #{series_index_hint}" if series_index_hint else ""
+        notes.append(f"Series clue: {series_hint}{seq_display}")
+    if hints.get("normalized") and hints["normalized"] != hints.get("raw"):
+        notes.append(f"Label stripped of annotations: {hints['normalized']}")
     if context:
-        summary_lines.append(f"context: {context}")
+        ctx = context.strip()
+        if ctx and ctx.lower() != "audiobook metadata for local tagging":
+            notes.append(f"Context: {ctx}")
+
+    if not notes:
+        notes.append("No structured hints extracted; rely on catalog research.")
+
     return {
-        "notes": summary_lines,
-        "guidance": "Use the provided notes to refine your metadata inference.",
+        "title_hint": title_hint,
+        "author_hint": author_hint,
+        "year_hint": year_hint,
+        "series_hint": series_hint,
+        "series_index_hint": series_index_hint,
+        "notes": notes,
+        "guidance": (
+            "Use the hints to cross-check catalog data, confirm author/title alignment, "
+            "and adjust series metadata before finalising the JSON response."
+        ),
     }
 
 
@@ -530,6 +561,45 @@ def strip_annotations(s: str) -> str:
     s = re.sub(r"\{[^}]*\}", "", s)
     s = re.sub(r"\s{2,}", " ", s)
     return s.strip(" -_\t")
+
+def _derive_label_hints(label: str) -> dict[str, Optional[str]]:
+    """Extract best-effort hints (title, author, year, series) from a folder label."""
+    raw = (label or "").strip()
+    if not raw:
+        return {"title": None, "author": None, "year": None, "series": None, "series_index": None}
+
+    cleaned = strip_annotations(clean_tail(raw))
+    cleaned = TAIL_RX.sub("", cleaned).strip()
+
+    year = None
+    if (m := YEAR_RX.match(cleaned)):
+        year = m.group(1)
+        cleaned = cleaned[m.end():].lstrip(" -_")
+
+    author_hint = None
+    parts = [p.strip() for p in re.split(r"\s*[-–]\s*", cleaned) if p.strip()]
+    title_part = cleaned
+    if parts:
+        possible_author = parts[0]
+        if len(parts) > 1 and " " in possible_author and not possible_author.isdigit():
+            author_hint = possible_author
+            title_part = " - ".join(parts[1:]).strip()
+        else:
+            title_part = cleaned
+
+    title_part = strip_annotations(title_part)
+    series_hint, series_index_hint, title_hint = extract_series_and_title(title_part)
+    title_hint = strip_annotations(title_hint or title_part) or None
+
+    return {
+        "title": title_hint,
+        "author": author_hint,
+        "year": year,
+        "series": series_hint,
+        "series_index": series_index_hint,
+        "raw": raw,
+        "normalized": cleaned,
+    }
 
 def has_audio(folder: Path) -> bool:
     return any(c.suffix.lower() in AUDIO_EXTS for c in folder.iterdir())
@@ -1632,9 +1702,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
 
 
 

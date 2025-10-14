@@ -26,7 +26,7 @@ DEFAULT_LLM_ENDPOINT = (
     search_and_tag.LLM_ENDPOINT
     or "http://127.0.0.1:1234/v1/chat/completions"
 )
-DEFAULT_LLM_MODEL = search_and_tag.LLM_MODEL_NAME or "deepseek/deepseek-r1-0528-qwen3-8b"
+DEFAULT_LLM_MODEL = search_and_tag.LLM_MODEL_NAME or "llama-3.2-8b-instruct"
 
 if "--version" in sys.argv:
     print(VERSION_INFO % {"prog": Path(sys.argv[0]).name})
@@ -138,7 +138,7 @@ ttk.Checkbutton(checkbox_frame, text="Only src log", variable=only_src_log_var).
 
 MODEL_CHOICES = (
     DEFAULT_LLM_MODEL,
-    "mistral-7b-instruct-q4",
+    "llama-3-8b-instruct",
     "mixtral-8x7b-instruct",
     "phi-3-medium-4k-instruct",
 )
@@ -868,3 +868,4 @@ action_buttons.extend([tag_button, move_button, restructure_button, dup_button])
 if __name__ == "__main__":
     poll_queue()
     root.mainloop()
+
