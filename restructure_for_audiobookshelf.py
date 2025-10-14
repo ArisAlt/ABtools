@@ -12,7 +12,7 @@ Use restructure_for_audiobookshelf.py "Source folder" "Destination folder" --com
   (optionally) renames every track sequentially: Track 001.*, Track 002.* â€¦
 â€¢ Moves/renames into Audiobookshelf layout:
 
-      <library_root>/Author/Series?/Title (Year)/
+      <library_root>/Author/Year - Title/
 â€¢ Add --copy to duplicate folders instead of moving them
 â€¢ ``--version`` prints the script version and file path
 â€¢ Fuzzy series matching ("Book 3", "#3", "Volume III", etc.)
@@ -434,13 +434,12 @@ def process(book: Path, library: Path, dry: bool, copy: bool, st: defaultdict,
         for idx, t in enumerate(tracks, 1):
             inject_tags(t, meta, idx, len(tracks))
 
-    author_dir = slug(meta.author)
+    author_name = meta.author or "Unknown Author"
+    author_dir = slug(author_name)
     dest = library / author_dir
-    if meta.series:
-        dest /= slug(meta.series)
     title_text = meta.title or clean_title(book.name, meta.year)
     if meta.year:
-        title_text = f"{title_text} ({meta.year})"
+        title_text = f"{meta.year} - {title_text}"
     title_dir = slug(title_text)
     dest /= title_dir
     if dest.exists():

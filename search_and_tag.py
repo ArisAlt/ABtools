@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 ABtools/search_and_tag.py - v2.30 (2025-09-12)
 Tag (or strip) audiobook files using multiple metadata providers.
@@ -45,6 +45,7 @@ import xml.etree.ElementTree as ET
 from mutagen import File as MFile, MutagenError
 from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TALB, TPE1, TDRC, TXXX, TRCK
 from mutagen.mp4 import MP4, MP4StreamInfoError
+from bs4 import BeautifulSoup
 
 # ----- colour (rich) or plain text -----
 try:
@@ -59,11 +60,19 @@ except ImportError:  # plain console, strip tags like [bold]...[/]
 
 # ----- constants -----
 AUDIO_EXTS = {".mp3", ".m4a", ".m4b"}
-TAIL_RX    = re.compile(r"(?:\{[^}]*\})?(?:\s*\d+\.\d{2}\.\d{2})?(?:\s*\d+\s*[kK])?\s*$")
+TAIL_RX    = re.compile(r"(?:\s*(?:\{[^}]*\}|\d+\.\d{2}\.\d{2}|\d+\s*[kK](?:bps)?|kbps))*\s*$")
 PAREN_RX   = re.compile(r"\([^)]*\)")
 YEAR_RX    = re.compile(r"^(\d{4})\s*[-_]\s*")
 LOG_PATH   = Path("tag_log.txt")
 REVIEW_PATH = Path("review_log.txt")
+
+SERIES_PATTERNS = [
+    re.compile(r'^(.+?)\s+(\d+(?:\.\d+)?)\s+(.+)$'),  # "Series 01 Title"
+    re.compile(r'^(.+?)\s+Book\s+(\d+)\s+(.+)$', re.IGNORECASE),  # "Series Book 1 Title"
+    re.compile(r'^(.+?)\s+#(\d+)\s+(.+)$'),  # "Series #1 Title"
+    re.compile(r'^(.+?)\s+Vol\.?\s+(\d+)\s+(.+)$', re.IGNORECASE),  # "Series Vol 1 Title"
+    re.compile(r'^(\d+(?:\.\d+)?)\s+(.+)$'),  # "01 Title" (number only)
+]
 
 LLM_ENDPOINT: Optional[str] = "http://127.0.0.1:1234/v1/chat/completions"
 LLM_MODEL_NAME: Optional[str] = "llama-3-8b-instruct-abliterated-v2"
@@ -134,6 +143,21 @@ MCP_TOOLS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "sequential_thinking",
+            "description": "Advanced reasoning for complex metadata inference",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "context": {"type": "string"},
+                },
+                "required": ["query"],
+            },
+        },
+    },
 ]
 
 MCP_PROVIDER_SITES = {
@@ -153,70 +177,276 @@ def _call_llm(
 ) -> Optional[str]:
     if not LLM_ENDPOINT or not LLM_MODEL_NAME:
         return None
+
     token_budget = max_tokens or LLM_MAX_TOKENS
     sys_prompt = system_prompt or LLM_SYSTEM_PROMPT
-    payload = {
-        "model": LLM_MODEL_NAME,
-        "messages": [
-            {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": 0.0,
-        "max_tokens": token_budget,
-        "stream": False,
+    convo: list[dict[str, Any]] = [
+        {"role": "system", "content": sys_prompt},
+        {"role": "user", "content": prompt},
+    ]
+    length_retry = attempt
+
+    while True:
+        payload: dict[str, Any] = {
+            "model": LLM_MODEL_NAME,
+            "messages": convo,
+            "temperature": 0.0,
+            "max_tokens": token_budget,
+            "stream": False,
+        }
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
+
+        try:
+            resp = SESSION.post(LLM_ENDPOINT, json=payload, timeout=LLM_TIMEOUT)
+        except requests.RequestException as exc:  # pragma: no cover - network guard
+            if DEBUG:
+                rprint(f"  [yellow]- LM Studio request failed: {exc}[/]")
+            return None
+
+        if resp.status_code >= 400:
+            if DEBUG:
+                rprint(
+                    f"  [yellow]- LM Studio returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
+                )
+            return None
+
+        try:
+            data = resp.json()
+        except ValueError:
+            if DEBUG:
+                rprint("  [yellow]- LM Studio response was not valid JSON[/]")
+            return None
+
+        choices = data.get("choices")
+        if not choices:
+            return None
+
+        first_choice = choices[0] if isinstance(choices[0], dict) else {}
+        message = first_choice.get("message") if isinstance(first_choice, dict) else {}
+        finish_reason = first_choice.get("finish_reason") if isinstance(first_choice, dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        tool_calls = message.get("tool_calls") if isinstance(message, dict) else None
+
+        if tool_calls:
+            convo.append(
+                {
+                    "role": "assistant",
+                    "content": content or "",
+                    "tool_calls": tool_calls,
+                }
+            )
+            for call in tool_calls:
+                fn = call.get("function") or {}
+                name = fn.get("name")
+                arguments_raw = fn.get("arguments") or "{}"
+                try:
+                    arguments = json.loads(arguments_raw) if arguments_raw else {}
+                except json.JSONDecodeError:
+                    arguments = {}
+                tool_response = _execute_tool_call(name or "", arguments)
+                convo.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.get("id") or name or "tool",
+                        "name": name or "tool",
+                        "content": tool_response,
+                    }
+                )
+            # loop to request follow-up completion
+            continue
+
+        if finish_reason == "length" and length_retry == 0:
+            new_budget = min(token_budget * 2, 2048)
+            if DEBUG:
+                rprint(
+                    f"  [yellow]- LM Studio response hit max_tokens={token_budget}; retrying with {new_budget}[/]"
+                )
+            token_budget = new_budget
+            length_retry = 1
+            continue
+
+        if not content:
+            return None
+
+        convo.append({"role": "assistant", "content": str(content)})
+        return str(content)
+
+
+MCP_RESULT_CACHE: Dict[str, Dict[str, Any]] = {}
+MCP_RESULT_SEQ = 0
+
+
+def _next_mcp_result_id() -> str:
+    global MCP_RESULT_SEQ
+    MCP_RESULT_SEQ += 1
+    return f"res-{MCP_RESULT_SEQ}"
+
+
+def _serialise_tool_result(result: Any) -> str:
+    if result is None:
+        return ""
+    if isinstance(result, str):
+        return result
+    try:
+        return json.dumps(result, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return json.dumps({"result": str(result)}, ensure_ascii=False)
+
+
+def _parse_provider_query(query: str) -> tuple[Optional[str], str]:
+    cleaned = re.sub(r"\bsite:[^\s]+\b", "", str(query), flags=re.IGNORECASE).strip()
+    if not cleaned:
+        return None, ""
+    author = None
+    title = cleaned
+    match = re.search(r"\bby\b", cleaned, flags=re.IGNORECASE)
+    if match:
+        title = cleaned[: match.start()].strip(" \"'-")
+        author = cleaned[match.end() :].strip(" \"'-") or None
+    if not title:
+        title = cleaned
+    return author or None, title
+
+
+def _normalise_provider_hit(source: str, data: Optional[dict]) -> list[dict[str, Any]]:
+    if not data:
+        return []
+    payload = dict(data)
+    if "author" in payload and not payload.get("authors"):
+        value = payload.pop("author")
+        if isinstance(value, str):
+            payload["authors"] = [v.strip() for v in value.split(",") if v.strip()]
+    payload["source"] = source
+    return [payload]
+
+
+def mcp_search_audible(query: str) -> list[dict[str, Any]]:
+    author, title = _parse_provider_query(query)
+    return _normalise_provider_hit("audible", audible(author, title)) if title else []
+
+
+def mcp_search_goodreads(query: str) -> list[dict[str, Any]]:
+    author, title = _parse_provider_query(query)
+    return _normalise_provider_hit("goodreads", goodreads(author, title)) if title else []
+
+
+def mcp_search_google_books(query: str) -> list[dict[str, Any]]:
+    author, title = _parse_provider_query(query)
+    return _normalise_provider_hit("gbooks", gbooks(author, title)) if title else []
+
+
+def mcp_search_openlibrary(query: str) -> list[dict[str, Any]]:
+    author, title = _parse_provider_query(query)
+    return _normalise_provider_hit("openlib", openlib(author, title)) if title else []
+
+
+def _execute_tool_call(name: str, arguments: Dict[str, Any]) -> str:
+    if not name:
+        return ""
+    try:
+        if name == "full_web_search":
+            query = str(arguments.get("query", "")).strip()
+            num_results = int(arguments.get("num_results", 5) or 5)
+            include_content = bool(arguments.get("include_content", False))
+            results = mcp_full_web_search(
+                query, num_results=num_results, include_content=include_content
+            )
+            return _serialise_tool_result({"results": results})
+        if name == "get_web_search_summaries":
+            ids = arguments.get("ids") or []
+            summaries = [
+                MCP_RESULT_CACHE[result_id]
+                for result_id in ids
+                if result_id in MCP_RESULT_CACHE
+            ]
+            return _serialise_tool_result({"summaries": summaries})
+        if name == "get_single_web_page_content":
+            url = arguments.get("url")
+            return _serialise_tool_result(mcp_get_single_page_content(url))
+        if name == "sequential_thinking":
+            return _serialise_tool_result(
+                mcp_sequential_thinking(
+                    str(arguments.get("query", "")),
+                    str(arguments.get("context", "")),
+                )
+            )
+        if name == "search_audible_tool":
+            return _serialise_tool_result(
+                {"results": mcp_search_audible(arguments.get("query", ""))}
+            )
+        if name == "search_goodreads_tool":
+            return _serialise_tool_result(
+                {"results": mcp_search_goodreads(arguments.get("query", ""))}
+            )
+        if name == "search_google_books_tool":
+            return _serialise_tool_result(
+                {"results": mcp_search_google_books(arguments.get("query", ""))}
+            )
+        if name == "search_openlibrary_tool":
+            return _serialise_tool_result(
+                {"results": mcp_search_openlibrary(arguments.get("query", ""))}
+            )
+        if name == "tag_books_tool":
+            return _serialise_tool_result(
+                {"error": "tag_books_tool is not supported from this client"}
+            )
+        return _serialise_tool_result({"error": f"unknown tool: {name}"})
+    except Exception as exc:  # pragma: no cover - defensive
+        if DEBUG:
+            rprint(f"  [yellow]- tool {name} failed: {exc}[/]")
+        return _serialise_tool_result({"error": str(exc)})
+
+
+def mcp_full_web_search(
+    query: str, *, num_results: int = 5, include_content: bool = False
+) -> list[dict[str, Any]]:
+    results = _tavily_search_raw(
+        query, max_results=num_results, include_content=include_content
+    ) or []
+    collected: list[dict[str, Any]] = []
+    for item in results[:num_results]:
+        if not isinstance(item, dict):
+            continue
+        entry = dict(item)
+        entry_id = entry.get("id") or entry.get("url") or _next_mcp_result_id()
+        entry["id"] = entry_id
+        if not include_content and "content" in entry:
+            entry.pop("content", None)
+        MCP_RESULT_CACHE[entry_id] = entry
+        collected.append(entry)
+    return collected
+
+
+def mcp_get_single_page_content(url: Optional[str]) -> dict[str, Any]:
+    if not url:
+        return {"error": "missing url"}
+    try:
+        resp = SESSION.get(str(url), timeout=LLM_TIMEOUT)
+        resp.raise_for_status()
+        content = resp.text
+    except requests.RequestException as exc:
+        return {"error": str(exc), "url": url}
+    trimmed = content if len(content) <= 4000 else content[:4000]
+    return {"url": url, "content": trimmed}
+
+
+def mcp_sequential_thinking(query: str, context: Optional[str]) -> dict[str, Any]:
+    summary_lines = []
+    if query:
+        summary_lines.append(f"query: {query}")
+    if context:
+        summary_lines.append(f"context: {context}")
+    return {
+        "notes": summary_lines,
+        "guidance": "Use the provided notes to refine your metadata inference.",
     }
-    if tools:
-        payload["tools"] = tools
-        payload["tool_choice"] = "auto"
-    try:
-        resp = SESSION.post(LLM_ENDPOINT, json=payload, timeout=LLM_TIMEOUT)
-    except requests.RequestException as exc:  # pragma: no cover - network guard
-        if DEBUG:
-            rprint(f"  [yellow]- LM Studio request failed: {exc}[/]")
-        return None
-
-    if resp.status_code >= 400:
-        if DEBUG:
-            rprint(
-                f"  [yellow]- LM Studio returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
-            )
-        return None
-
-    try:
-        data = resp.json()
-    except ValueError:
-        if DEBUG:
-            rprint("  [yellow]- LM Studio response was not valid JSON[/]")
-        return None
-
-    choices = data.get("choices")
-    if not choices:
-        return None
-    first_choice = choices[0] if isinstance(choices[0], dict) else {}
-    message = first_choice.get("message") if isinstance(first_choice, dict) else None
-    if not message:
-        return None
-    content = message.get("content") if isinstance(message, dict) else None
-    if not content:
-        return None
-    finish_reason = first_choice.get("finish_reason") if isinstance(first_choice, dict) else None
-    if finish_reason == "length" and attempt == 0:
-        new_budget = min(token_budget * 2, 2048)
-        if DEBUG:
-            rprint(
-                f"  [yellow]- LM Studio response hit max_tokens={token_budget}; retrying with {new_budget}[/]"
-            )
-        return _call_llm(
-            prompt,
-            system_prompt=system_prompt,
-            tools=tools,
-            max_tokens=new_budget,
-            attempt=1,
-        )
-    return str(content)
 
 
-def _tavily_search(query: str, *, max_results: int = 3) -> Optional[str]:
+def _tavily_search_raw(
+    query: str, *, max_results: int = 5, include_content: bool = False
+) -> Optional[list[dict[str, Any]]]:
     if not TAVILY_API_KEY:
         return None
     payload = {
@@ -225,6 +455,8 @@ def _tavily_search(query: str, *, max_results: int = 3) -> Optional[str]:
         "search_depth": "advanced",
         "max_results": max_results,
     }
+    if include_content:
+        payload["include_content"] = True
     try:
         resp = SESSION.post(TAVILY_ENDPOINT, json=payload, timeout=LLM_TIMEOUT)
     except requests.RequestException as exc:
@@ -245,8 +477,14 @@ def _tavily_search(query: str, *, max_results: int = 3) -> Optional[str]:
         if DEBUG:
             rprint("  [yellow]- Tavily response was not valid JSON[/]")
         return None
-
     results = data.get("results")
+    if not results:
+        return []
+    return results
+
+
+def _tavily_search(query: str, *, max_results: int = 3) -> Optional[str]:
+    results = _tavily_search_raw(query, max_results=max_results)
     if not results:
         return None
 
@@ -284,31 +522,153 @@ def review_log(path: Path, reason: str):
 def clean_tail(s: str) -> str:
     return TAIL_RX.sub("", s).strip()
 
+def strip_annotations(s: str) -> str:
+    if not s:
+        return ""
+    s = PAREN_RX.sub("", s)
+    s = re.sub(r"\[[^]]*\]", "", s)
+    s = re.sub(r"\{[^}]*\}", "", s)
+    s = re.sub(r"\s{2,}", " ", s)
+    return s.strip(" -_\t")
+
 def has_audio(folder: Path) -> bool:
     return any(c.suffix.lower() in AUDIO_EXTS for c in folder.iterdir())
 
+def determine_best_author(folder: Path, initial_guess: Optional[str], partial_meta: Optional[dict] = None) -> Optional[str]:
+    """Determine the most plausible author from multiple sources."""
+    
+    # Priority 1: Existing metadata from previous API calls
+    if partial_meta and partial_meta.get("author"):
+        return partial_meta["author"]
+    
+    # Priority 2: Initial guess from folder parsing
+    if initial_guess:
+        cleaned_guess = strip_annotations(initial_guess)
+        if len(cleaned_guess.split()) >= 2:
+            return cleaned_guess
+    
+    # Priority 3: Parent folder name (common audiobook structure)
+    parent_name = strip_annotations(clean_tail(folder.parent.name))
+    if parent_name and len(parent_name.split()) >= 2 and parent_name != "Unknown Author":
+        return parent_name
+    
+    # Priority 4: Grandparent folder (for nested structures)
+    if folder.parent.parent != folder.parent:  # Not root
+        grandparent_name = strip_annotations(clean_tail(folder.parent.parent.name))
+        if grandparent_name and len(grandparent_name.split()) >= 2:
+            return grandparent_name
+    
+    return None
+
+def enhanced_author_extraction(folder: Path) -> Optional[str]:
+    """Enhanced author extraction from folder structure."""
+    
+    # Check common audiobook folder patterns:
+    # Author/Year - Title/
+    # Author - Series/Book Title/
+    # Series/Author - Book Title/
+    
+    folder_parts = folder.parts
+    for i, part in enumerate(folder_parts):
+        part_clean = strip_annotations(clean_tail(part))
+        
+        # Skip common non-author parts
+        if part_clean.lower() in ['audiobooks', 'books', 'library', 'media']:
+            continue
+            
+        # Check if this looks like an author name
+        if len(part_clean.split()) >= 2 and not re.match(r'^\d{4}', part_clean):
+            # Additional validation: check if next part looks like a title
+            if i + 1 < len(folder_parts):
+                next_part = clean_tail(folder_parts[i + 1])
+                if not re.match(r'^\d{4}', next_part):  # Not a year
+                    return part_clean
+    
+    return None
+
+def extract_series_and_title(text: str) -> Tuple[Optional[str], Optional[str], str]:
+    """
+    Extract series name, series index, and title from text.
+    Handles patterns like:
+    - "Series Name 01 Title"
+    - "Series Name Book 1 Title"
+    - "Series Name #1 Title"
+    - "01 Title" (series number only)
+    Returns: (series_name, series_index, title)
+    """
+    text = text.strip()
+    if not text:
+        return None, None, ""
+    
+    # Try each pattern in order
+    for pattern in SERIES_PATTERNS:
+        match = pattern.match(text)
+        if match:
+            groups = match.groups()
+            
+            if len(groups) == 3:
+                # Pattern: "Series Name NN Title"
+                series_name, series_index, title = groups
+                return series_name.strip(), series_index.strip(), title.strip()
+            elif len(groups) == 2:
+                # Pattern: "NN Title" (number only)
+                series_index, title = groups
+                return None, series_index.strip(), title.strip()
+    
+    # No pattern matched, return as title only
+    return None, None, text
+
 # ----- filename guess -----
-def guess_from_path(p: Path) -> Tuple[Optional[str], str, Optional[str]]:
-    """Return (author, title, year).  Author may be None."""
+def guess_from_path(p: Path) -> Tuple[Optional[str], str, Optional[str], Optional[str], Optional[str]]:
+    """Return (author, title, year, series, series_index)."""
     leaf = clean_tail(p.stem if p.is_file() else p.name)
     year = None
+    series = None
+    series_index = None
+    
+    # Extract year from start
     if (m := YEAR_RX.match(leaf)):
         year, leaf = m.group(1), leaf[m.end():].lstrip(" -_")
+    
+    # Split by " - "
     parts = [x.strip() for x in leaf.split(" - ")]
+    
+    # Remove leading numeric part if exists
     if parts and re.fullmatch(r"\d+", parts[0]):
         parts = parts[1:]
+    
+    # Extract year from end
     if parts and re.fullmatch(r"\d{4}", parts[-1]) and year is None:
         year = parts.pop()
-    if len(parts) >= 2:
-        title = " - ".join(parts[:-1])
-        author = parts[-1] if " " in parts[-1] else None
+    
+    # Try to extract series and title
+    if len(parts) >= 1:
+        combined_text = " - ".join(parts[:-1]) if len(parts) >= 2 else parts[0]
+        series, series_index, title = extract_series_and_title(combined_text)
+
+        if not series and len(parts) >= 2:
+            author_candidate = strip_annotations(" - ".join(parts[:-1]).strip())
+            title = parts[-1]
+            if (
+                author_candidate
+                and not any(ch.isdigit() for ch in author_candidate)
+                and sum(ch.isalpha() for ch in author_candidate) >= 2
+            ):
+                author = author_candidate
+            else:
+                author = None
+        else:
+            author = None
     else:
         title, author = leaf, None
+    
+    # Fallback to parent folder for author
     if not author:
-        parent = clean_tail(p.parent.name)
+        parent = strip_annotations(clean_tail(p.parent.name))
         author = parent if " " in parent else None
-    title = PAREN_RX.sub("", title).strip()
-    return author, title, year
+    
+    title = strip_annotations(title)
+    return author, title, year, series, series_index
 
 # ----- online lookup helpers -----
 def openlib(author: Optional[str], title: str) -> Optional[dict]:
@@ -411,7 +771,7 @@ def audible(author: Optional[str], title: str) -> Optional[dict]:
     except Exception:
         return None
 
-def best_match(author: Optional[str], title: str, client: AbClient = AB) -> tuple[Optional[tuple[int, dict]], dict[str, tuple[int, dict]]]:
+def best_match(author: Optional[str], title: str, series: Optional[str] = None, series_index: Optional[str] = None, client: AbClient = AB) -> tuple[Optional[tuple[int, dict]], dict[str, tuple[int, dict]]]:
     """Query metadata providers and return the best hit along with all scores."""
     candidates: list[tuple[int, dict]] = []
     results: dict[str, tuple[int, dict]] = {}
@@ -425,7 +785,18 @@ def best_match(author: Optional[str], title: str, client: AbClient = AB) -> tupl
                     fuzz.token_set_ratio(author.lower(), a.lower())
                     for a in meta["authors"]
                 )
-            score = int(title_score * 0.7 + author_score * 0.3)
+            
+            # Add series matching bonus
+            series_score = 0
+            if series and meta.get("series"):
+                series_score = fuzz.token_set_ratio(series.lower(), meta["series"].lower())
+            
+            # Weighted score: 50% title, 25% author, 25% series (if series exists)
+            if series:
+                score = int(title_score * 0.5 + author_score * 0.25 + series_score * 0.25)
+            else:
+                score = int(title_score * 0.7 + author_score * 0.3)
+            
             meta["source"] = name
             pair = (score, meta)
             candidates.append(pair)
@@ -692,6 +1063,240 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
     result["source"] = "llm"
     return result
 
+
+def refine_metadata_via_mcp(folder: Path, author_guess: Optional[str], title_guess: str, 
+                           series_guess: Optional[str] = None, series_index_guess: Optional[str] = None,
+                           initial_score: int = 0, partial_meta: Optional[dict] = None) -> Optional[dict]:
+    """Two-stage MCP refinement pipeline for low-confidence metadata."""
+    if not LLM_ENDPOINT or not LLM_MODEL_NAME:
+        return None
+    
+    folder_label = folder.name or folder.stem or str(folder)
+    
+    # Determine best author for search queries
+    best_author = determine_best_author(folder, author_guess, partial_meta)
+    if not best_author:
+        best_author = enhanced_author_extraction(folder)
+    
+    # Stage 1: Web search refinement
+    stage1_prompt = textwrap.dedent(f"""
+        You are refining audiobook metadata using web search tools.
+        Folder: {folder_label}
+        Title: "{title_guess}"
+        Author: {best_author or 'Unknown'}
+        Series: {series_guess or 'Unknown'}
+        Series Index: {series_index_guess or 'Unknown'}
+        Initial score: {initial_score}
+        
+        Use the full_web_search tool with site filters for:
+        - site:audible.com "{title_guess}" {best_author or ''}
+        - site:openlibrary.org "{title_guess}" {best_author or ''}
+        - site:books.google.com "{title_guess}" {best_author or ''}
+        - site:goodreads.com "{title_guess}" {best_author or ''}
+        
+        Research this audiobook and respond with JSON containing:
+        - "title" (required)
+        - "author" (required)
+        - "year" (optional)
+        - "series" (optional)
+        - "series_index" (optional)
+        - "narrator" (optional)
+        - "language" (optional)
+        - "description" (optional)
+        - "publisher" (optional)
+        - "score" (confidence 0-100, required)
+        
+        Use null for unknown values. Respond with JSON only.
+    """).strip()
+    
+    def parse_mcp_response(raw: Optional[str]) -> Optional[Dict[str, Any]]:
+        if raw is None:
+            return None
+        cleaned = _strip_fence(raw)
+        try:
+            payload = json.loads(cleaned)
+        except json.JSONDecodeError:
+            if DEBUG:
+                rprint("  [yellow]- MCP response was not valid JSON[/]")
+            return None
+        if not isinstance(payload, dict):
+            return None
+        
+        # Validate required fields
+        if not payload.get("title") or not payload.get("author"):
+            return None
+        
+        # Normalize fields
+        meta: Dict[str, Any] = {}
+        for key in ["title", "author", "year", "series", "series_index", "narrator", "language", "description", "publisher"]:
+            meta[key] = _normalise_value(payload.get(key))
+        
+        # Get score from response
+        llm_score = payload.get("score")
+        if isinstance(llm_score, (int, float)):
+            meta["score"] = int(llm_score)
+        else:
+            meta["score"] = 0
+        
+        return meta
+    
+    def calculate_combined_score(meta: Dict[str, Any], folder_name: str, title_guess: str, author_guess: Optional[str]) -> int:
+        """Calculate combined score: 50% LLM score + 50% fuzzy match."""
+        llm_score = meta.get("score", 0)
+        
+        # Fuzzy match against folder name and guesses
+        title_score = fuzz.token_set_ratio(title_guess.lower(), meta.get("title", "").lower())
+        author_score = 0
+        if author_guess and meta.get("author"):
+            author_score = fuzz.token_set_ratio(author_guess.lower(), meta.get("author", "").lower())
+        
+        # Also check against best_author if available
+        if best_author and meta.get("author"):
+            best_author_score = fuzz.token_set_ratio(best_author.lower(), meta.get("author", "").lower())
+            author_score = max(author_score, best_author_score)
+        
+        folder_score = fuzz.token_set_ratio(folder_name.lower(), f"{meta.get('title', '')} {meta.get('author', '')}".lower())
+        
+        fuzzy_score = int((title_score * 0.4 + author_score * 0.3 + folder_score * 0.3))
+        
+        # Combined score: 50% LLM + 50% fuzzy
+        combined = int(llm_score * 0.5 + fuzzy_score * 0.5)
+        meta["score"] = combined
+        return combined
+    
+    # Stage 1: Web search refinement
+    try:
+        stage1_raw = _call_llm(
+            stage1_prompt,
+            system_prompt=MCP_SYSTEM_PROMPT,
+            tools=MCP_TOOLS,
+            max_tokens=1024,
+        )
+        
+        if stage1_raw is None:
+            if DEBUG:
+                rprint("  [yellow]- Stage 1 MCP refinement failed[/]")
+            return None
+        
+        stage1_meta = parse_mcp_response(stage1_raw)
+        if not stage1_meta:
+            if DEBUG:
+                rprint("  [yellow]- Stage 1 MCP response invalid[/]")
+            return None
+        
+        # Calculate combined score
+        stage1_score = calculate_combined_score(stage1_meta, folder_label, title_guess, author_guess)
+        stage1_meta["refinement_source"] = "refined_web_search"
+        
+        if DEBUG:
+            rprint(f"  [cyan]- Stage 1 refinement score: {stage1_score}[/]")
+        
+        # If score is high enough, return stage 1 result
+        if stage1_score >= 90:
+            return stage1_meta
+        
+        # Stage 2: SequentialThinking fallback
+        if DEBUG:
+            rprint("  [cyan]- Proceeding to SequentialThinking refinement[/]")
+        
+        stage2_context = f"""
+        Previous refinement attempt scored {stage1_score}/100.
+        This title may be a novella, anthology entry, or side story in an existing series.
+        Consider alternative titles, series relationships, and publication formats.
+        """
+        
+        stage2_prompt = textwrap.dedent(f"""
+        Use advanced reasoning to refine this audiobook metadata.
+        
+        Folder: {folder_label}
+        Title: "{title_guess}"
+        Author: {best_author or 'Unknown'}
+        Series: {series_guess or 'Unknown'}
+        Series Index: {series_index_guess or 'Unknown'}
+        
+        Context: {stage2_context}
+        
+        Previous attempt found: {stage1_meta.get('title', 'Unknown')} by {stage1_meta.get('author', 'Unknown')}
+        
+        Apply sequential thinking to determine the most accurate metadata.
+        Consider:
+        - Series relationships and numbering
+        - Alternative titles or translations
+        - Publication format (novella, short story, anthology)
+        - Author variations or pseudonyms
+        
+        Respond with JSON containing:
+        - "title" (required)
+        - "author" (required) 
+        - "year" (optional)
+        - "series" (optional)
+        - "series_index" (optional)
+        - "narrator" (optional)
+        - "language" (optional)
+        - "description" (optional)
+        - "publisher" (optional)
+        - "score" (confidence 0-100, required)
+        - "reasoning" (brief explanation, optional)
+        
+        Use null for unknown values. Respond with JSON only.
+        """).strip()
+        
+        # Create tools list with only sequential_thinking
+        sequential_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "sequential_thinking",
+                    "description": "Advanced reasoning for complex metadata inference",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"},
+                            "context": {"type": "string"},
+                        },
+                        "required": ["query"],
+                    },
+                },
+            }
+        ]
+        
+        stage2_raw = _call_llm(
+            stage2_prompt,
+            system_prompt=MCP_SYSTEM_PROMPT,
+            tools=sequential_tools,
+            max_tokens=1024,
+        )
+        
+        if stage2_raw is None:
+            if DEBUG:
+                rprint("  [yellow]- Stage 2 SequentialThinking failed[/]")
+            return stage1_meta  # Return stage 1 result as fallback
+        
+        stage2_meta = parse_mcp_response(stage2_raw)
+        if not stage2_meta:
+            if DEBUG:
+                rprint("  [yellow]- Stage 2 response invalid[/]")
+            return stage1_meta  # Return stage 1 result as fallback
+        
+        # Calculate combined score for stage 2
+        stage2_score = calculate_combined_score(stage2_meta, folder_label, title_guess, author_guess)
+        stage2_meta["refinement_source"] = "sequentialthinking_refinement"
+        
+        if DEBUG:
+            rprint(f"  [cyan]- Stage 2 refinement score: {stage2_score}[/]")
+        
+        # Return the better of the two results
+        if stage2_score >= stage1_score:
+            return stage2_meta
+        else:
+            return stage1_meta
+            
+    except Exception as exc:
+        if DEBUG:
+            rprint(f"  [yellow]- MCP refinement error: {exc}[/]")
+        review_log(folder, f"mcp_refinement_failed: {type(exc).__name__}")
+        return None
+
 def strip_tags(file: Path):
     audio = MFile(str(file))
     if audio:
@@ -768,9 +1373,11 @@ def process_leaf(path: Path, args):
         return
 
     # guess
-    a_guess, t_guess, y_guess = guess_from_path(path)
+    a_guess, t_guess, y_guess, s_guess, si_guess = guess_from_path(path)
     rprint(f"[cyan]->[/] {path}")
     rprint(f"  guess: [italic]{t_guess}[/] by {a_guess or '?'} ({y_guess or '?'})")
+    if s_guess:
+        rprint(f"  series: {s_guess} #{si_guess or '?'}")
 
     if path.is_file():
         targets = [path] if path.suffix.lower() in AUDIO_EXTS else []
@@ -785,19 +1392,43 @@ def process_leaf(path: Path, args):
 
     folder = path if path.is_dir() else path.parent
 
-    result, scores = best_match(a_guess, t_guess)
+    result, scores = best_match(a_guess, t_guess, s_guess, si_guess)
     llm_used = False
+    refinement_source = None
+    
     if not result:
         rprint("  [red] - no match[/]")
-        llm_meta = generate_metadata_via_llm(folder, targets)
-        if llm_meta:
-            rprint("  [magenta]- metadata supplied by local LLM[/]")
-            meta = llm_meta
-            llm_used = True
+        # Try MCP refinement first if enabled
+        if AB.is_on("use_mcp_refinement"):
+            rprint("  [cyan]- attempting MCP refinement[/]")
+            mcp_meta = refine_metadata_via_mcp(folder, a_guess, t_guess, s_guess, si_guess, 0)
+            if mcp_meta and mcp_meta.get("score", 0) >= 95:
+                rprint(f"  [magenta]- metadata refined via MCP (score: {mcp_meta['score']})[/]")
+                meta = mcp_meta
+                llm_used = True
+                refinement_source = mcp_meta.get("refinement_source", "mcp_refinement")
+            else:
+                # Fallback to original LLM
+                llm_meta = generate_metadata_via_llm(folder, targets)
+                if llm_meta:
+                    rprint("  [magenta]- metadata supplied by local LLM[/]")
+                    meta = llm_meta
+                    llm_used = True
+                else:
+                    log("NOMATCH", str(path))
+                    review_log(path, "no_match")
+                    return
         else:
-            log("NOMATCH", str(path))
-            review_log(path, "no_match")
-            return
+            # Original LLM fallback
+            llm_meta = generate_metadata_via_llm(folder, targets)
+            if llm_meta:
+                rprint("  [magenta]- metadata supplied by local LLM[/]")
+                meta = llm_meta
+                llm_used = True
+            else:
+                log("NOMATCH", str(path))
+                review_log(path, "no_match")
+                return
     else:
         score, hit = result
 
@@ -817,17 +1448,38 @@ def process_leaf(path: Path, args):
             "title": hit["title"],
             "author": author_hit,
             "year": hit["year"],
-            "series": hit.get("series"),
+            "series": hit.get("series") or s_guess,
+            "series_index": hit.get("series_index") or si_guess,
         }
 
         if score < llm_threshold:
-            llm_meta = generate_metadata_via_llm(folder, targets)
-            if llm_meta:
-                rprint(
-                    f"  [magenta]- metadata supplied by local LLM (score {score} < {llm_threshold})[/]"
-                )
-                meta = llm_meta
-                llm_used = True
+            # Try MCP refinement first if enabled and score is low
+            if AB.is_on("use_mcp_refinement") and score < 90:
+                rprint("  [cyan]- attempting MCP refinement (low score)[/]")
+                mcp_meta = refine_metadata_via_mcp(folder, a_guess, t_guess, s_guess, si_guess, score, meta)
+                if mcp_meta and mcp_meta.get("score", 0) >= 95:
+                    rprint(f"  [magenta]- metadata refined via MCP (score: {mcp_meta['score']})[/]")
+                    meta = mcp_meta
+                    llm_used = True
+                    refinement_source = mcp_meta.get("refinement_source", "mcp_refinement")
+                else:
+                    # Fallback to original LLM
+                    llm_meta = generate_metadata_via_llm(folder, targets)
+                    if llm_meta:
+                        rprint(
+                            f"  [magenta]- metadata supplied by local LLM (score {score} < {llm_threshold})[/]"
+                        )
+                        meta = llm_meta
+                        llm_used = True
+            else:
+                # Original LLM fallback
+                llm_meta = generate_metadata_via_llm(folder, targets)
+                if llm_meta:
+                    rprint(
+                        f"  [magenta]- metadata supplied by local LLM (score {score} < {llm_threshold})[/]"
+                    )
+                    meta = llm_meta
+                    llm_used = True
 
         if not llm_used and score < 70 and not args.yes:
             score_val = f"{score:.1f}" if isinstance(score, float) else str(score)
@@ -863,8 +1515,25 @@ def process_leaf(path: Path, args):
             log("ERR", f"tag {f}")
     label = "OK" if ok == len(targets) else "ERR"
     rprint(f"  [green]tagged {ok}/{len(targets)} file(s)[/]")
-    suffix = " [LLM]" if llm_used else ""
+    
+    # Enhanced logging with refinement source and score
+    suffix_parts = []
+    if llm_used:
+        if refinement_source:
+            suffix_parts.append(f"[MCP-{refinement_source}]")
+        else:
+            suffix_parts.append("[LLM]")
+    
+    # Add score information if available
+    if meta.get("score"):
+        score_info = f"score={meta['score']}"
+        if meta.get("series_index"):
+            score_info += f" series={meta['series_index']}"
+        suffix_parts.append(f"[{score_info}]")
+    
+    suffix = " " + " ".join(suffix_parts) if suffix_parts else ""
     log(label, f"{path}  ({ok}/{len(targets)}){suffix}")
+    
     if label == "OK":
         export_metadata(path, meta)
 
@@ -963,12 +1632,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
 
 
 

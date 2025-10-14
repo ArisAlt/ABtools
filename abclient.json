@@ -1,4 +1,5 @@
 {
   "use_goodreads": true,
-  "audible_first": true
+  "audible_first": true,
+  "use_mcp_refinement": true
 }
