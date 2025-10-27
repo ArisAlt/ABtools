@@ -2,3 +2,7 @@
 whisper_env/
 
 tests/
+
+__pycache__/
+
+tmp_patch.txt

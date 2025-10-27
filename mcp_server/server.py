@@ -50,17 +50,17 @@ def tag_books_tool(path: str, commit: bool = False, yes: bool = False):
 if __name__ == "__main__":
     import traceback
 
-    sys.stderr.write(f"[mcp] starting {MCP_SERVER_NAME} ({MCP_SERVER_VERSION})\n")
-    sys.stderr.flush()
-    sys.stderr.write(
+    sys.stdout.write(f"[mcp] starting {MCP_SERVER_NAME} ({MCP_SERVER_VERSION})\n")
+    sys.stdout.flush()
+    sys.stdout.write(
         "Registered tools: ['search_audible_tool', 'search_goodreads_tool', "
         "'search_google_books_tool', 'search_openlibrary_tool', 'tag_books_tool']\n"
     )
-    sys.stderr.flush()
+    sys.stdout.flush()
     try:
         mcp.run()
     except Exception as e:
         traceback.print_exc(file=sys.stderr)
     finally:
-        sys.stderr.write("[mcp] server stopped\n")
-        sys.stderr.flush()
+        sys.stdout.write("[mcp] server stopped\n")
+        sys.stdout.flush()
