@@ -1,8 +1,8 @@
-﻿#!/usr/bin/env python3
+﻿
+#!/usr/bin/env python3
 """
 ABtools/search_and_tag.py - v2.30 (2025-09-12)
 Tag (or strip) audiobook files using multiple metadata providers.
-
     The script queries Audible, Open Library, Google Books and Goodreads
     via the LM Studio MCP server. Each provider search is routed through
     ``full_web_search`` with an appropriate ``site:`` filter, then parsed
@@ -13,31 +13,25 @@ Tag (or strip) audiobook files using multiple metadata providers.
     won't be accepted accidentally. Log files are written next to the
     chosen root as ``tag_log.txt`` and ``review_log.txt``. Use
     ``--version`` to print the script version and file location.
-
 Supply ``--llm-endpoint``/``--llm-model`` to let a local LM Studio
 instance (tested with Mistral-7B Q4 on port 1234) suggest metadata when
 online providers fail or return low scores. Adjust the trigger with
-``--llm-threshold`` (default: 75). When the fallback is used the script
+``--llm-threshold`` (default: 85, minimum: 80). When the fallback is used the script
 shares folder context and file names with the model and expects JSON
 metadata in return; no local transcription step is required anymore.
 """
-
 from __future__ import annotations
 import argparse, datetime, os, re, sys, textwrap
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
 from abclient import AbClient
 from dataclasses import dataclass
-
 VERSION = "2.30"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
-
 DEBUG = False
 AB = AbClient()
-
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
 SESSION = requests.Session()
 from rapidfuzz import fuzz
 import json
@@ -46,7 +40,6 @@ from mutagen import File as MFile, MutagenError
 from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TALB, TPE1, TDRC, TXXX, TRCK
 from mutagen.mp4 import MP4, MP4StreamInfoError
 from bs4 import BeautifulSoup
-
 # ----- colour (rich) or plain text -----
 try:
     from rich import print as rprint
@@ -57,7 +50,6 @@ except ImportError:  # plain console, strip tags like [bold]...[/]
     def Confirm(prompt: str, default=False):
         ans = input(f"{prompt} [{'Y/n' if default else 'y/N'}] ").lower().strip()
         return default if ans == "" else ans in {"y", "yes"}
-
 # ----- constants -----
 AUDIO_EXTS = {".mp3", ".m4a", ".m4b"}
 TAIL_RX    = re.compile(r"(?:\s*(?:\{[^}]*\}|\d+\.\d{2}\.\d{2}|\d+\s*[kK](?:bps)?|kbps))*\s*$")
@@ -65,7 +57,6 @@ PAREN_RX   = re.compile(r"\([^)]*\)")
 YEAR_RX    = re.compile(r"^(\d{4})\s*[-_]\s*")
 LOG_PATH   = Path("tag_log.txt")
 REVIEW_PATH = Path("review_log.txt")
-
 SERIES_PATTERNS = [
     re.compile(r'^(.+?)\s+(\d+(?:\.\d+)?)\s+(.+)$'),  # "Series 01 Title"
     re.compile(r'^(.+?)\s+Book\s+(\d+)\s+(.+)$', re.IGNORECASE),  # "Series Book 1 Title"
@@ -73,9 +64,8 @@ SERIES_PATTERNS = [
     re.compile(r'^(.+?)\s+Vol\.?\s+(\d+)\s+(.+)$', re.IGNORECASE),  # "Series Vol 1 Title"
     re.compile(r'^(\d+(?:\.\d+)?)\s+(.+)$'),  # "01 Title" (number only)
 ]
-
-LLM_ENDPOINT: Optional[str] = "http://127.0.0.1:1234/v1/chat/completions"
-LLM_MODEL_NAME: Optional[str] = "llama-3.2-8b-instruct"
+LLM_ENDPOINT: Optional[str] = "http://127.0.0.1:8888/v1/chat/completions"
+LLM_MODEL_NAME: Optional[str] = "ibm/granite-4-h-tiny"
 LLM_TIMEOUT: int = 90
 LLM_MAX_TOKENS: int = 8000
 TAVILY_API_KEY: Optional[str] = os.environ.get("TAVILY_API_KEY")
@@ -83,30 +73,31 @@ TAVILY_ENDPOINT: str = os.environ.get("TAVILY_ENDPOINT", "https://api.tavily.com
 LLM_SYSTEM_PROMPT = (
     "You analyse audiobook folders and files, respond with JSON metadata only."
 )
-
 MCP_SYSTEM_PROMPT = textwrap.dedent(
     """
-    You route audiobook metadata lookups through the LM Studio MCP server.
-    Always satisfy user requests by calling the `full_web_search` tool with
-    an appropriate `site:` filter, then follow up with MCP summaries or page
-    fetches if needed. When you finish researching, respond with a single
-    JSON object describing the audiobook (title, authors[], year, series,
-    series_index, narrator, publisher, description).
+    You research audiobooks via the LM Studio MCP server.
+    Always call the ABtools provider tools in this order:
+      1. Use `search_goodreads_tool` with the title and author.
+      2. If the best Goodreads confidence is below 90, call `search_audible_tool`.
+      3. When neither provider yields a confidence ≥ 90, call the DuckDuckGo MCP `fetch_content`
+         tool to gather supporting excerpts before finalising the JSON.
+    Provider responses include a `confidence` field (0-100); treat values ≥ 90 as reliable matches.
+    Use `get_single_web_page_content` only when you must extract details from a specific URL.
+    Respond with a single JSON object describing the audiobook (title, authors[], year, series,
+    series_index, narrator, publisher, description). Never return plain text.
     """
 ).strip()
-
 MCP_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "full_web_search",
-            "description": "Run a web search via the LM Studio MCP server.",
+            "name": "search_goodreads_tool",
+            "description": "Query Goodreads for audiobook metadata.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
-                    "num_results": {"type": "integer", "default": 5},
-                    "include_content": {"type": "boolean", "default": False},
+                    "limit": {"type": "integer", "default": 5},
                 },
                 "required": ["query"],
             },
@@ -115,17 +106,29 @@ MCP_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "get_web_search_summaries",
-            "description": "Fetch summaries for prior MCP search results.",
+            "name": "search_audible_tool",
+            "description": "Query Audible for audiobook metadata.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "ids": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                    }
+                    "query": {"type": "string"},
+                    "limit": {"type": "integer", "default": 5},
                 },
-                "required": ["ids"],
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "fetch_content",
+            "description": "Fetch supporting content via the DuckDuckGo MCP plugin.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                },
+                "required": ["query"],
             },
         },
     },
@@ -147,7 +150,7 @@ MCP_TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "sequential_thinking",
-            "description": "Advanced reasoning for complex metadata inference",
+            "description": "Request structured reasoning guidance before finalising metadata.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -159,14 +162,12 @@ MCP_TOOLS: list[dict[str, Any]] = [
         },
     },
 ]
-
 MCP_PROVIDER_SITES = {
     "audible": ("Audible", "audible.com"),
     "openlib": ("Open Library", "openlibrary.org"),
     "gbooks": ("Google Books", "books.google.com"),
     "goodreads": ("Goodreads", "goodreads.com"),
 }
-
 def _call_llm(
     prompt: str,
     *,
@@ -177,7 +178,6 @@ def _call_llm(
 ) -> Optional[str]:
     if not LLM_ENDPOINT or not LLM_MODEL_NAME:
         return None
-
     token_budget = max_tokens or LLM_MAX_TOKENS
     sys_prompt = system_prompt or LLM_SYSTEM_PROMPT
     convo: list[dict[str, Any]] = [
@@ -185,7 +185,7 @@ def _call_llm(
         {"role": "user", "content": prompt},
     ]
     length_retry = attempt
-
+    used_tools: dict[str, int] = {}
     while True:
         payload: dict[str, Any] = {
             "model": LLM_MODEL_NAME,
@@ -197,38 +197,32 @@ def _call_llm(
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
-
         try:
             resp = SESSION.post(LLM_ENDPOINT, json=payload, timeout=LLM_TIMEOUT)
         except requests.RequestException as exc:  # pragma: no cover - network guard
             if DEBUG:
                 rprint(f"  [yellow]- LM Studio request failed: {exc}[/]")
             return None
-
         if resp.status_code >= 400:
             if DEBUG:
                 rprint(
                     f"  [yellow]- LM Studio returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
                 )
             return None
-
         try:
             data = resp.json()
         except ValueError:
             if DEBUG:
                 rprint("  [yellow]- LM Studio response was not valid JSON[/]")
             return None
-
         choices = data.get("choices")
         if not choices:
             return None
-
         first_choice = choices[0] if isinstance(choices[0], dict) else {}
         message = first_choice.get("message") if isinstance(first_choice, dict) else {}
         finish_reason = first_choice.get("finish_reason") if isinstance(first_choice, dict) else None
         content = message.get("content") if isinstance(message, dict) else None
         tool_calls = message.get("tool_calls") if isinstance(message, dict) else None
-
         if tool_calls:
             convo.append(
                 {
@@ -240,12 +234,25 @@ def _call_llm(
             for call in tool_calls:
                 fn = call.get("function") or {}
                 name = fn.get("name")
+                tool_name = (name or "").strip()
                 arguments_raw = fn.get("arguments") or "{}"
                 try:
                     arguments = json.loads(arguments_raw) if arguments_raw else {}
                 except json.JSONDecodeError:
                     arguments = {}
-                tool_response = _execute_tool_call(name or "", arguments)
+                if tool_name == "sequential_thinking" and used_tools.get(tool_name):
+                    tool_response = _serialise_tool_result(
+                        {
+                            "notes": [
+                                "sequential_thinking already executed; respond with final JSON metadata now."
+                            ],
+                            "guidance": "Use the prior sequential thinking notes to complete the metadata without issuing further tool calls.",
+                        }
+                    )
+                else:
+                    tool_response = _execute_tool_call(tool_name, arguments)
+                if tool_name:
+                    used_tools[tool_name] = used_tools.get(tool_name, 0) + 1
                 convo.append(
                     {
                         "role": "tool",
@@ -256,7 +263,6 @@ def _call_llm(
                 )
             # loop to request follow-up completion
             continue
-
         if finish_reason == "length" and length_retry == 0:
             new_budget = min(token_budget * 2, 2048)
             if DEBUG:
@@ -266,24 +272,16 @@ def _call_llm(
             token_budget = new_budget
             length_retry = 1
             continue
-
         if not content:
             return None
-
         convo.append({"role": "assistant", "content": str(content)})
         return str(content)
-
-
 MCP_RESULT_CACHE: Dict[str, Dict[str, Any]] = {}
 MCP_RESULT_SEQ = 0
-
-
 def _next_mcp_result_id() -> str:
     global MCP_RESULT_SEQ
     MCP_RESULT_SEQ += 1
     return f"res-{MCP_RESULT_SEQ}"
-
-
 def _serialise_tool_result(result: Any) -> str:
     if result is None:
         return ""
@@ -293,8 +291,6 @@ def _serialise_tool_result(result: Any) -> str:
         return json.dumps(result, ensure_ascii=False)
     except (TypeError, ValueError):
         return json.dumps({"result": str(result)}, ensure_ascii=False)
-
-
 def _parse_provider_query(query: str) -> tuple[Optional[str], str]:
     cleaned = re.sub(r"\bsite:[^\s]+\b", "", str(query), flags=re.IGNORECASE).strip()
     if not cleaned:
@@ -308,40 +304,121 @@ def _parse_provider_query(query: str) -> tuple[Optional[str], str]:
     if not title:
         title = cleaned
     return author or None, title
-
-
-def _normalise_provider_hit(source: str, data: Optional[dict]) -> list[dict[str, Any]]:
+def _compute_confidence(
+    query_title: Optional[str], query_author: Optional[str], payload: dict[str, Any]
+) -> int:
+    title_score = 0
+    author_score = 0
+    result_title = (payload.get("title") or payload.get("name") or "").strip()
+    if query_title and result_title:
+        title_score = fuzz.token_set_ratio(query_title.lower(), result_title.lower())
+    raw_authors = payload.get("authors") or payload.get("author")
+    authors: list[str] = []
+    if isinstance(raw_authors, str):
+        authors = [raw_authors]
+    elif isinstance(raw_authors, list):
+        authors = [str(a) for a in raw_authors if isinstance(a, str)]
+    elif raw_authors is not None:
+        authors = [str(raw_authors)]
+    if query_author and authors:
+        author_score = max(
+            fuzz.token_set_ratio(query_author.lower(), author.lower())
+            for author in authors
+        )
+    weight_title = 0.7 if query_author else 1.0
+    weight_author = 0.3 if query_author else 0.0
+    confidence = int(round(title_score * weight_title + author_score * weight_author))
+    return max(0, min(100, confidence))
+def _normalise_provider_hit(
+    source: str,
+    data: Optional[Any],
+    *,
+    query_title: Optional[str],
+    query_author: Optional[str],
+) -> list[dict[str, Any]]:
     if not data:
         return []
-    payload = dict(data)
-    if "author" in payload and not payload.get("authors"):
-        value = payload.pop("author")
-        if isinstance(value, str):
-            payload["authors"] = [v.strip() for v in value.split(",") if v.strip()]
-    payload["source"] = source
-    return [payload]
-
-
+    entries: list[dict[str, Any]]
+    if isinstance(data, list):
+        entries = [dict(item) for item in data if isinstance(item, dict)]
+    elif isinstance(data, dict):
+        entries = [dict(data)]
+    else:
+        return []
+    normalised: list[dict[str, Any]] = []
+    for payload in entries:
+        if "author" in payload and not payload.get("authors"):
+            value = payload.pop("author")
+            if isinstance(value, str):
+                payload["authors"] = [v.strip() for v in value.split(",") if v.strip()]
+        payload["source"] = source
+        payload["confidence"] = _compute_confidence(query_title, query_author, payload)
+        normalised.append(payload)
+    return normalised
 def mcp_search_audible(query: str) -> list[dict[str, Any]]:
     author, title = _parse_provider_query(query)
-    return _normalise_provider_hit("audible", audible(author, title)) if title else []
-
-
+    return (
+        _normalise_provider_hit(
+            "audible",
+            audible(author, title),
+            query_title=title,
+            query_author=author,
+        )
+        if title
+        else []
+    )
 def mcp_search_goodreads(query: str) -> list[dict[str, Any]]:
     author, title = _parse_provider_query(query)
-    return _normalise_provider_hit("goodreads", goodreads(author, title)) if title else []
-
-
+    return (
+        _normalise_provider_hit(
+            "goodreads",
+            goodreads(author, title),
+            query_title=title,
+            query_author=author,
+        )
+        if title
+        else []
+    )
 def mcp_search_google_books(query: str) -> list[dict[str, Any]]:
     author, title = _parse_provider_query(query)
-    return _normalise_provider_hit("gbooks", gbooks(author, title)) if title else []
-
-
+    return (
+        _normalise_provider_hit(
+            "gbooks",
+            gbooks(author, title),
+            query_title=title,
+            query_author=author,
+        )
+        if title
+        else []
+    )
 def mcp_search_openlibrary(query: str) -> list[dict[str, Any]]:
     author, title = _parse_provider_query(query)
-    return _normalise_provider_hit("openlib", openlib(author, title)) if title else []
-
-
+    return (
+        _normalise_provider_hit(
+            "openlib",
+            openlib(author, title),
+            query_title=title,
+            query_author=author,
+        )
+        if title
+        else []
+    )
+def mcp_duckduckgo_fetch_content(query: Optional[str]) -> dict[str, Any]:
+    q = (query or "").strip()
+    if not q:
+        return {"error": "query is required"}
+    results = mcp_full_web_search(q, num_results=1, include_content=True)
+    if not results:
+        return {"error": "No results", "query": q}
+    entry = dict(results[0])
+    content = entry.get("content")
+    if not content and entry.get("url"):
+        page = mcp_get_single_page_content(entry["url"])
+        if isinstance(page, dict) and page.get("content"):
+            entry["content"] = page["content"]
+            entry.setdefault("url", page.get("url"))
+    entry.setdefault("query", q)
+    return entry
 def _execute_tool_call(name: str, arguments: Dict[str, Any]) -> str:
     if not name:
         return ""
@@ -388,6 +465,13 @@ def _execute_tool_call(name: str, arguments: Dict[str, Any]) -> str:
             return _serialise_tool_result(
                 {"results": mcp_search_openlibrary(arguments.get("query", ""))}
             )
+        if name == "fetch_content":
+            if arguments.get("url"):
+                return _serialise_tool_result({"error": "fetch_content expects query; got url"})
+            query = str(arguments.get("query", "")).strip()
+            if not query:
+                return _serialise_tool_result({"error": "missing query"})
+            return _serialise_tool_result(mcp_duckduckgo_fetch_content(query))
         if name == "tag_books_tool":
             return _serialise_tool_result(
                 {"error": "tag_books_tool is not supported from this client"}
@@ -397,8 +481,6 @@ def _execute_tool_call(name: str, arguments: Dict[str, Any]) -> str:
         if DEBUG:
             rprint(f"  [yellow]- tool {name} failed: {exc}[/]")
         return _serialise_tool_result({"error": str(exc)})
-
-
 def mcp_full_web_search(
     query: str, *, num_results: int = 5, include_content: bool = False
 ) -> list[dict[str, Any]]:
@@ -417,8 +499,6 @@ def mcp_full_web_search(
         MCP_RESULT_CACHE[entry_id] = entry
         collected.append(entry)
     return collected
-
-
 def mcp_get_single_page_content(url: Optional[str]) -> dict[str, Any]:
     if not url:
         return {"error": "missing url"}
@@ -430,18 +510,14 @@ def mcp_get_single_page_content(url: Optional[str]) -> dict[str, Any]:
         return {"error": str(exc), "url": url}
     trimmed = content if len(content) <= 4000 else content[:4000]
     return {"url": url, "content": trimmed}
-
-
 def mcp_sequential_thinking(query: str, context: Optional[str]) -> dict[str, Any]:
     hints = _derive_label_hints(query)
     notes: list[str] = []
-
     title_hint = hints.get("title")
     author_hint = hints.get("author")
     year_hint = hints.get("year")
     series_hint = hints.get("series")
     series_index_hint = hints.get("series_index")
-
     if title_hint:
         notes.append(f"Normalized title candidate: {title_hint}")
     if author_hint:
@@ -457,10 +533,9 @@ def mcp_sequential_thinking(query: str, context: Optional[str]) -> dict[str, Any
         ctx = context.strip()
         if ctx and ctx.lower() != "audiobook metadata for local tagging":
             notes.append(f"Context: {ctx}")
-
     if not notes:
         notes.append("No structured hints extracted; rely on catalog research.")
-
+    notes.append("Do not call sequential_thinking again; respond with final JSON metadata now.")
     return {
         "title_hint": title_hint,
         "author_hint": author_hint,
@@ -473,8 +548,6 @@ def mcp_sequential_thinking(query: str, context: Optional[str]) -> dict[str, Any
             "and adjust series metadata before finalising the JSON response."
         ),
     }
-
-
 def _tavily_search_raw(
     query: str, *, max_results: int = 5, include_content: bool = False
 ) -> Optional[list[dict[str, Any]]]:
@@ -494,14 +567,12 @@ def _tavily_search_raw(
         if DEBUG:
             rprint(f"  [yellow]- Tavily search failed: {exc}[/]")
         return None
-
     if resp.status_code >= 400:
         if DEBUG:
             rprint(
                 f"  [yellow]- Tavily returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
             )
         return None
-
     try:
         data = resp.json()
     except ValueError:
@@ -512,13 +583,10 @@ def _tavily_search_raw(
     if not results:
         return []
     return results
-
-
 def _tavily_search(query: str, *, max_results: int = 3) -> Optional[str]:
     results = _tavily_search_raw(query, max_results=max_results)
     if not results:
         return None
-
     snippets: List[str] = []
     for item in results:
         if not isinstance(item, dict):
@@ -536,23 +604,17 @@ def _tavily_search(query: str, *, max_results: int = 3) -> Optional[str]:
             line += f": {chunk}"
         snippets.append(line)
     return "\n".join(snippets[:max_results]) if snippets else None
-
-
-
 def log(status: str, message: str):
     LOG_PATH.parent.mkdir(exist_ok=True)
     with LOG_PATH.open("a", encoding="utf-8") as fh:
         fh.write(f"{datetime.datetime.now():%F %T}  {status:<7}  {message}\n")
-
 def review_log(path: Path, reason: str):
     REVIEW_PATH.parent.mkdir(exist_ok=True)
     with REVIEW_PATH.open("a", encoding="utf-8") as fh:
         fh.write(f"{datetime.datetime.now():%F %T}  {reason:<9}  {path}\n")
-
 # ----- tiny helpers -----
 def clean_tail(s: str) -> str:
     return TAIL_RX.sub("", s).strip()
-
 def strip_annotations(s: str) -> str:
     if not s:
         return ""
@@ -561,21 +623,17 @@ def strip_annotations(s: str) -> str:
     s = re.sub(r"\{[^}]*\}", "", s)
     s = re.sub(r"\s{2,}", " ", s)
     return s.strip(" -_\t")
-
 def _derive_label_hints(label: str) -> dict[str, Optional[str]]:
     """Extract best-effort hints (title, author, year, series) from a folder label."""
     raw = (label or "").strip()
     if not raw:
         return {"title": None, "author": None, "year": None, "series": None, "series_index": None}
-
     cleaned = strip_annotations(clean_tail(raw))
     cleaned = TAIL_RX.sub("", cleaned).strip()
-
     year = None
     if (m := YEAR_RX.match(cleaned)):
         year = m.group(1)
         cleaned = cleaned[m.end():].lstrip(" -_")
-
     author_hint = None
     parts = [p.strip() for p in re.split(r"\s*[-–]\s*", cleaned) if p.strip()]
     title_part = cleaned
@@ -586,11 +644,9 @@ def _derive_label_hints(label: str) -> dict[str, Optional[str]]:
             title_part = " - ".join(parts[1:]).strip()
         else:
             title_part = cleaned
-
     title_part = strip_annotations(title_part)
     series_hint, series_index_hint, title_hint = extract_series_and_title(title_part)
     title_hint = strip_annotations(title_hint or title_part) or None
-
     return {
         "title": title_hint,
         "author": author_hint,
@@ -600,10 +656,8 @@ def _derive_label_hints(label: str) -> dict[str, Optional[str]]:
         "raw": raw,
         "normalized": cleaned,
     }
-
 def has_audio(folder: Path) -> bool:
     return any(c.suffix.lower() in AUDIO_EXTS for c in folder.iterdir())
-
 def determine_best_author(folder: Path, initial_guess: Optional[str], partial_meta: Optional[dict] = None) -> Optional[str]:
     """Determine the most plausible author from multiple sources."""
     
@@ -629,7 +683,6 @@ def determine_best_author(folder: Path, initial_guess: Optional[str], partial_me
             return grandparent_name
     
     return None
-
 def enhanced_author_extraction(folder: Path) -> Optional[str]:
     """Enhanced author extraction from folder structure."""
     
@@ -655,7 +708,6 @@ def enhanced_author_extraction(folder: Path) -> Optional[str]:
                     return part_clean
     
     return None
-
 def extract_series_and_title(text: str) -> Tuple[Optional[str], Optional[str], str]:
     """
     Extract series name, series index, and title from text.
@@ -687,7 +739,6 @@ def extract_series_and_title(text: str) -> Tuple[Optional[str], Optional[str], s
     
     # No pattern matched, return as title only
     return None, None, text
-
 # ----- filename guess -----
 def guess_from_path(p: Path) -> Tuple[Optional[str], str, Optional[str], Optional[str], Optional[str]]:
     """Return (author, title, year, series, series_index)."""
@@ -715,7 +766,6 @@ def guess_from_path(p: Path) -> Tuple[Optional[str], str, Optional[str], Optiona
     if len(parts) >= 1:
         combined_text = " - ".join(parts[:-1]) if len(parts) >= 2 else parts[0]
         series, series_index, title = extract_series_and_title(combined_text)
-
         if not series and len(parts) >= 2:
             author_candidate = strip_annotations(" - ".join(parts[:-1]).strip())
             title = parts[-1]
@@ -739,7 +789,6 @@ def guess_from_path(p: Path) -> Tuple[Optional[str], str, Optional[str], Optiona
     
     title = strip_annotations(title)
     return author, title, year, series, series_index
-
 # ----- online lookup helpers -----
 def openlib(author: Optional[str], title: str) -> Optional[dict]:
     try:
@@ -758,7 +807,6 @@ def openlib(author: Optional[str], title: str) -> Optional[dict]:
         }
     except Exception:
         return None
-
 def gbooks(author: Optional[str], title: str) -> Optional[dict]:
     try:
         q = f'intitle:"{title}"' + (f'+inauthor:"{author}"' if author else "")
@@ -777,7 +825,6 @@ def gbooks(author: Optional[str], title: str) -> Optional[dict]:
         }
     except Exception:
         return None
-
 def goodreads(author: Optional[str], title: str) -> Optional[dict]:
     try:
         q = f"{title} {author}" if author else title
@@ -807,7 +854,6 @@ def goodreads(author: Optional[str], title: str) -> Optional[dict]:
         }
     except Exception:
         return None
-
 def audible(author: Optional[str], title: str) -> Optional[dict]:
     try:
         q = f"{title} {author}" if author else title
@@ -840,12 +886,10 @@ def audible(author: Optional[str], title: str) -> Optional[dict]:
         }
     except Exception:
         return None
-
 def best_match(author: Optional[str], title: str, series: Optional[str] = None, series_index: Optional[str] = None, client: AbClient = AB) -> tuple[Optional[tuple[int, dict]], dict[str, tuple[int, dict]]]:
     """Query metadata providers and return the best hit along with all scores."""
     candidates: list[tuple[int, dict]] = []
     results: dict[str, tuple[int, dict]] = {}
-
     def add_result(name: str, meta: Optional[dict]):
         if meta and meta.get("title"):
             title_score = fuzz.token_set_ratio(title.lower(), meta["title"].lower())
@@ -855,53 +899,37 @@ def best_match(author: Optional[str], title: str, series: Optional[str] = None, 
                     fuzz.token_set_ratio(author.lower(), a.lower())
                     for a in meta["authors"]
                 )
-            
             # Add series matching bonus
             series_score = 0
             if series and meta.get("series"):
                 series_score = fuzz.token_set_ratio(series.lower(), meta["series"].lower())
-            
             # Weighted score: 50% title, 25% author, 25% series (if series exists)
             if series:
                 score = int(title_score * 0.5 + author_score * 0.25 + series_score * 0.25)
             else:
                 score = int(title_score * 0.7 + author_score * 0.3)
-            
             meta["source"] = name
             pair = (score, meta)
             candidates.append(pair)
             results[name] = pair
-
-    # audible first when enabled (internal switch)
-    if client.is_on("audible_first", default=True, internal=True):
-        add_result("audible", audible(author, title))
-        if "audible" in results and results["audible"][0] >= 80:
-            return results["audible"], results
-
-    providers = [("openlib", openlib), ("gbooks", gbooks)]
-    if client.is_on("use_goodreads"):
-        providers.append(("goodreads", goodreads))
-
-    with ThreadPoolExecutor(max_workers=len(providers)) as ex:
-        future_map = {ex.submit(fn, author, title): name for name, fn in providers}
-        for fut in as_completed(future_map):
-            add_result(future_map[fut], fut.result())
-
+    # Always query Goodreads first when enabled.
+    if client.is_on("use_goodreads", default=True):
+        add_result("goodreads", goodreads(author, title))
+        if "goodreads" in results and results["goodreads"][0] >= 85:
+            return results["goodreads"], results
+    # Follow up with Audible only if Goodreads did not return a high-confidence hit.
+    add_result("audible", audible(author, title))
     if not candidates:
         return None, results
     return max(candidates, key=lambda x: x[0]), results
-
-
 def _enrich_metadata_with_providers(meta: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
     """Fill missing metadata fields using provider lookups."""
     title = meta.get("title")
     if not title:
         return meta
-
     needed_keys = {key for key in ("author", "year", "series") if not (meta.get(key) or "")}
     if not needed_keys:
         return meta
-
     author = meta.get("author")
     providers = (audible, openlib, gbooks)
     for fn in providers:
@@ -916,13 +944,85 @@ def _enrich_metadata_with_providers(meta: Dict[str, Optional[str]]) -> Dict[str,
             meta["year"] = info["year"]
         if "series" in needed_keys and info.get("series"):
             meta["series"] = info["series"]
-
         needed_keys = {key for key in ("author", "year", "series") if not (meta.get(key) or "")}
         if not needed_keys:
             break
         author = meta.get("author")
     return meta
 
+
+def format_metadata_summary(meta: Dict[str, Any]) -> str:
+    """Return a compact human-readable summary for logging."""
+    fields = {
+        "title": meta.get("title") or "?",
+        "author": meta.get("author") or "?",
+        "year": meta.get("year") or "?",
+        "series": meta.get("series") or "",
+        "series_index": meta.get("series_index") or "",
+        "source": meta.get("source") or "?",
+    }
+    summary = f"title={fields['title']} | author={fields['author']} | year={fields['year']}"
+    if fields["series"]:
+        series_idx = fields["series_index"] or "?"
+        summary += f" | series={fields['series']} #{series_idx}"
+    summary += f" | source={fields['source']}"
+    extra_keys = [
+        key for key in ("narrator", "description", "score") if key in meta and meta.get(key)
+    ]
+    for key in extra_keys:
+        value = str(meta.get(key)).strip()
+        if not value:
+            continue
+        if key == "description" and len(value) > 60:
+            value = value[:57].rstrip() + "..."
+        summary += f" | {key}={value}"
+    return summary
+
+
+def validate_metadata_fields(meta: Dict[str, Any]) -> tuple[bool, list[str]]:
+    """Apply heuristic checks to ensure metadata looks plausible."""
+    issues: list[str] = []
+
+    title = (meta.get("title") or "").strip() if meta.get("title") else ""
+    author = (meta.get("author") or "").strip() if meta.get("author") else ""
+    year = (meta.get("year") or "").strip() if meta.get("year") else ""
+    narrator = meta.get("narrator")
+    description = meta.get("description")
+    series = (meta.get("series") or "").strip() if meta.get("series") else ""
+    series_index = meta.get("series_index")
+
+    if not title:
+        issues.append("missing_title")
+    if not author:
+        issues.append("missing_author")
+
+    if year:
+        if not re.fullmatch(r"\d{4}", year):
+            issues.append("invalid_year_format")
+        else:
+            current_year = datetime.datetime.now().year
+            year_int = int(year)
+            if year_int < 1800 or year_int > current_year + 1:
+                issues.append("implausible_year")
+
+    if narrator is not None:
+        narrator_str = str(narrator).strip()
+        if not narrator_str:
+            issues.append("empty_narrator")
+
+    if series_index:
+        series_index_str = str(series_index).strip()
+        if not re.fullmatch(r"\d+(?:\.\d+)?", series_index_str):
+            issues.append("invalid_series_index")
+        if not series:
+            issues.append("series_index_without_series")
+
+    if description is not None:
+        description_text = str(description).strip()
+        if description_text and len(description_text) < 15:
+            issues.append("short_description")
+
+    return (len(issues) == 0), issues
 
 def _strip_fence(text: str) -> str:
     text = text.strip()
@@ -936,8 +1036,6 @@ def _strip_fence(text: str) -> str:
         if text.endswith("```"):
             text = text[: text.rfind("```")]
     return text.strip()
-
-
 def _normalise_value(value: Any) -> Optional[str]:
     if value is None:
         return None
@@ -950,19 +1048,43 @@ def _normalise_value(value: Any) -> Optional[str]:
         return None
     value = value.strip()
     return value or None
-
-
-
-def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]:
+def generate_metadata_via_llm(
+    folder: Path,
+    files: list[Path],
+    guess: Optional[Dict[str, Any]] = None,
+    provider_scores: Optional[Dict[str, int]] = None,
+) -> Optional[dict]:
     if not files:
         return None
     if not LLM_ENDPOINT or not LLM_MODEL_NAME:
         return None
-
     folder_label = folder.name or folder.stem or str(folder)
     file_lines = "\n".join(f"- {f.name}" for f in files[:25])
     if len(files) > 25:
         file_lines += f"\n- ... (+{len(files) - 25} more)"
+    guess_lines: list[str] = []
+    if guess:
+        guess_lines.append("Guess metadata:")
+        if guess.get("path"):
+            guess_lines.append(f"  - Path: {guess['path']}")
+        guess_title = guess.get("title") or "Unknown"
+        guess_author = guess.get("author") or "Unknown"
+        guess_year = guess.get("year") or "Unknown"
+        guess_lines.append(f"  - Folder guess: {guess_title} by {guess_author} ({guess_year})")
+        if guess.get("series"):
+            guess_lines.append(
+                f"  - Series guess: {guess['series']} #{guess.get('series_index') or '?'}"
+            )
+    guess_block = "\n".join(guess_lines) if guess_lines else "Guess metadata: not provided."
+
+    provider_lines: list[str] = []
+    if provider_scores:
+        provider_lines.append("Provider scores (higher is better):")
+        for name, score in sorted(provider_scores.items(), key=lambda item: -item[1]):
+            provider_lines.append(f"  - {name}: {score}")
+    provider_block = (
+        "\n".join(provider_lines) if provider_lines else "Provider scores: not available."
+    )
 
     prompt = textwrap.dedent(
         f"""
@@ -972,9 +1094,20 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
         Audio files:
         {file_lines}
 
-        Use the LM Studio MCP tools (full_web_search with site filters for audible.com, openlibrary.org,
-        books.google.com, and goodreads.com) to research the matching audiobook edition. Respond with a
-        single JSON object containing:
+        {guess_block}
+
+        {provider_block}
+
+        Aim to produce metadata that will achieve a confidence score of 90 or higher; high-scoring responses
+        earn a bonus reward. Research the matching audiobook edition via the LM Studio MCP server using this order:
+        Research the matching audiobook edition via the LM Studio MCP server using this order:
+          1. Call `search_goodreads_tool` with the suspected title and author.
+          2. If the best Goodreads confidence is below 90, call `search_audible_tool` to cross-check.
+          3. When neither provider produces a confidence ≥ 90, call the DuckDuckGo MCP `fetch_content`
+             tool to gather supporting excerpts before finalising the answer.
+        Provider responses include a `confidence` value from 0-100; treat scores ≥ 90 as reliable matches.
+        If a specific URL needs inspection, call `get_single_web_page_content`. Respond with a single
+        JSON object containing:
           - "title" (required)
           - "author" (required)
           - "series" (optional)
@@ -984,11 +1117,9 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
           - "language" (optional language code or name)
           - "description" (optional short summary)
           - "publisher" (optional)
-
         Use null when a value is unknown. Respond with JSON only.
         """
     ).strip()
-
     allowed = {
         "title",
         "author",
@@ -1000,7 +1131,6 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
         "description",
         "publisher",
     }
-
     optional_keys = {
         "series",
         "series_index",
@@ -1010,7 +1140,6 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
         "description",
         "publisher",
     }
-
     def parse_llm_raw(raw: Optional[str]) -> Optional[Dict[str, Optional[str]]]:
         if raw is None:
             return None
@@ -1023,23 +1152,18 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
             return None
         if not isinstance(payload, dict):
             return None
-
         meta: Dict[str, Optional[str]] = {}
         for key in allowed:
             if key in payload:
                 meta[key] = _normalise_value(payload[key])
-
         if not meta.get("title") or not meta.get("author"):
             return None
-
         year_value = meta.get("year")
         if year_value:
             match = re.search(r"\b(\d{4})\b", year_value)
             meta["year"] = match.group(1) if match else None
-
         if meta.get("series_index"):
             meta["series_index"] = _normalise_value(meta["series_index"])
-
         result_meta: Dict[str, Optional[str]] = {
             "title": meta["title"],
             "author": meta["author"],
@@ -1052,14 +1176,12 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
             if meta.get(extra):
                 result_meta[extra] = meta[extra]
         return result_meta
-
     def missing_optional(meta: Dict[str, Optional[str]]) -> set[str]:
         return {
             key
             for key in optional_keys
             if not (str(meta.get(key)).strip() if meta.get(key) is not None else "")
         }
-
     primary_raw = _call_llm(
         prompt,
         system_prompt=MCP_SYSTEM_PROMPT,
@@ -1070,10 +1192,8 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
         if DEBUG:
             rprint("  [yellow]- LM Studio metadata request returned no content[/]")
         return None
-
     result = parse_llm_raw(primary_raw)
     missing_fields = missing_optional(result) if result else optional_keys
-
     # Retry once with a stronger instruction if important fields are missing.
     if missing_fields:
         missing_list = ", ".join(sorted(missing_fields))
@@ -1125,15 +1245,11 @@ def generate_metadata_via_llm(folder: Path, files: list[Path]) -> Optional[dict]
                         result[key] = value
             else:
                 result = retry_result
-
     if not result:
         return None
-
     result = _enrich_metadata_with_providers(result)
     result["source"] = "llm"
     return result
-
-
 def refine_metadata_via_mcp(folder: Path, author_guess: Optional[str], title_guess: str, 
                            series_guess: Optional[str] = None, series_index_guess: Optional[str] = None,
                            initial_score: int = 0, partial_meta: Optional[dict] = None) -> Optional[dict]:
@@ -1366,12 +1482,10 @@ def refine_metadata_via_mcp(folder: Path, author_guess: Optional[str], title_gue
             rprint(f"  [yellow]- MCP refinement error: {exc}[/]")
         review_log(folder, f"mcp_refinement_failed: {type(exc).__name__}")
         return None
-
 def strip_tags(file: Path):
     audio = MFile(str(file))
     if audio:
         audio.delete(); audio.save()
-
 def write_tags(file: Path, meta: dict, index: int = 0, total: int = 0):
     ext = file.suffix.lower()
     if ext == ".mp3":
@@ -1403,7 +1517,6 @@ def write_tags(file: Path, meta: dict, index: int = 0, total: int = 0):
         if index:
             mp4["trkn"] = [(index, total or 0)]
         mp4.save()
-
 def export_metadata(path: Path, meta: dict):
     target = path if path.is_dir() else path.parent
     target.mkdir(exist_ok=True)
@@ -1415,20 +1528,18 @@ def export_metadata(path: Path, meta: dict):
             child = ET.SubElement(root, k)
             child.text = v
     ET.ElementTree(root).write(target / "book.nfo", encoding="utf-8", xml_declaration=True)
-
 # ----- process one leaf -----
 def process_leaf(path: Path, args):
     try:
-        llm_threshold = int(getattr(args, "llm_threshold", 75))
+        llm_threshold = int(getattr(args, "llm_threshold", 85))
     except (TypeError, ValueError):
-        llm_threshold = 75
-    llm_threshold = max(0, min(100, llm_threshold))
+        llm_threshold = 85
+    llm_threshold = max(80, min(100, llm_threshold))
     setattr(args, "llm_threshold", llm_threshold)
     # skip Unknown Author
     if path.name == "Unknown Author" or path.parent.name == "Unknown Author":
         rprint("- skip Unknown Author:", path)
         log("SKIP", str(path)); return
-
     # strip mode
     if args.striptags:
         targets = [path] if path.is_file() else [f for f in path.rglob("*") if f.suffix.lower() in AUDIO_EXTS]
@@ -1441,14 +1552,12 @@ def process_leaf(path: Path, args):
         rprint(f"[cyan]->[/] {path}  [green]tags stripped ({ok}/{len(targets)})[/]")
         log("STRIP", f"{path}  ({ok}/{len(targets)})")
         return
-
     # guess
     a_guess, t_guess, y_guess, s_guess, si_guess = guess_from_path(path)
     rprint(f"[cyan]->[/] {path}")
     rprint(f"  guess: [italic]{t_guess}[/] by {a_guess or '?'} ({y_guess or '?'})")
     if s_guess:
         rprint(f"  series: {s_guess} #{si_guess or '?'}")
-
     if path.is_file():
         targets = [path] if path.suffix.lower() in AUDIO_EXTS else []
     else:
@@ -1459,12 +1568,21 @@ def process_leaf(path: Path, args):
         rprint("  [yellow]- no audio files found[/]")
         log("SKIP", f"{path}  no_audio")
         return
-
     folder = path if path.is_dir() else path.parent
+    guess_info = {
+        "path": str(path),
+        "title": t_guess,
+        "author": a_guess,
+        "year": y_guess,
+        "series": s_guess,
+        "series_index": si_guess,
+    }
 
     result, scores = best_match(a_guess, t_guess, s_guess, si_guess)
+    provider_scores = {name: sc for name, (sc, _) in scores.items()} if scores else {}
     llm_used = False
     refinement_source = None
+    best_score: Optional[int] = None
     
     if not result:
         rprint("  [red] - no match[/]")
@@ -1479,7 +1597,12 @@ def process_leaf(path: Path, args):
                 refinement_source = mcp_meta.get("refinement_source", "mcp_refinement")
             else:
                 # Fallback to original LLM
-                llm_meta = generate_metadata_via_llm(folder, targets)
+                llm_meta = generate_metadata_via_llm(
+                    folder,
+                    targets,
+                    guess=guess_info,
+                    provider_scores=provider_scores,
+                )
                 if llm_meta:
                     rprint("  [magenta]- metadata supplied by local LLM[/]")
                     meta = llm_meta
@@ -1490,7 +1613,12 @@ def process_leaf(path: Path, args):
                     return
         else:
             # Original LLM fallback
-            llm_meta = generate_metadata_via_llm(folder, targets)
+            llm_meta = generate_metadata_via_llm(
+                folder,
+                targets,
+                guess=guess_info,
+                provider_scores=provider_scores,
+            )
             if llm_meta:
                 rprint("  [magenta]- metadata supplied by local LLM[/]")
                 meta = llm_meta
@@ -1501,19 +1629,16 @@ def process_leaf(path: Path, args):
                 return
     else:
         score, hit = result
-
+        best_score = score
         for name, (sc, _) in sorted(scores.items(), key=lambda x: -x[1][0]):
-            rprint(f"  {name:>9}: {sc}")
-
+            rprint(f"    {name}: {sc}")
         author_hit = ", ".join(hit["authors"]) or a_guess or "Unknown"
         rprint(f"  match: [bold]{hit['title']}[/] by {author_hit} ({hit['year'] or '?'})")
         if hit.get("series"):
             rprint(f"  series: {hit['series']}")
         rprint(f"  provider: {hit['source']}")
-
         if score < 60:
             rprint("  [yellow]!! low confidence - double-check[/]")
-
         meta = {
             "title": hit["title"],
             "author": author_hit,
@@ -1521,12 +1646,11 @@ def process_leaf(path: Path, args):
             "series": hit.get("series") or s_guess,
             "series_index": hit.get("series_index") or si_guess,
         }
-
-        if score < llm_threshold:
+        if best_score is not None and best_score < llm_threshold:
             # Try MCP refinement first if enabled and score is low
-            if AB.is_on("use_mcp_refinement") and score < 90:
+            if AB.is_on("use_mcp_refinement") and best_score < 90:
                 rprint("  [cyan]- attempting MCP refinement (low score)[/]")
-                mcp_meta = refine_metadata_via_mcp(folder, a_guess, t_guess, s_guess, si_guess, score, meta)
+                mcp_meta = refine_metadata_via_mcp(folder, a_guess, t_guess, s_guess, si_guess, best_score or 0, meta)
                 if mcp_meta and mcp_meta.get("score", 0) >= 95:
                     rprint(f"  [magenta]- metadata refined via MCP (score: {mcp_meta['score']})[/]")
                     meta = mcp_meta
@@ -1534,25 +1658,34 @@ def process_leaf(path: Path, args):
                     refinement_source = mcp_meta.get("refinement_source", "mcp_refinement")
                 else:
                     # Fallback to original LLM
-                    llm_meta = generate_metadata_via_llm(folder, targets)
+                    llm_meta = generate_metadata_via_llm(
+                        folder,
+                        targets,
+                        guess=guess_info,
+                        provider_scores=provider_scores,
+                    )
                     if llm_meta:
                         rprint(
-                            f"  [magenta]- metadata supplied by local LLM (score {score} < {llm_threshold})[/]"
+                            f"  [magenta]- metadata supplied by local LLM (score {best_score} < {llm_threshold})[/]"
                         )
                         meta = llm_meta
                         llm_used = True
             else:
                 # Original LLM fallback
-                llm_meta = generate_metadata_via_llm(folder, targets)
+                llm_meta = generate_metadata_via_llm(
+                    folder,
+                    targets,
+                    guess=guess_info,
+                    provider_scores=provider_scores,
+                )
                 if llm_meta:
                     rprint(
-                        f"  [magenta]- metadata supplied by local LLM (score {score} < {llm_threshold})[/]"
+                        f"  [magenta]- metadata supplied by local LLM (score {best_score} < {llm_threshold})[/]"
                     )
                     meta = llm_meta
                     llm_used = True
-
-        if not llm_used and score < 70 and not args.yes:
-            score_val = f"{score:.1f}" if isinstance(score, float) else str(score)
+        if not llm_used and best_score is not None and best_score < 70 and not args.yes:
+            score_val = f"{best_score:.1f}" if isinstance(best_score, float) else str(best_score)
             summary_lines = [
                 "Tag with this metadata?",
                 "",
@@ -1577,6 +1710,38 @@ def process_leaf(path: Path, args):
                 log("SKIP", str(path))
                 review_log(path, "user_skip")
                 return
+    valid, validation_issues = validate_metadata_fields(meta)
+    if not valid:
+        issues_text = ", ".join(validation_issues)
+        rprint(f"  [yellow]- metadata validation failed: {issues_text}")
+        validation_refined = False
+        if AB.is_on("use_mcp_refinement") and not llm_used:
+            rprint("  [cyan]- attempting MCP refinement (validation)")
+            initial_score = best_score if best_score is not None else meta.get("score", 0) or 0
+            mcp_meta = refine_metadata_via_mcp(
+                folder,
+                a_guess,
+                t_guess,
+                s_guess,
+                si_guess,
+                initial_score,
+                meta,
+            )
+            if mcp_meta:
+                meta = mcp_meta
+                llm_used = True
+                refinement_source = mcp_meta.get("refinement_source", "mcp_refinement")
+                validation_refined = True
+                valid, validation_issues = validate_metadata_fields(meta)
+        if not valid:
+            issues_text = ", ".join(validation_issues)
+            rprint("  [red]- validation failed; book queued for review")
+            log("REVIEW", f"{path} validation_failed: {issues_text}")
+            review_log(path, "validation_failed")
+            return
+        if validation_refined:
+            rprint("  [magenta]- metadata passed validation after refinement[/]")
+
     ok = 0
     for idx, f in enumerate(targets, 1):
         try:
@@ -1602,11 +1767,11 @@ def process_leaf(path: Path, args):
         suffix_parts.append(f"[{score_info}]")
     
     suffix = " " + " ".join(suffix_parts) if suffix_parts else ""
-    log(label, f"{path}  ({ok}/{len(targets)}){suffix}")
+    meta_summary = format_metadata_summary(meta)
+    log(label, f"{path}  ({ok}/{len(targets)}){suffix} | {meta_summary}")
     
     if label == "OK":
         export_metadata(path, meta)
-
 # ----- leaf finder -----
 def walk_leaves(root: Path) -> List[Path]:
     if root.is_file():
@@ -1617,7 +1782,6 @@ def walk_leaves(root: Path) -> List[Path]:
             c.is_dir() and has_audio(c) for c in p.iterdir()):
             leaves.append(p)
     return leaves
-
 # ----- cli / main -----
 def main():
     ap = argparse.ArgumentParser(
@@ -1633,10 +1797,9 @@ def main():
               --striptags   delete *all* tags instead of adding
               --llm-endpoint URL   OpenAI-compatible endpoint (default: http://127.0.0.1:1234/v1/chat/completions)
               --llm-model NAME     model to request from the endpoint (default: mistral-7b-instruct-q4)
-              --llm-threshold SCORE  confidence score before using the LLM (default: 75)
+             --llm-threshold SCORE  confidence score before using the LLM (default: 85)
               --tavily-key KEY     Tavily Search API key for supplemental research
             """))
-
     ap.add_argument("root", type=Path, help="file or folder")
     ap.add_argument("--debug", action="store_true",
                     help="print full tracebacks on errors")
@@ -1645,44 +1808,37 @@ def main():
     ap.add_argument("--yes",       action="store_true")
     ap.add_argument("--no",        action="store_true")
     ap.add_argument("--striptags", action="store_true")
-    ap.add_argument("--llm-endpoint", default="http://127.0.0.1:1234/v1/chat/completions",
+    ap.add_argument("--llm-endpoint", default="http://127.0.0.1:8888/v1/chat/completions",
                     help="OpenAI-compatible completion endpoint (use 'none' to disable; default: %(default)s)")
     ap.add_argument("--llm-model", default="mistral-7b-instruct-q4",
                     help="Model name to request from the LM Studio endpoint (default: %(default)s)")
-    ap.add_argument("--llm-threshold", type=int, default=75, metavar="SCORE",
-                    help="use the local LLM when provider score falls below SCORE (default: 75)")
+    ap.add_argument("--llm-threshold", type=int, default=85, metavar="SCORE",
+                    help="use the local LLM when provider score falls below SCORE (default: 85, minimum: 80)")
     ap.add_argument("--tavily-key", default=None,
                     help="Tavily Search API key for supplemental research (use 'none' to disable)")
     args = ap.parse_args()
-
     global LOG_PATH, REVIEW_PATH, DEBUG, LLM_ENDPOINT, LLM_MODEL_NAME
     global TAVILY_API_KEY
     DEBUG = args.debug
     base = args.root if args.root.is_dir() else args.root.parent
     LOG_PATH = base / "tag_log.txt"
     REVIEW_PATH = base / "review_log.txt"
-
     endpoint_arg = (args.llm_endpoint or "").strip()
     if endpoint_arg.lower() in {"", "none", "null"}:
         LLM_ENDPOINT = None
     else:
         LLM_ENDPOINT = endpoint_arg
-
     model_arg = (args.llm_model or "").strip()
     LLM_MODEL_NAME = model_arg or None
-
     if args.tavily_key is not None:
         tavily_arg = args.tavily_key.strip()
         if tavily_arg.lower() in {"", "none", "null"}:
             TAVILY_API_KEY = None
         else:
             TAVILY_API_KEY = tavily_arg
-
-    args.llm_threshold = max(0, min(100, args.llm_threshold))
-
+    args.llm_threshold = max(80, min(100, args.llm_threshold))
     if not args.root.exists():
         sys.exit("path not found")
-
     items = walk_leaves(args.root) if args.recurse else [args.root]
     for leaf in items:
         try:
@@ -1699,14 +1855,5 @@ def main():
                 log("ERR", f"{leaf} - {type(e).__name__}: {tb.strip()}")
             else:
                 log("ERR", f"{leaf} - {type(e).__name__}")
-
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
