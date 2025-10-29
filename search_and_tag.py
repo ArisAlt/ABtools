@@ -168,6 +168,24 @@ MCP_PROVIDER_SITES = {
     "gbooks": ("Google Books", "books.google.com"),
     "goodreads": ("Goodreads", "goodreads.com"),
 }
+
+
+def clean_tail(text: str) -> str:
+    """Strip bitrate/date clutter from folder names when parsing metadata."""
+    return TAIL_RX.sub("", text).strip()
+
+
+def strip_annotations(text: str) -> str:
+    """Remove bracketed/parenthetical noise from folder names."""
+    if not text:
+        return ""
+    cleaned = PAREN_RX.sub("", text)
+    cleaned = re.sub(r"\[[^]]*\]", "", cleaned)
+    cleaned = re.sub(r"\{[^}]*\}", "", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    return cleaned.strip(" -_\t")
+
+
 def _call_llm(
     prompt: str,
     *,
@@ -612,17 +630,6 @@ def review_log(path: Path, reason: str):
     REVIEW_PATH.parent.mkdir(exist_ok=True)
     with REVIEW_PATH.open("a", encoding="utf-8") as fh:
         fh.write(f"{datetime.datetime.now():%F %T}  {reason:<9}  {path}\n")
-# ----- tiny helpers -----
-def clean_tail(s: str) -> str:
-    return TAIL_RX.sub("", s).strip()
-def strip_annotations(s: str) -> str:
-    if not s:
-        return ""
-    s = PAREN_RX.sub("", s)
-    s = re.sub(r"\[[^]]*\]", "", s)
-    s = re.sub(r"\{[^}]*\}", "", s)
-    s = re.sub(r"\s{2,}", " ", s)
-    return s.strip(" -_\t")
 def _derive_label_hints(label: str) -> dict[str, Optional[str]]:
     """Extract best-effort hints (title, author, year, series) from a folder label."""
     raw = (label or "").strip()
@@ -657,7 +664,11 @@ def _derive_label_hints(label: str) -> dict[str, Optional[str]]:
         "normalized": cleaned,
     }
 def has_audio(folder: Path) -> bool:
-    return any(c.suffix.lower() in AUDIO_EXTS for c in folder.iterdir())
+    """Return True when the folder contains at least one supported audio file."""
+    try:
+        return any(p.is_file() and p.suffix.lower() in AUDIO_EXTS for p in folder.iterdir())
+    except FileNotFoundError:
+        return False
 def determine_best_author(folder: Path, initial_guess: Optional[str], partial_meta: Optional[dict] = None) -> Optional[str]:
     """Determine the most plausible author from multiple sources."""
     
