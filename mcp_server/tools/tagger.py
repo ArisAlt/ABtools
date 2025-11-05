@@ -6,7 +6,10 @@ import io
 from types import SimpleNamespace
 from typing import Any, Dict, List
 
-import search_and_tag as st
+import abtools.cli.main as tag_cli
+from abtools.core import config as core_config
+
+CONFIG = tag_cli.CONFIG
 
 
 def _build_args(root: Path, *, commit: bool, yes: bool) -> SimpleNamespace:
@@ -18,8 +21,8 @@ def _build_args(root: Path, *, commit: bool, yes: bool) -> SimpleNamespace:
         yes=yes,
         no=not yes,
         striptags=False,
-        llm_endpoint=st.LLM_ENDPOINT,
-        llm_model=st.LLM_MODEL_NAME,
+        llm_endpoint=core_config.config.llm_endpoint,
+        llm_model=core_config.config.llm_model_name,
         llm_threshold=75,
     )
 
@@ -36,11 +39,11 @@ def tag_audiobooks(path: str, *, commit: bool = False, yes: bool = False) -> Dic
     def _run() -> Dict[str, Any]:
         args = _build_args(target, commit=commit, yes=yes)
         base = target if target.is_dir() else target.parent
-        st.LOG_PATH = base / "tag_log.txt"
-        st.REVIEW_PATH = base / "review_log.txt"
+        core_config.update_paths(base)
+        CONFIG.debug = False
 
         if target.is_dir() and args.recurse:
-            leaves: List[Path] = st.walk_leaves(target)
+            leaves: List[Path] = tag_cli.walk_leaves(target)
         else:
             leaves = [target]
 
@@ -52,7 +55,7 @@ def tag_audiobooks(path: str, *, commit: bool = False, yes: bool = False) -> Dic
                 processed.append(str(leaf))
                 continue
             try:
-                st.process_leaf(leaf, args)
+                tag_cli.process_leaf(leaf, args)
                 processed.append(str(leaf))
             except Exception as exc:  # pragma: no cover - defensive guard
                 errors.append({"path": str(leaf), "error": str(exc)})

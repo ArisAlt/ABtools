@@ -35,7 +35,7 @@ from difflib import SequenceMatcher
 import errno
 import stat
 
-import search_and_tag as tagger
+import abtools.metadata.llm as tagger
 
 VERSION = "1.18"
 FILE_PATH = Path(__file__).resolve()
@@ -884,11 +884,11 @@ if __name__=="__main__":
     if args.llm_endpoint is not None:
         val = args.llm_endpoint.strip()
         if val.lower() in {"", "none", "null"}:
-            tagger.LLM_ENDPOINT = None
+            tagger.CONFIG.llm_endpoint = None
         else:
-            tagger.LLM_ENDPOINT = val
+            tagger.CONFIG.llm_endpoint = val
     if args.llm_model:
-        tagger.LLM_MODEL_NAME = args.llm_model.strip() or tagger.LLM_MODEL_NAME
+        tagger.CONFIG.llm_model_name = args.llm_model.strip() or tagger.CONFIG.llm_model_name
     AUTO_YES = args.yes
     main(src, lib, args.commit, args.yes, args.copy)
 

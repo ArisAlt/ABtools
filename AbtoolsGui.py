@@ -13,20 +13,26 @@ from tkinter import filedialog, messagebox, ttk, font as tkfont
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Callable
-import combobook, search_and_tag, find_duplicates, restructure_for_audiobookshelf
+import importlib
+import combobook, find_duplicates, restructure_for_audiobookshelf
+tag_cli = importlib.import_module("abtools.cli.main")
+from abtools.core import config as core_config
+from abtools.core.constants import (
+    DEFAULT_LLM_ENDPOINT as CLI_DEFAULT_LLM_ENDPOINT,
+    DEFAULT_LLM_MODEL_NAME as CLI_DEFAULT_LLM_MODEL,
+)
 
-VERSION = "0.16"
+VERSION = "0.17"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
+
+CONFIG = tag_cli.CONFIG
 
 PAD_X = 12
 PAD_Y = 8
 
-DEFAULT_LLM_ENDPOINT = (
-    search_and_tag.LLM_ENDPOINT
-    or "http://127.0.0.1:1234/v1/chat/completions"
-)
-DEFAULT_LLM_MODEL = search_and_tag.LLM_MODEL_NAME or "llama-3.2-8b-instruct"
+DEFAULT_LLM_ENDPOINT = CONFIG.llm_endpoint or CLI_DEFAULT_LLM_ENDPOINT
+DEFAULT_LLM_MODEL = CONFIG.llm_model_name or CLI_DEFAULT_LLM_MODEL
 
 if "--version" in sys.argv:
     print(VERSION_INFO % {"prog": Path(sys.argv[0]).name})
@@ -294,23 +300,23 @@ def apply_llm_settings(settings: dict[str, object]) -> None:
     model_raw = str(settings.get("model", "") or "").strip()
 
     if not enabled or endpoint_raw.lower() in {"none", "null", "off"}:
-        search_and_tag.LLM_ENDPOINT = None
+        CONFIG.llm_endpoint = None
     elif endpoint_raw:
-        search_and_tag.LLM_ENDPOINT = endpoint_raw
+        CONFIG.llm_endpoint = endpoint_raw
     else:
-        search_and_tag.LLM_ENDPOINT = DEFAULT_LLM_ENDPOINT
+        CONFIG.llm_endpoint = DEFAULT_LLM_ENDPOINT
 
     if not enabled or model_raw.lower() in {"none", "null", "off"}:
-        search_and_tag.LLM_MODEL_NAME = None
+        CONFIG.llm_model_name = None
     elif model_raw:
-        search_and_tag.LLM_MODEL_NAME = model_raw
+        CONFIG.llm_model_name = model_raw
     else:
-        search_and_tag.LLM_MODEL_NAME = DEFAULT_LLM_MODEL
+        CONFIG.llm_model_name = DEFAULT_LLM_MODEL
 
     tagger_mod = getattr(combobook, "tagger", None)
-    if tagger_mod is not None and tagger_mod is not search_and_tag:
-        tagger_mod.LLM_ENDPOINT = search_and_tag.LLM_ENDPOINT
-        tagger_mod.LLM_MODEL_NAME = search_and_tag.LLM_MODEL_NAME
+    if tagger_mod is not None and hasattr(tagger_mod, "CONFIG"):
+        tagger_mod.CONFIG.llm_endpoint = CONFIG.llm_endpoint
+        tagger_mod.CONFIG.llm_model_name = CONFIG.llm_model_name
 
 
 def _normalise_output_text(text: str) -> str:
@@ -512,8 +518,8 @@ def _run_combobook(mode: str) -> None:
                 commit_flag = commit_var.get()
                 copy_flag = copy_var.get()
                 auto_yes_flag = yes_var.get()
-                llm_endpoint = search_and_tag.LLM_ENDPOINT or "disabled"
-                llm_model = search_and_tag.LLM_MODEL_NAME or "default"
+                llm_endpoint = CONFIG.llm_endpoint or "disabled"
+                llm_model = CONFIG.llm_model_name or "default"
                 combobook.rprint(
                     f"[cyan]Starting {mode_label} run | commit={'yes' if commit_flag and not skip_move else 'no'} | "
                     f"copy={'yes' if copy_flag else 'no'} | auto-yes={'yes' if auto_yes_flag else 'no'} | dry-run={'yes' if dry_run else 'no'}[/]"
@@ -675,13 +681,13 @@ def tag_only() -> None:
                 apply_llm_settings(llm_settings)
                 commit_flag = commit_var.get()
                 auto_yes_flag = yes_var.get()
-                endpoint = search_and_tag.LLM_ENDPOINT or "disabled"
-                model = search_and_tag.LLM_MODEL_NAME or "default"
+                endpoint = CONFIG.llm_endpoint or "disabled"
+                model = CONFIG.llm_model_name or "default"
                 fallback_state = "enabled" if llm_settings.get("enabled") else "disabled"
-                search_and_tag.rprint(
+                tag_cli.rprint(
                     f"[cyan]Starting Tag run (providers + LM Studio + SequentialThinking) | commit={'yes' if commit_flag else 'no'} | auto-yes={'yes' if auto_yes_flag else 'no'}[/]"
                 )
-                search_and_tag.rprint(
+                tag_cli.rprint(
                     f"[cyan]LLM endpoint: {endpoint} | model: {model} | fallback={fallback_state}[/]"
                 )
 
@@ -697,30 +703,30 @@ def tag_only() -> None:
                             return gui_confirm(q, default)
                         def __call__(self, q: str, default: bool = False) -> bool:
                             return gui_confirm(q, default)
-                    search_and_tag.Confirm = _GuiConfirm()  # type: ignore[attr-defined]
+                    tag_cli.Confirm = _GuiConfirm()  # type: ignore[attr-defined]
                 except Exception:
                     pass
 
-                search_and_tag.LOG_PATH = src / "tag_log.txt"
-                search_and_tag.REVIEW_PATH = src / "review_log.txt"
-                search_and_tag.DEBUG = False
+                base_for_logs = src if src.is_dir() else src.parent
+                core_config.update_paths(base_for_logs)
+                CONFIG.debug = False
 
-                leaves = search_and_tag.walk_leaves(src)
+                leaves = tag_cli.walk_leaves(src)
                 args = SimpleNamespace(
                     commit=commit_var.get(),
                     yes=yes_var.get(),
                     no=False,
                     striptags=False,
-                    llm_endpoint=search_and_tag.LLM_ENDPOINT,
-                    llm_model=search_and_tag.LLM_MODEL_NAME,
+                    llm_endpoint=CONFIG.llm_endpoint,
+                    llm_model=CONFIG.llm_model_name,
                 )
 
                 total = len(leaves)
-                search_and_tag.rprint(f"[cyan]Scanning {total} leaf folder(s).[/]")
+                tag_cli.rprint(f"[cyan]Scanning {total} leaf folder(s).[/]")
                 start = time.time()
                 for idx, leaf in enumerate(leaves, 1):
                     if stop_event.is_set():
-                        search_and_tag.rprint("\n[yellow]Stop requested; halting Tag Only run.[/]")
+                        tag_cli.rprint("\n[yellow]Stop requested; halting Tag Only run.[/]")
                         output_queue.put(("status", "stopped"))
                         return
                     try:
@@ -728,11 +734,11 @@ def tag_only() -> None:
                     except Exception:
                         rel = leaf
                     action = "Previewing" if not commit_flag else "Tagging"
-                    search_and_tag.rprint(f"[cyan]({idx}/{total}) {action} {rel}[/]")
+                    tag_cli.rprint(f"[cyan]({idx}/{total}) {action} {rel}[/]")
                     if not commit_var.get():
-                        search_and_tag.rprint(f"[dim]preview:[/] {leaf}")
+                        tag_cli.rprint(f"[dim]preview:[/] {leaf}")
                     else:
-                        search_and_tag.process_leaf(leaf, args)
+                        tag_cli.process_leaf(leaf, args)
                     elapsed = time.time() - start
                     rate = idx / elapsed if elapsed else 0.0
                     eta = (total - idx) / rate if rate else 0.0
@@ -868,4 +874,3 @@ action_buttons.extend([tag_button, move_button, restructure_button, dup_button])
 if __name__ == "__main__":
     poll_queue()
     root.mainloop()
-
