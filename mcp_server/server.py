@@ -62,5 +62,9 @@ if __name__ == "__main__":
     except Exception as e:
         traceback.print_exc(file=sys.stderr)
     finally:
-        sys.stdout.write("[mcp] server stopped\n")
-        sys.stdout.flush()
+        try:
+            sys.stdout.write("[mcp] server stopped\n")
+            sys.stdout.flush()
+        except ValueError:
+            # FastMCP may close stdout during shutdown; ignore the resulting ValueError.
+            pass

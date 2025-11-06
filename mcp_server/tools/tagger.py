@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from pathlib import Path
 import contextlib
 import io
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List
 
-import abtools.cli.main as tag_cli
+from abtools.cli.main import CONFIG, process_leaf, walk_leaves
 from abtools.core import config as core_config
-
-CONFIG = tag_cli.CONFIG
 
 
 def _build_args(root: Path, *, commit: bool, yes: bool) -> SimpleNamespace:
@@ -43,7 +41,7 @@ def tag_audiobooks(path: str, *, commit: bool = False, yes: bool = False) -> Dic
         CONFIG.debug = False
 
         if target.is_dir() and args.recurse:
-            leaves: List[Path] = tag_cli.walk_leaves(target)
+            leaves: List[Path] = walk_leaves(target)
         else:
             leaves = [target]
 
@@ -55,7 +53,7 @@ def tag_audiobooks(path: str, *, commit: bool = False, yes: bool = False) -> Dic
                 processed.append(str(leaf))
                 continue
             try:
-                tag_cli.process_leaf(leaf, args)
+                process_leaf(leaf, args)
                 processed.append(str(leaf))
             except Exception as exc:  # pragma: no cover - defensive guard
                 errors.append({"path": str(leaf), "error": str(exc)})
