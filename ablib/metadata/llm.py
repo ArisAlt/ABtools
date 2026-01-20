@@ -11,12 +11,12 @@ from typing import Any, Dict, List, Optional
 import requests
 from rapidfuzz import fuzz
 
-from abtools.core import config, constants
-from abtools.core.console import rprint
-from abtools.core.http import SESSION
-from abtools.core.logging import review_log
-from abtools.metadata.utils import determine_best_author, enhanced_author_extraction
-from abtools.providers.mcp import execute_tool_call, serialise_tool_result, _tavily_search
+from ablib.core import config, constants
+from ablib.core.console import rprint
+from ablib.core.http import SESSION
+from ablib.core.logging import review_log
+from ablib.metadata.utils import determine_best_author, enhanced_author_extraction
+from ablib.providers.mcp import execute_tool_call, serialise_tool_result, _tavily_search
 
 CONFIG = config.config
 

@@ -6,8 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List
 
-from abtools.cli.main import CONFIG, process_leaf, walk_leaves
-from abtools.core import config as core_config
+from ablib.cli.main import CONFIG, process_leaf, walk_leaves
+from ablib.core import config as core_config
 
 
 def _build_args(root: Path, *, commit: bool, yes: bool) -> SimpleNamespace:

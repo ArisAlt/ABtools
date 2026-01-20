@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from abtools.cli.main import main
+from ablib.cli.main import main
 
 __all__ = ["main"]
 

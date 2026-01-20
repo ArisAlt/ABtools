@@ -1,0 +1,7 @@
+mutagen
+requests
+beautifulsoup4
+rapidfuzz
+rich
+tqdm
+duckduckgo-search>=6.0.0

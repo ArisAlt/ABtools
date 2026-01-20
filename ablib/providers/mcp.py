@@ -9,11 +9,16 @@ from typing import Any, Dict, List, Optional
 import requests
 from rapidfuzz import fuzz
 
-from abtools.core import config, constants
-from abtools.core.console import rprint
-from abtools.core.http import SESSION
-from abtools.metadata.utils import derive_label_hints
+from ablib.core import config, constants
+from ablib.core.console import rprint
+from ablib.core.http import SESSION
+from ablib.metadata.utils import derive_label_hints
 from .http import audible, gbooks, goodreads, openlib
+
+try:
+    from duckduckgo_search import DDGS
+except ImportError:
+    DDGS = None
 
 CONFIG = config.config
 
@@ -242,9 +247,14 @@ def execute_tool_call(name: str, arguments: Dict[str, Any]) -> str:
 def mcp_full_web_search(
     query: str, *, num_results: int = 5, include_content: bool = False
 ) -> list[dict[str, Any]]:
-    results = _tavily_search_raw(
-        query, max_results=num_results, include_content=include_content
-    ) or []
+    if CONFIG.tavily_api_key:
+        results = _tavily_search_raw(
+            query, max_results=num_results, include_content=include_content
+        ) or []
+    else:
+        # Fallback to DuckDuckGo (no key required)
+        results = _ddg_search_raw(query, max_results=num_results) or []
+
     collected: list[dict[str, Any]] = []
     for item in results[:num_results]:
         if not isinstance(item, dict):
@@ -374,6 +384,29 @@ def _tavily_search(query: str, *, max_results: int = 3) -> Optional[str]:
     return "\n".join(snippets[:max_results]) if snippets else None
 
 
+def _ddg_search_raw(query: str, max_results: int = 5) -> list[dict[str, Any]]:
+    if DDGS is None:
+        if CONFIG.debug:
+            rprint("  [yellow]- duckduckgo-search module not installed[/]")
+        return []
+    
+    try:
+        results = []
+        with DDGS() as ddgs:
+            # ddgs.text returns an iterator of dicts {'title':..., 'href':..., 'body':...}
+            for r in ddgs.text(query, max_results=max_results):
+                results.append({
+                    "title": r.get("title"),
+                    "url": r.get("href"),
+                    "content": r.get("body"),
+                })
+        return results
+    except Exception as exc:
+        if CONFIG.debug:
+            rprint(f"  [yellow]- DDG search failed: {exc}[/]")
+        return []
+
+
 __all__ = [
     "execute_tool_call",
     "serialise_tool_result",
@@ -386,5 +419,7 @@ __all__ = [
     "mcp_search_openlibrary",
     "mcp_sequential_thinking",
     "_tavily_search",
+
     "_tavily_search_raw",
+    "_ddg_search_raw",
 ]

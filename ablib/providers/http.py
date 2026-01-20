@@ -9,7 +9,7 @@ from abclient import AbClient
 from bs4 import BeautifulSoup
 from rapidfuzz import fuzz
 
-from abtools.core.http import SESSION
+from ablib.core.http import SESSION
 
 
 def openlib(author: Optional[str], title: str) -> Optional[dict]:

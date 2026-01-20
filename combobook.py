@@ -1,6 +1,6 @@
 ﻿#!/usr/bin/env python3
 """
-ABtools/combobook.py  ·  v1.17  ·  2025-09-08
+ABtools/combobook.py  ·  v1.18  ·  2025-09-08
 
 USAGE
 -----
@@ -35,7 +35,7 @@ from difflib import SequenceMatcher
 import errno
 import stat
 
-import abtools.metadata.llm as tagger
+import ablib.metadata.llm as tagger
 
 VERSION = "1.18"
 FILE_PATH = Path(__file__).resolve()

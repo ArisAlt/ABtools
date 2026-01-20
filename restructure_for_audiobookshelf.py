@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple Audiobookshelf reshaper
+Simple Audiobookshelf reshaper - v5.4
 
 Given a source library where audiobook folders are stored as::
 
@@ -25,6 +25,10 @@ import sys
 from pathlib import Path
 from typing import Dict, Iterable, Tuple
 import re
+
+VERSION = "5.4"
+FILE_PATH = Path(__file__).resolve()
+VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
 AUDIO_EXTS = {".mp3", ".m4a", ".m4b", ".flac", ".ogg", ".opus", ".wav"}
 TAIL_RX = re.compile(
@@ -139,10 +143,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("destination", type=Path, help="Destination Audiobookshelf library root")
     parser.add_argument("--copy", action="store_true", help="Copy instead of move")
     parser.add_argument(
-        "--commit",
         action="store_true",
         help="Perform the move/copy (default is dry-run)",
     )
+    parser.add_argument("--version", action="version", version=VERSION_INFO)
     args = parser.parse_args(argv)
 
     source = args.source.resolve()

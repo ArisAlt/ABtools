@@ -4,7 +4,7 @@
 
 
 
-This repository contains small utilities for preparing audiobook folders for [Audiobookshelf](https://www.audiobookshelf.org/).
+This repository contains small utilities for preparing audiobook folders for [Audiobookshelf](https://www.audiobookshelf.org/). The core logic is contained in the `ablib` package.
 
 
 
@@ -36,7 +36,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 
 - Local LM Studio fallback now runs a staged pipeline: provider scores ≥90 are accepted immediately, otherwise a "Metadata Refiner" call merges provider matches with MCP web searches (Audible, Open Library, Google Books, Goodreads, plus the generic `search`/`fetch_content` helpers); stubborn cases escalate to a SequentialThinking reasoning pass before a final "Tag Evaluator" assigns a confidence score.
 
-- Optional DuckDuckGo Search integration ((no key required)) feeds fresh web snippets to the LLM when initial metadata replies are incomplete, improving author/year/series recovery.
+- Optional DuckDuckGo Search integration (no key required) feeds fresh web snippets to the LLM when initial metadata replies are incomplete, improving author/year/series recovery.
 
 - LLM replies are retried with stronger prompts when fields stay blank, and any residual gaps (author/year/series/etc.) are resolved inside the staged pipeline before the verifier scores the final JSON.
 
@@ -164,21 +164,21 @@ pip install -r requirements.txt
 
 
 
-| `combobook.py` | v1.18 | `ABtools/combobook.py` |
+| `combobook.py` | v1.18 | `ablib/combobook.py` (Wrapper) |
 
-| `AbtoolsGui.py` | v0.16 | `ABtools/AbtoolsGui.py` |
+| `AbtoolsGui.py` | v0.17 | `ablib/AbtoolsGui.py` (Wrapper) |
 
-| `flatten_discs.py` | v1.4 | `ABtools/flatten_discs.py` |
+| `flatten_discs.py` | v1.4 | `flatten_discs.py` |
 
-| `restructure_for_audiobookshelf.py` | v5.4 | `ABtools/restructure_for_audiobookshelf.py` |
+| `restructure_for_audiobookshelf.py` | v5.4 | `restructure_for_audiobookshelf.py` |
 
-| `search_and_tag.py` | v2.30 | `ABtools/search_and_tag.py` |
+| `repair_m4b.py` | v1.0 | `repair_m4b.py` |
 
-| `find_duplicates.py` | v0.5 | `ABtools/find_duplicates.py` |
+| `search_and_tag.py` | v2.30 | `search_and_tag.py` |
 
-| `abclient.py` | v0.2 | `ABtools/abclient.py` |
+| `find_duplicates.py` | v0.5 | `find_duplicates.py` |
 
-| `transaction.py` | v0.2 | `ABtools/transaction.py` |
+| `abclient.py` | v0.2 | `abclient.py` |
 
 | `catalog.py` | v0.1 | `ABtools/catalog.py` |
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/AbtoolsGui.py - v0.16 - 2025-09-11
+ABtools/AbtoolsGui.py - v0.17 - 2025-09-11
 """
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ from types import SimpleNamespace
 from typing import Callable
 import importlib
 import combobook, find_duplicates, restructure_for_audiobookshelf
-tag_cli = importlib.import_module("abtools.cli.main")
-from abtools.core import config as core_config
-from abtools.core.constants import (
+tag_cli = importlib.import_module("ablib.cli.main")
+from ablib.core import config as core_config
+from ablib.core.constants import (
     DEFAULT_LLM_ENDPOINT as CLI_DEFAULT_LLM_ENDPOINT,
     DEFAULT_LLM_MODEL_NAME as CLI_DEFAULT_LLM_MODEL,
 )

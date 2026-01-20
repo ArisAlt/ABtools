@@ -12,17 +12,17 @@ from abclient import AbClient
 from mutagen import MutagenError
 from mutagen.mp4 import MP4StreamInfoError
 
-from abtools.core import config, constants
-from abtools.core.console import Confirm, rprint
-from abtools.core.logging import log, review_log
-from abtools.metadata.llm import generate_metadata_via_llm, refine_metadata_via_mcp
-from abtools.metadata.utils import (
+from ablib.core import config, constants
+from ablib.core.console import Confirm, rprint
+from ablib.core.logging import log, review_log
+from ablib.metadata.llm import generate_metadata_via_llm, refine_metadata_via_mcp
+from ablib.metadata.utils import (
     format_metadata_summary,
     guess_from_path,
     validate_metadata_fields,
 )
-from abtools.providers.http import best_match, enrich_metadata_with_providers
-from abtools.tagging.files import export_metadata, has_audio, strip_tags, write_tags
+from ablib.providers.http import best_match, enrich_metadata_with_providers
+from ablib.tagging.files import export_metadata, has_audio, strip_tags, write_tags
 
 CONFIG = config.config
 AB = AbClient()

@@ -11,7 +11,7 @@ from mutagen import File as MFile, MutagenError
 from mutagen.id3 import ID3, ID3NoHeaderError, TALB, TDRC, TIT2, TPE1, TRCK, TXXX
 from mutagen.mp4 import MP4
 
-from abtools.core import constants
+from ablib.core import constants
 
 
 def has_audio(folder: Path) -> bool:
