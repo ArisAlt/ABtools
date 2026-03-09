@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 Quick utility to detect and repair broken M4B/MP4 audiobook files that trigger
 ``MP4StreamInfoError: only a top-level atom can have zero length`` when tagged.
@@ -18,9 +18,12 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from typing import Dict, Iterable, Optional, Tuple
+from typing import Optional
 
 from mutagen.mp4 import MP4, MP4StreamInfoError
+
+VERSION = "1.1"
+FILE_PATH = __file__
 
 
 def detect_zero_length_atom(path: Path) -> bool:
@@ -50,7 +53,7 @@ def run_ffmpeg(input_file: Path, output_file: Path) -> subprocess.CompletedProce
     return subprocess.run(cmd, capture_output=True, text=True, check=False)
 
 
-def repair_file(path: Path, *, overwrite: bool) -> Dict[str, Optional[str]]:
+def repair_file(path: Path, *, overwrite: bool) -> dict[str, Optional[str]]:
     """
     Attempt to repair the supplied file.
 
@@ -61,7 +64,7 @@ def repair_file(path: Path, *, overwrite: bool) -> Dict[str, Optional[str]]:
       - backup: backup file path (when overwrite replaces the original)
       - message: optional diagnostic text
     """
-    result: Dict[str, Optional[str]] = {"path": str(path)}
+    result: dict[str, Optional[str]] = {"path": str(path)}
     needs_repair = detect_zero_length_atom(path)
     if not needs_repair:
         result["status"] = "clean"
@@ -129,9 +132,14 @@ def main() -> None:
     )
     ap.add_argument("path", type=Path, help="Path to a .m4b/.mp4 file or a directory")
     ap.add_argument(
-        "--no-overwrite",
+        "--overwrite",
         action="store_true",
-        help="Keep originals and write repaired copies with ' - fixed' suffix",
+        help="Replace originals in-place (a .bak backup is created first). Default: write repaired copy alongside source.",
+    )
+    ap.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s v{VERSION} ({FILE_PATH})",
     )
     args = ap.parse_args()
 
@@ -139,7 +147,7 @@ def main() -> None:
     if not root_path.exists():
         raise SystemExit(f"Path not found: {root_path}")
 
-    overwrite = not args.no_overwrite
+    overwrite = args.overwrite
     targets = list(iter_targets(root_path))
     if not targets:
         print("No .m4b or .mp4 files found.")
@@ -147,7 +155,7 @@ def main() -> None:
 
     repaired = 0
     cleaned = 0
-    failures: list[Tuple[Path, str]] = []
+    failures: list[tuple[Path, str]] = []
 
     for file_path in targets:
         try:

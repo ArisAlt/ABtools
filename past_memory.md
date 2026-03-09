@@ -5,3 +5,14 @@
 - [2025-01-20] Updated `README.md` and `scaffold.md` to match codebase state.
 - [2026-03-09] Fixed f-string syntax error in `ab_encode.py` which prevented backslashes inside f-string expressions.
 - [2026-03-09] Fixed ab_encode.py ffmpeg command: added -err_detect ignore_err and -fflags +discardcorrupt to tolerate VBR/corrupt MP3 headers at file join points; upgraded -loglevel to 'warning'.
+- [2026-03-09] Improved ab_encode.py v1.1: type hints, ffmpeg/ffprobe startup check, tempfile concat list, defaultdict summary, --version, -v verbose flag, per-file cleanup error handling.
+- [2026-03-09] Full project improvement pass: fixed console.py Confirm fallback to class with .ask(); added echo= kwarg to log(); added debug logging to all providers; fixed meta mutation in best_match(); added MAX_TOOL_ITERATIONS guard to _call_llm; fixed ROOT global in flatten_discs.py; renamed repair_m4b --no-overwrite to --overwrite; replaced legacy typing imports throughout. All files syntax-verified.
+- [2026-03-09] Improved ab_encode.py v1.2: added background thread to update tqdm progress bar description with currently encoding folders so it doesn't appear frozen during long encodes.
+- [2026-03-09] Improved ab_encode.py tqdm ETA accuracy by adding smoothing=0.1 to prevent fast-skips from skewing the remaining time calculation.
+- [2026-03-09] Fixed ffmpeg 'Unable to find a suitable output format' error in ab_encode.py when writing to .tmp files by adding explicit -f mp4 format flag.
+- [2026-03-09] Fixed FFmpeg crashes on embedded album art in ab_encode.py by adding the -vn flag to ignore video streams (prevents x264 'width not divisible by 2' errors).
+- [2026-03-09] Replaced tqdm with rich.progress in ab_encode.py for a stable, multi-bar premium UI that shows exactly what each worker is currently doing.
+- [2026-03-09] Fixed missing progress bar in ab_encode.py: added rich.logging.RichHandler so the standard python logger doesn't suppress the rich.progress live UI.
+- [2026-03-09] Suppressed ffmpeg stderr to hide MP3 duration warnings from breaking the rich progress bar layout in ab_encode.py.
+- [2026-03-09] Fixed UI freeze in ab_encode.py by adding a threading.Semaphore to strictly control task submission to the executor queue, ensuring workers accurately obey the -w limit.
+- [2026-03-09] Reverted ab_encode.py UI back to smoothed tqdm implementation over rich.progress due to user preference/instability.

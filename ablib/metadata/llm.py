@@ -20,6 +20,10 @@ from ablib.providers.mcp import execute_tool_call, serialise_tool_result, _tavil
 
 CONFIG = config.config
 
+# Maximum number of tool-call iterations per LLM call to prevent infinite loops
+_MAX_TOOL_ITERATIONS: int = 20
+_MAX_CALLS_PER_TOOL: int = 5
+
 
 def _call_llm(
     prompt: str,
@@ -40,8 +44,13 @@ def _call_llm(
     ]
     length_retry = attempt
     used_tools: Dict[str, int] = {}
+    tool_iterations: int = 0
 
     while True:
+        if tool_iterations > _MAX_TOOL_ITERATIONS:
+            if CONFIG.debug:
+                rprint(f"  [yellow]- LM Studio tool loop exceeded {_MAX_TOOL_ITERATIONS} iterations; aborting[/]")
+            return None
         payload: dict[str, Any] = {
             "model": CONFIG.llm_model_name,
             "messages": convo,
@@ -86,6 +95,7 @@ def _call_llm(
         tool_calls = message.get("tool_calls") if isinstance(message, dict) else None
 
         if tool_calls:
+            tool_iterations += 1
             convo.append(
                 {
                     "role": "assistant",
@@ -111,6 +121,10 @@ def _call_llm(
                             ],
                             "guidance": "Use the prior sequential thinking notes to complete the metadata without issuing further tool calls.",
                         }
+                    )
+                elif tool_name and used_tools.get(tool_name, 0) >= _MAX_CALLS_PER_TOOL:
+                    tool_response = serialise_tool_result(
+                        {"error": f"{tool_name} has been called {_MAX_CALLS_PER_TOOL} times; stop calling it and respond with JSON."}
                     )
                 else:
                     tool_response = execute_tool_call(tool_name, arguments)

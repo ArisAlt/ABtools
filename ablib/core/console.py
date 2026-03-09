@@ -15,11 +15,15 @@ except ImportError:  # pragma: no cover - fallback to plain console
         text = " ".join(map(str, args))
         print(_TAGS.sub("", text), **kwargs)
 
-    def Confirm(prompt: str, default: bool = False) -> bool:
-        ans = input(f"{prompt} [{'Y/n' if default else 'y/N'}] ").lower().strip()
-        if not ans:
-            return default
-        return ans in {"y", "yes"}
+    class Confirm:  # type: ignore[no-redef]
+        """Minimal drop-in replacement for rich.prompt.Confirm."""
+
+        @staticmethod
+        def ask(prompt: str, default: bool = False) -> bool:
+            ans = input(f"{prompt} [{'Y/n' if default else 'y/N'}] ").lower().strip()
+            if not ans:
+                return default
+            return ans in {"y", "yes"}
 
 
 __all__ = ["rprint", "Confirm"]

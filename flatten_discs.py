@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ABtools/flatten_discs.py  –  v1.4  (2025-06-15)
+ABtools/flatten_discs.py  –  v1.5  (2026-03-09)
 
 Flatten audiobook rips that live in
     Book Name (Disc 01)  /  Book Name (Disc 02)  …
@@ -11,13 +11,17 @@ creating one folder called  Book Name/Track 001.* …
 """
 
 from __future__ import annotations
-import argparse, re, shutil, sys
+import argparse
+import re
+import shutil
+import sys
 from pathlib import Path
 from typing import List, Tuple
 
-VERSION = "1.4"
+VERSION = "1.5"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
+
 
 def safe_move(src: Path, dst: Path) -> None:
     """Move ``src`` to ``dst`` ensuring ``dst`` does not exist."""
@@ -25,6 +29,7 @@ def safe_move(src: Path, dst: Path) -> None:
         raise FileExistsError(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(src), str(dst))
+
 
 AUDIO_EXTS = {".mp3", ".m4b", ".m4a", ".flac", ".ogg", ".opus"}
 
@@ -34,9 +39,11 @@ DISC_RX = re.compile(
     re.IGNORECASE,
 )
 
+
 # ───────── helpers ────────────────────────────────────────────────────────────
 def is_audio(p: Path) -> bool:
     return p.suffix.lower() in AUDIO_EXTS
+
 
 def disc_sets_in(folder: Path) -> List[Tuple[str, List[Tuple[int, Path]]]]:
     """
@@ -54,22 +61,45 @@ def disc_sets_in(folder: Path) -> List[Tuple[str, List[Tuple[int, Path]]]]:
         groups.setdefault(base, []).append((int(m.group("num")), p))
     return [(b, sorted(lst, key=lambda t: t[0])) for b, lst in groups.items()]
 
+
 def collect_tracks(discs: List[Tuple[int, Path]]) -> List[Path]:
     tracks: List[Path] = []
     for _, d in discs:
         tracks.extend(sorted(f for f in d.iterdir() if is_audio(f)))
     return tracks
 
-def flatten(parent: Path, discs: List[Tuple[int, Path]],
-            dry: bool, auto_yes: bool) -> bool:
+
+def flatten(
+    parent: Path,
+    discs: List[Tuple[int, Path]],
+    dry: bool,
+    auto_yes: bool,
+    root: Path,
+) -> bool:
+    """Flatten one disc set into a single directory.
+
+    Args:
+        parent:   Parent folder containing the disc sub-directories.
+        discs:    List of (disc_number, disc_path) pairs.
+        dry:      When True, only show what would happen (no changes written).
+        auto_yes: When True, skip the confirmation prompt.
+        root:     The top-level root passed from CLI; used for display-only relative paths.
+    """
     base = DISC_RX.split(discs[0][1].name)[0].strip().rstrip(" -_")
     book_dir = parent / base
-    tracks   = collect_tracks(discs)
+    tracks = collect_tracks(discs)
     if not tracks:
         return False
 
-    print(f"\n⇒ {parent.relative_to(ROOT)} → {book_dir.name}   "
-          f"({len(discs)} disc{'s' if len(discs)>1 else ''}, {len(tracks)} tracks)")
+    try:
+        display_parent = parent.relative_to(root)
+    except ValueError:
+        display_parent = parent
+
+    print(
+        f"\n⇒ {display_parent} → {book_dir.name}   "
+        f"({len(discs)} disc{'s' if len(discs) > 1 else ''}, {len(tracks)} tracks)"
+    )
 
     if not auto_yes:
         resp = input("   flatten here? [y/N] ").strip().lower()
@@ -87,39 +117,43 @@ def flatten(parent: Path, discs: List[Tuple[int, Path]],
 
     if not dry:
         for _, d in discs:
-            try: d.rmdir()
-            except OSError: pass
+            try:
+                d.rmdir()
+            except OSError:
+                pass
         print("   ✔ done.")
     return True
 
+
 # ───────── driver ────────────────────────────────────────────────────────────
-def main(root: Path, commit: bool, auto_yes: bool):
+def main(root: Path, commit: bool, auto_yes: bool) -> None:
     flattened = 0
 
     # 1) look at ROOT itself
-    for base, discs in disc_sets_in(root):
-        if flatten(root, discs, dry=not commit, auto_yes=auto_yes):
+    for _base, discs in disc_sets_in(root):
+        if flatten(root, discs, dry=not commit, auto_yes=auto_yes, root=root):
             flattened += 1
 
     # 2) recurse
     for folder in root.rglob("*"):
         if not folder.is_dir():
             continue
-        for base, discs in disc_sets_in(folder):
-            if flatten(folder, discs, dry=not commit, auto_yes=auto_yes):
+        for _base, discs in disc_sets_in(folder):
+            if flatten(folder, discs, dry=not commit, auto_yes=auto_yes, root=root):
                 flattened += 1
 
     if flattened:
         print(f"\nFinished – {flattened} book(s) processed.")
     else:
-        print("No folders like  “Book (Disc 1)”  found under that root.")
+        print("No folders like  \u201cBook (Disc 1)\u201d  found under that root.")
+
 
 # ───────── CLI ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="Flatten “Disc 01” / “disk-02” sub-folders.")
+    ap = argparse.ArgumentParser(description='Flatten "Disc 01" / "disk-02" sub-folders.')
     ap.add_argument("root", type=Path, help="Top-level audiobook folder")
     ap.add_argument("--commit", action="store_true", help="Actually move/rename (default: preview)")
-    ap.add_argument("--yes",    action="store_true", help="Auto-confirm every book")
+    ap.add_argument("--yes", action="store_true", help="Auto-confirm every book")
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args = ap.parse_args()
     ROOT = args.root.resolve()

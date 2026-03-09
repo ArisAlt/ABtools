@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import re
-from typing import Dict, List, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional
+
+_log = logging.getLogger(__name__)
 
 from abclient import AbClient
 from bs4 import BeautifulSoup
@@ -38,7 +42,8 @@ def openlib(author: Optional[str], title: str) -> Optional[dict]:
                 else None
             ),
         }
-    except Exception:
+    except Exception as exc:
+        _log.debug("openlib lookup failed: %s", exc)
         return None
 
 
@@ -67,7 +72,8 @@ def gbooks(author: Optional[str], title: str) -> Optional[dict]:
             "authors": volume.get("authors", []),
             "year": volume.get("publishedDate", "")[:4] or None,
         }
-    except Exception:
+    except Exception as exc:
+        _log.debug("gbooks lookup failed: %s", exc)
         return None
 
 
@@ -96,7 +102,8 @@ def goodreads(author: Optional[str], title: str) -> Optional[dict]:
             "authors": [author_el.get_text(strip=True)],
             "year": year,
         }
-    except Exception:
+    except Exception as exc:
+        _log.debug("goodreads lookup failed: %s", exc)
         return None
 
 
@@ -130,7 +137,8 @@ def audible(author: Optional[str], title: str) -> Optional[dict]:
             "year": year,
             "series": series_el.get_text(strip=True) if series_el else None,
         }
-    except Exception:
+    except Exception as exc:
+        _log.debug("audible lookup failed: %s", exc)
         return None
 
 
@@ -141,15 +149,17 @@ def best_match(
     series: Optional[str] = None,
     series_index: Optional[str] = None,
     client: AbClient,
-) -> Tuple[Optional[Tuple[int, dict]], Dict[str, Tuple[int, dict]]]:
+) -> tuple[Optional[tuple[int, dict]], dict[str, tuple[int, dict]]]:
     """Query multiple providers and return the best-scoring hit."""
 
-    candidates: List[Tuple[int, dict]] = []
-    results: Dict[str, Tuple[int, dict]] = {}
+    candidates: list[tuple[int, dict]] = []
+    results: dict[str, tuple[int, dict]] = {}
 
     def add_result(name: str, meta: Optional[dict]) -> None:
         if not meta or not meta.get("title"):
             return
+        # Copy to avoid mutating the dict returned by the provider
+        meta = dict(meta)
         title_score = fuzz.token_set_ratio(title.lower(), meta["title"].lower())
         author_score = 0
         if author and meta.get("authors"):
@@ -183,8 +193,8 @@ def best_match(
 
 
 def enrich_metadata_with_providers(
-    meta: Dict[str, Optional[str]]
-) -> Dict[str, Optional[str]]:
+    meta: dict[str, Optional[str]]
+) -> dict[str, Optional[str]]:
     """Fill missing metadata fields using provider lookups."""
 
     title = meta.get("title")

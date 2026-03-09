@@ -15,12 +15,18 @@ def _write_line(path: Path, entry: str) -> None:
         handle.write(entry + "\n")
 
 
-def log(status: str, message: str) -> None:
-    """Write a timestamped entry to the tag log."""
+def log(status: str, message: str, *, echo: bool = True) -> None:
+    """Write a timestamped entry to the tag log.
 
+    Args:
+        status:  Short status label, e.g. ``"OK"``, ``"ERR"``.
+        message: Log body text.
+        echo:    When *True* (default) the entry is also printed to the console.
+    """
     stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     entry = f"[{status}] {stamp} {message}"
-    rprint(entry)
+    if echo:
+        rprint(entry)
     _write_line(config.log_path, entry)
 
 

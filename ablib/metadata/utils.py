@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 from ..core import constants
 
@@ -28,7 +28,7 @@ def strip_annotations(text: str) -> str:
     return cleaned.strip(" -_\t")
 
 
-def extract_series_and_title(text: str) -> Tuple[Optional[str], Optional[str], str]:
+def extract_series_and_title(text: str) -> tuple[Optional[str], Optional[str], str]:
     """Split a raw string into optional series metadata and cleaned title."""
 
     working = text.strip()
@@ -52,7 +52,7 @@ def extract_series_and_title(text: str) -> Tuple[Optional[str], Optional[str], s
 
 def guess_from_path(
     path: Path,
-) -> Tuple[Optional[str], str, Optional[str], Optional[str], Optional[str]]:
+) -> tuple[Optional[str], str, Optional[str], Optional[str], Optional[str]]:
     """Derive author and title hints from the folder structure."""
 
     leaf = clean_tail(path.stem if path.is_file() else path.name)
@@ -143,7 +143,7 @@ def enhanced_author_extraction(folder: Path) -> Optional[str]:
     return None
 
 
-def derive_label_hints(label: str) -> Dict[str, Optional[str]]:
+def derive_label_hints(label: str) -> dict[str, Optional[str]]:
     """Extract best-effort hints from a folder label."""
 
     raw = (label or "").strip()
@@ -187,7 +187,7 @@ def derive_label_hints(label: str) -> Dict[str, Optional[str]]:
     }
 
 
-def format_metadata_summary(meta: Dict[str, Any]) -> str:
+def format_metadata_summary(meta: dict[str, Any]) -> str:
     """Summarise metadata for logging."""
 
     fields = {
@@ -215,10 +215,10 @@ def format_metadata_summary(meta: Dict[str, Any]) -> str:
     return summary
 
 
-def validate_metadata_fields(meta: Dict[str, Any]) -> tuple[bool, List[str]]:
+def validate_metadata_fields(meta: dict[str, Any]) -> tuple[bool, list[str]]:
     """Run lightweight validation over metadata dicts."""
 
-    issues: List[str] = []
+    issues: list[str] = []
 
     title = (meta.get("title") or "").strip() if meta.get("title") else ""
     author = (meta.get("author") or "").strip() if meta.get("author") else ""
@@ -243,7 +243,7 @@ def validate_metadata_fields(meta: Dict[str, Any]) -> tuple[bool, List[str]]:
                 issues.append("implausible_year")
 
     if narrator is not None:
-        narrator_str = str(narrator).strip()
+        narrator_str = str(narrator).strip() if narrator is not None else ""
         if not narrator_str:
             issues.append("empty_narrator")
 
