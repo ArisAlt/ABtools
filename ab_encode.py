@@ -45,7 +45,11 @@ def process_folder(root, bitrate, channels, cleanup):
             f.write(f"file '{safe_path}'\n")
 
     cmd = [
-        "ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",
+        "ffmpeg", "-y", "-loglevel", "warning",
+        # Tolerate VBR / missing-header frames at file join points
+        "-err_detect", "ignore_err",
+        "-fflags", "+discardcorrupt",
+        "-f", "concat", "-safe", "0",
         "-i", list_file, "-c:a", "aac", "-b:a", bitrate, "-ac", channels,
         "-ar", "44100", "-metadata", f"title={folder_name}",
         "-movflags", "+faststart", output_path
