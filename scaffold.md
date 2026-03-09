@@ -21,6 +21,7 @@ AudioBooks_tools/
 |-- abclient.py                   # Feature flag client reading ~/.abclient.json
 |-- abclient.json                 # Sample client configuration
 |-- search_and_tag.py             # Legacy shim invoking ablib.cli.main
+|-- ab_encode.py                  # Audiobook M4B Builder with Auto-Verification & Cleanup
 |-- README.md
 |-- scaffold.md
 |-- requirements.txt
@@ -41,6 +42,7 @@ AudioBooks_tools/
 - **`repair_m4b.py`** detects the `MP4StreamInfoError` zero-length atom issue and rewrites the file via FFmpeg, keeping a `.bak` when `--overwrite` is used.
 - **`catalog.py`** maintains the SQLite database used by duplicate detection.
 - **`mcp_server/server.py`** hosts the FastMCP server that powers the LM Studio fallback (`search_*_tool`, `tag_books_tool`).
+- **`ab_encode.py`** acts as an Audiobook M4B Builder with Auto-Verification & Cleanup.
 
 ## LLM and MCP Metadata Pipeline
 
@@ -74,3 +76,4 @@ AudioBooks_tools/
 | restructure | 5.4 | `restructure_for_audiobookshelf.py` |
 | repair_m4b | 1.0 | `repair_m4b.py` |
 | MCP server | 1.1.0 | `mcp_server/server.py` |
+| ab_encode | 1.0 | `ab_encode.py` |

@@ -173,13 +173,10 @@ pip install -r requirements.txt
 | `restructure_for_audiobookshelf.py` | v5.4 | `restructure_for_audiobookshelf.py` |
 
 | `repair_m4b.py` | v1.0 | `repair_m4b.py` |
-
 | `search_and_tag.py` | v2.30 | `search_and_tag.py` |
-
+| `ab_encode.py` | v1.0 | `ab_encode.py` |
 | `find_duplicates.py` | v0.5 | `find_duplicates.py` |
-
 | `abclient.py` | v0.2 | `abclient.py` |
-
 | `catalog.py` | v0.1 | `ABtools/catalog.py` |
 
 
