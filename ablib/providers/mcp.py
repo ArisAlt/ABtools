@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 import requests
 from rapidfuzz import fuzz
 
-from ablib.core import config, constants
+from ablib.core import config
 from ablib.core.console import rprint
 from ablib.core.http import SESSION
 from ablib.metadata.utils import derive_label_hints

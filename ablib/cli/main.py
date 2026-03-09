@@ -6,7 +6,7 @@ import argparse
 import sys
 import textwrap
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from abclient import AbClient
 from mutagen import MutagenError

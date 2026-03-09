@@ -59,7 +59,7 @@ if __name__ == "__main__":
     sys.stdout.flush()
     try:
         mcp.run()
-    except Exception as e:
+    except Exception:
         traceback.print_exc(file=sys.stderr)
     finally:
         try:

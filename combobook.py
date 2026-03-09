@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 ABtools/combobook.py  ·  v1.18  ·  2025-09-08
 
@@ -23,7 +23,7 @@ python combo_abooks.py --version
 """
 
 from __future__ import annotations
-import argparse, re, shlex, shutil, subprocess, sys, textwrap
+import argparse, re, shutil, subprocess, sys, textwrap
 import contextlib, threading, time
 import os
 from collections import defaultdict
@@ -303,10 +303,8 @@ def safe_move(src: Path, dst: Path, copy: bool = False) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
 
     rename_failed = False
-    rename_attempted = False
     can_rename = not copy and _can_use_rename(src, dst)
     if can_rename:
-        rename_attempted = True
         allowed = {errno.EXDEV, errno.EACCES, errno.EPERM}
         if hasattr(errno, 'EBUSY'):
             allowed.add(errno.EBUSY)
