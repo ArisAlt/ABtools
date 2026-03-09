@@ -16,3 +16,6 @@
 - [2026-03-09] Suppressed ffmpeg stderr to hide MP3 duration warnings from breaking the rich progress bar layout in ab_encode.py.
 - [2026-03-09] Fixed UI freeze in ab_encode.py by adding a threading.Semaphore to strictly control task submission to the executor queue, ensuring workers accurately obey the -w limit.
 - [2026-03-09] Reverted ab_encode.py UI back to smoothed tqdm implementation over rich.progress due to user preference/instability.
+- [2026-03-09] Added -threads 1 to ffmpeg command in ab_encode.py to prevent thread thrashing caused by running multiple unrestricted ffmpeg processes via ThreadPoolExecutor.
+- [2026-03-09] Added smart AAC passthrough to ab_encode.py. If source files are already AAC (.m4a. m4b, mp4), ffmpeg applies -c:a copy instead of re-encoding, avoiding generation loss and finishing in seconds.
+- [2026-03-09] Added comprehensive KeyboardInterrupt exception handling to the as_completed threading loop in ab_encode.py to ensure the thread pool shuts down cleanly without vomiting a traceback wall.

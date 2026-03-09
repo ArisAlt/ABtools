@@ -147,6 +147,24 @@ def process_folder(root: str, *, bitrate: str, channels: str, cleanup: bool) -> 
             safe_path = abs_path.replace("'", "'\\''")
             tmp.write(f"file '{safe_path}'\n")
 
+    # Smart Passthrough: If all sources are already AAC, we can just copy them
+    # without degrading audio quality or wasting CPU cycles.
+    can_copy = True
+    for audio in source_files:
+        ext = os.path.splitext(audio)[1].lower()
+        if ext not in (".m4a", ".m4b", ".mp4"):
+            can_copy = False
+            break
+        if not is_aac_codec(os.path.join(root, audio)):
+            can_copy = False
+            break
+
+    if can_copy:
+        log.info("Smart Passthrough enabled for '%s'. Stream will be copied losslessly.", root)
+        audio_flags = ["-c:a", "copy"]
+    else:
+        audio_flags = ["-c:a", "aac", "-b:a", bitrate, "-ac", channels, "-ar", "44100"]
+
     cmd = [
         "ffmpeg", "-y", "-loglevel", "warning",
         # Tolerate VBR / missing-header frames at file join points
@@ -154,9 +172,9 @@ def process_folder(root: str, *, bitrate: str, channels: str, cleanup: bool) -> 
         "-fflags", "+discardcorrupt",
         "-f", "concat", "-safe", "0",
         "-i", list_file,
-        "-c:a", "aac", "-b:a", bitrate, "-ac", channels,
+        *audio_flags,
         "-vn",  # Ignore embedded album art / video streams that crash the encoder
-        "-ar", "44100",
+        "-threads", "1",  # Prevent thread thrashing since we are running in a ThreadPoolExecutor
         "-metadata", f"title={folder_name}",
         "-movflags", "+faststart",
         "-f", "mp4",
@@ -305,27 +323,40 @@ def main() -> None:
             bar = None
 
         done = 0
-        for future in as_completed(future_to_folder):
-            folder_name = future_to_folder[future]
-            result = future.result()
-            results.append(result)
-            done += 1
-            
-            if "error_code" in result:
-                log.error("FFmpeg failed for '%s': exit code %s", folder_name, result["error_code"])
-            
-            if bar is not None:
-                with lock:
-                    active_futures.remove(future)
-                bar.update(1)
-            else:
-                print(f"  [{done}/{len(tasks)}] {result['status']} — {folder_name}")
+        try:
+            for future in as_completed(future_to_folder):
+                folder_name = future_to_folder[future]
+                result = future.result()
+                results.append(result)
+                done += 1
+                
+                if "error_code" in result:
+                    log.error("FFmpeg failed for '%s': exit code %s", folder_name, result["error_code"])
+                
+                if bar is not None:
+                    with lock:
+                        active_futures.remove(future)
+                    bar.update(1)
+                else:
+                    print(f"  [{done}/{len(tasks)}] {result['status']} — {folder_name}")
 
-        if bar is not None:
-            stop_monitor.set()
-            monitor_thread.join()
-            bar.set_description("✔ Done")
-            bar.close()
+        except KeyboardInterrupt:
+            if bar is not None:
+                stop_monitor.set()
+                monitor_thread.join(timeout=1.0)
+                bar.set_description("🛑 Cancelled")
+                bar.close()
+            print("\n⚠️  Encoding interrupted by user (Ctrl+C). Shutting down...")
+            # Cancel any pending futures that haven't started yet
+            executor.shutdown(wait=False, cancel_futures=True)
+            sys.exit(130)
+
+        finally:
+            if bar is not None and not stop_monitor.is_set():
+                stop_monitor.set()
+                monitor_thread.join(timeout=1.0)
+                bar.set_description("✔ Done")
+                bar.close()
 
     # Group results by status
     summary: dict[str, List[str]] = defaultdict(list)
