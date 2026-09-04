@@ -24,6 +24,7 @@ AudioBooks_tools/
 |-- ab_encode.py                  # Audiobook M4B Builder with Auto-Verification & Cleanup
 |-- README.md
 |-- scaffold.md
+|-- bug.md                         # Logic error & bug audit report
 |-- requirements.txt
 |-- mcp_server/                   # FastMCP server exposing search_* and tag_books tools
 |-- output/                       # Optional runtime artifacts (empty by default)

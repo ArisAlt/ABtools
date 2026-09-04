@@ -459,3 +459,9 @@ python find_duplicates.py "E:\\Downloads" "E:\\Audiobooks" --by name --hash-time
 
 Edit this file to enable or disable experimental features.
 
+
+
+## Known Issues & Bug Tracker
+
+A comprehensive codebase audit report documenting all known logic errors, fatal startup bugs, dry-run caveats, and provider issues is available in [`bug.md`](./bug.md).
+
