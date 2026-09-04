@@ -143,6 +143,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("destination", type=Path, help="Destination Audiobookshelf library root")
     parser.add_argument("--copy", action="store_true", help="Copy instead of move")
     parser.add_argument(
+        "--commit",
         action="store_true",
         help="Perform the move/copy (default is dry-run)",
     )

@@ -5,3 +5,6 @@ rapidfuzz
 rich
 tqdm
 duckduckgo-search>=6.0.0
+# mcp_server/server.py uses the v1 FastMCP API. mcp 2.x renamed FastMCP to
+# MCPServer, so pin <2 until mcp_server is migrated.
+mcp<2

@@ -1,6 +1,8 @@
 
 whisper_env/
 
+abtools_env/
+
 tests/
 
 __pycache__/

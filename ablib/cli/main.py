@@ -301,10 +301,15 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
 
 
 def walk_leaves(root: Path) -> List[Path]:
+    """Find book folders at or below `root`.
+
+    `root` itself is a candidate: `rglob` only yields descendants, so with
+    `--recurse` pointed straight at a single book folder nothing was found.
+    """
     if root.is_file():
         return [root]
     leaves: List[Path] = []
-    for candidate in root.rglob("*"):
+    for candidate in [root, *root.rglob("*")]:
         if candidate.is_dir() and has_audio(candidate) and not any(
             child.is_dir() and has_audio(child) for child in candidate.iterdir()
         ):

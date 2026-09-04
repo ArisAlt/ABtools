@@ -134,12 +134,80 @@ class Meta:
 def slug(t:str)->str:
     return re.sub(r'[<>:"/\\|?*\x00-\x1F]',"",t).strip().rstrip(" .")
 
+def has_audio(p: Path) -> bool:
+    try:
+        return any(f.suffix.lower() in AUDIO_EXTS for f in p.iterdir())
+    except OSError:
+        return False
+
+
+def is_bare_disc_marker(name: str) -> bool:
+    """True when a folder name is *nothing but* a disc/part marker.
+
+    "Disc 1" / "CD2" -> True   (the parent folder is the book)
+    "[Disc 1] Book A" -> False (carries its own book name)
+    "The Hobbit Part 1" -> False
+
+    Only bare markers may be folded into their parent. A child that carries its
+    own title must stay independent, otherwise two distinct books sitting under
+    one author folder would be merged into a single "book".
+    """
+    for rx in (DISC_RX, PART_RX):
+        m = rx.search(name)
+        if m:
+            remainder = name[: m.start()] + name[m.end():]
+            return not remainder.strip(" -_[](){}.")
+    return False
+
+
+def disc_children(p: Path) -> List[Path]:
+    """Audio-bearing sub-folders of `p` that are all bare disc markers.
+
+    Returns [] unless *every* audio-bearing sub-folder is a bare marker, so an
+    ambiguous mix is left alone rather than guessed at.
+    """
+    try:
+        audio_subdirs = [c for c in p.iterdir() if c.is_dir() and has_audio(c)]
+    except OSError:
+        return []
+    if not audio_subdirs:
+        return []
+    if all(is_bare_disc_marker(c.name) for c in audio_subdirs):
+        return audio_subdirs
+    return []
+
+
 def leaf_dirs(root:Path)->List[Path]:
-    return [p for p in root.rglob("*")
-            if p.is_dir()
-            and any(f.suffix.lower() in AUDIO_EXTS for f in p.iterdir())
-            and not any(c.is_dir() and any(g.suffix.lower() in AUDIO_EXTS for g in c.iterdir())
-                        for c in p.iterdir())]
+    """Find book folders under `root`.
+
+    A multi-disc book (`Book/Disc 1`, `Book/Disc 2`) yields the *book* folder,
+    not one entry per disc. Previously each disc was returned as its own book,
+    so the first disc claimed the destination and every later one was skipped
+    as "already moved" and abandoned in the source.
+
+    `root` itself is a candidate: pointing the tool straight at one book
+    (`combobook.py "/books/Dune" /dest`) must find it. `rglob` only yields
+    descendants, so relying on it alone silently processed nothing.
+    """
+    leaves: List[Path] = []
+    disc_dirs: set[Path] = set()
+    for p in [root, *root.rglob("*")]:
+        if not p.is_dir():
+            continue
+        discs = disc_children(p)
+        if discs:
+            leaves.append(p)          # `p` is the book; its discs are parts of it
+            disc_dirs.update(discs)
+            continue
+        if not has_audio(p):
+            continue
+        try:
+            if any(c.is_dir() and has_audio(c) for c in p.iterdir()):
+                continue              # audio-bearing sub-folders -> not a leaf
+        except OSError:
+            continue
+        leaves.append(p)
+    return [p for p in leaves if p not in disc_dirs]
 
 class ProgressTracker:
     def __init__(self, total: int, desc: str) -> None:
@@ -549,7 +617,9 @@ def choose_meta(guess: Meta) -> Optional[Meta]:
 # ───────────── FFmpeg tag writer (title / artist / year) ─────────────────────
 def write_tags(track:Path, meta:Meta, index:int=0, total:int=0):
     if not WRITE_TAGS: return
-    tmp = track.with_suffix(track.suffix+".tmp")
+    # Keep the real extension: a bare ".tmp" suffix gives ffmpeg no way to infer
+    # the output container and it aborts with "Unable to choose an output format".
+    tmp = track.with_name(f"{track.stem}.abtmp{track.suffix}")
     cmd=[FFMPEG,"-nostdin","-loglevel","error","-y","-i",str(track),"-codec","copy",
          "-metadata",f"artist={meta.author}",
          "-metadata",f"album={meta.title}",
@@ -561,12 +631,18 @@ def write_tags(track:Path, meta:Meta, index:int=0, total:int=0):
     if meta.year: cmd+=["-metadata",f"date={meta.year}"]
     if index: cmd += ["-metadata", f"track={index}/{total or index}"]
     cmd.append(str(tmp))
-    res = subprocess.run(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    res = subprocess.run(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,text=True)
     if res.returncode == 0 and tmp.exists():
         tmp.replace(track)
-    elif tmp.exists():
-        tmp.unlink(missing_ok=True)
-        rprint("[red]✗ failed to write tags[/]")
+        return
+    # Report failures. Previously ffmpeg produced no file at all, so neither
+    # branch ran and the failure was completely invisible.
+    tmp.unlink(missing_ok=True)
+    detail = (res.stderr or "").strip().splitlines()
+    rprint(
+        f"[red]✗ failed to write tags:[/] {track.name}"
+        + (f" - {detail[-1]}" if detail else "")
+    )
 
 # ───────────── disc-flattener ────────────────────────────────────────────────
 def flatten(folder: Path, dry: bool):
@@ -676,6 +752,15 @@ def process(folder: Path, src: Path, lib: Path, dry: bool, yes: bool, copy: bool
         p for p in folder.iterdir() if p.suffix.lower() in AUDIO_EXTS
     )
     if not audio_files:
+        # Multi-disc book: the tracks live in bare "Disc N" sub-folders. Tag them
+        # in place here; flatten() merges them into one folder after the move.
+        audio_files = sorted(
+            f
+            for disc in disc_children(folder)
+            for f in disc.iterdir()
+            if f.suffix.lower() in AUDIO_EXTS
+        )
+    if not audio_files:
         rprint("• no audio:", folder)
         summary["skip"] += 1
         return
@@ -758,8 +843,11 @@ def process(folder: Path, src: Path, lib: Path, dry: bool, yes: bool, copy: bool
                 f"[magenta]• metadata via LLM fallback:[/] {rel} → {chosen_meta.title} by {chosen_meta.author}"
             )
 
-        for idx, t in enumerate(audio_files, 1):
-            write_tags(t, chosen_meta, idx, len(audio_files))
+        # Never mutate the user's files during a preview: every other mutating
+        # step in this function is gated on `dry`, this one was not.
+        if not dry:
+            for idx, t in enumerate(audio_files, 1):
+                write_tags(t, chosen_meta, idx, len(audio_files))
         meta = chosen_meta
 
     # 4) At this point 'meta' is guaranteed to contain author/title, etc.

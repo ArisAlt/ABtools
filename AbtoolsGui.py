@@ -639,13 +639,18 @@ def restructure() -> None:
     def worker() -> None:
         try:
             with redirect_stdout(QueueWriter(output_queue)), redirect_stderr(QueueWriter(output_queue)):
-                restructure_for_audiobookshelf.main(
+                # main() only accepts an argv list; call the library function
+                # directly. Note restructure_library has no cancellation hook,
+                # so Stop only takes effect once it returns.
+                stats = restructure_for_audiobookshelf.restructure_library(
                     src,
                     dst,
-                    commit=commit_var.get(),
+                    dry=not commit_var.get(),
                     copy=copy_var.get(),
-                    interactive=False,
-                    stop_event=stop_event,
+                )
+                print(
+                    f"Processed {stats['books']} books - moved: {stats['moved']}, "
+                    f"skipped: {stats['skipped']}, dry-run: {stats['dry_run']}"
                 )
             if stop_event.is_set():
                 output_queue.put(("status", "stopped"))
