@@ -4,6 +4,7 @@ ABtools/AbtoolsGui.py - v0.17 - 2025-09-11
 """
 from __future__ import annotations
 
+import json
 import re
 import sys, threading, queue, time
 from collections import defaultdict
@@ -44,10 +45,360 @@ root.resizable(True, True)
 root.columnconfigure(0, weight=1)
 root.rowconfigure(0, weight=1)
 
-style = ttk.Style(root)
-style.configure("Primary.TButton", font=("Segoe UI", 11, "bold"), padding=(14, 8))
+# ───────────── themes ───────────────────────────────────────────────────────
+# Palettes are data, and every colour the UI uses comes from the active one.
+# apply_theme() rebinds the module-level names below and restyles live, so the
+# theme can be changed from the dropdown without restarting.
+#
+# Keys: bg (window) / surface (cards) / field (inputs + log) / border /
+#       fg / muted / accent (+hover,+active) / neutral (+hover) /
+#       danger (+hover) / disabled / log_* semantic accents.
+THEMES: dict[str, dict[str, str]] = {
+    # Near-neutral surfaces, colour only in the accent. Ages best.
+    "Neutral Slate": {
+        "bg": "#0f1115", "surface": "#171a21", "field": "#1e222b", "border": "#2a2f3a",
+        "fg": "#e6e8ee", "muted": "#8b93a3",
+        "accent": "#3b82f6", "accent_hover": "#2f6fe0", "accent_active": "#2559b8",
+        "neutral": "#232833", "neutral_hover": "#2e3440",
+        "danger": "#f87171", "danger_hover": "#dc4c4c", "disabled": "#1a1d24",
+        "log_green": "#4ade80", "log_red": "#f87171", "log_yellow": "#fbbf24",
+        "log_blue": "#60a5fa", "log_cyan": "#22d3ee", "log_magenta": "#c084fc",
+    },
+    "Tokyo Night": {
+        "bg": "#1a1b26", "surface": "#24283b", "field": "#1f2335", "border": "#363b54",
+        # muted lifted from the canonical #565f89/#7982a9: those are tuned for
+        # Tokyo Night's darker bg and fall under 4.5:1 on our card surface.
+        "fg": "#c0caf5", "muted": "#8b94b6",
+        "accent": "#7aa2f7", "accent_hover": "#6a92e7", "accent_active": "#5a82d7",
+        "neutral": "#2f3549", "neutral_hover": "#3b4261",
+        "danger": "#f7768e", "danger_hover": "#e05a73", "disabled": "#1e2030",
+        "log_green": "#9ece6a", "log_red": "#f7768e", "log_yellow": "#e0af68",
+        "log_blue": "#7aa2f7", "log_cyan": "#7dcfff", "log_magenta": "#bb9af7",
+    },
+    "Catppuccin Mocha": {
+        "bg": "#1e1e2e", "surface": "#313244", "field": "#181825", "border": "#45475a",
+        # muted lifted from Catppuccin's #9399b2 (subtext0), which lands just
+        # under 4.5:1 on the #313244 surface.
+        "fg": "#cdd6f4", "muted": "#9ba1b9",
+        "accent": "#89b4fa", "accent_hover": "#74a3f0", "accent_active": "#5f92e6",
+        "neutral": "#45475a", "neutral_hover": "#585b70",
+        "danger": "#f38ba8", "danger_hover": "#e07396", "disabled": "#252537",
+        "log_green": "#a6e3a1", "log_red": "#f38ba8", "log_yellow": "#f9e2af",
+        "log_blue": "#89b4fa", "log_cyan": "#94e2d5", "log_magenta": "#cba6f7",
+    },
+    "Nord": {
+        "bg": "#2e3440", "surface": "#3b4252", "field": "#434c5e", "border": "#4c566a",
+        "fg": "#eceff4", "muted": "#aab3c2",
+        "accent": "#88c0d0", "accent_hover": "#8fbcbb", "accent_active": "#5e81ac",
+        "neutral": "#434c5e", "neutral_hover": "#4c566a",
+        "danger": "#bf616a", "danger_hover": "#a54e57", "disabled": "#353b48",
+        # log_red lifted from Nord's aurora red #bf616a, which is only 2.1:1
+        # against Nord's comparatively light field colour.
+        "log_green": "#a3be8c", "log_red": "#d4939a", "log_yellow": "#ebcb8b",
+        "log_blue": "#81a1c1", "log_cyan": "#88c0d0", "log_magenta": "#b48ead",
+    },
+    "Gruvbox Dark": {
+        "bg": "#1d2021", "surface": "#282828", "field": "#32302f", "border": "#504945",
+        "fg": "#ebdbb2", "muted": "#a89984",
+        "accent": "#fabd2f", "accent_hover": "#e6a800", "accent_active": "#d79921",
+        "neutral": "#3c3836", "neutral_hover": "#504945",
+        "danger": "#fb4934", "danger_hover": "#cc241", "disabled": "#252525",
+        "log_green": "#b8bb26", "log_red": "#fb4934", "log_yellow": "#fabd2f",
+        "log_blue": "#83a598", "log_cyan": "#8ec07c", "log_magenta": "#d3869b",
+    },
+    # Matches Dev/Bchips-main/gui.py.
+    "Bchips Violet": {
+        "bg": "#1a1b2e", "surface": "#252641", "field": "#2f3055", "border": "#2f3055",
+        "fg": "#e2e8f0", "muted": "#8892a8",
+        "accent": "#7c3aed", "accent_hover": "#6d28d9", "accent_active": "#5b21b6",
+        "neutral": "#2f3055", "neutral_hover": "#3a3b66",
+        "danger": "#ef4444", "danger_hover": "#dc2626", "disabled": "#232438",
+        "log_green": "#22c55e", "log_red": "#ef4444", "log_yellow": "#f59e0b",
+        "log_blue": "#60a5fa", "log_cyan": "#22d3ee", "log_magenta": "#a78bfa",
+    },
+    # Sampled from color-meanings.com's dark-palettes illustration.
+    "Color-Meanings": {
+        "bg": "#161638", "surface": "#302442", "field": "#1b435e", "border": "#563457",
+        "fg": "#e9e7f2", "muted": "#9d94b8",
+        "accent": "#38667e", "accent_hover": "#457a95", "accent_active": "#2c5266",
+        "neutral": "#563457", "neutral_hover": "#6a4269",
+        "danger": "#ff8f9c", "danger_hover": "#d9536a", "disabled": "#241d33",
+        "log_green": "#5ddc9a", "log_red": "#ff8f9c", "log_yellow": "#f2c14e",
+        "log_blue": "#7fb3e8", "log_cyan": "#6fd3e8", "log_magenta": "#c79ae8",
+    },
+}
+DEFAULT_THEME = "Neutral Slate"
+LOG_TAG_NAMES = ("red", "green", "yellow", "cyan", "magenta", "blue", "dim")
+SETTINGS_PATH = Path.home() / ".abtools_gui.json"
 
-main = ttk.Frame(root, padding=PAD_X)
+
+def _luminance(hex_colour: str) -> float:
+    h = hex_colour.lstrip("#")
+    chans = []
+    for i in (0, 2, 4):
+        c = int(h[i:i + 2], 16) / 255
+        chans.append(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * chans[0] + 0.7152 * chans[1] + 0.0722 * chans[2]
+
+
+def contrast(a: str, b: str) -> float:
+    la, lb = _luminance(a), _luminance(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def _readable_on(background: str) -> str:
+    """Black or white, whichever is legible on `background`.
+
+    Picked per theme rather than hardcoded: a light accent like Nord's
+    #88c0d0 needs dark text, while a deep one like #3b82f6 needs white.
+    """
+    return "#ffffff" if contrast("#ffffff", background) >= contrast("#101216", background) else "#101216"
+
+
+# Populated by apply_theme() before any widget is built.
+BG = SURFACE = FIELD = BORDER = FG = MUTED = ACCENT = ""
+ACCENT_HOVER = ACCENT_ACTIVE = NEUTRAL = NEUTRAL_HOVER = ""
+DANGER = DANGER_HOVER = DISABLED_BG = ON_ACCENT = ""
+CURRENT_THEME = DEFAULT_THEME
+
+
+def _pick_font(candidates: tuple[str, ...], fallback: str) -> str:
+    """First installed family from `candidates`, else the Tk default.
+
+    The previous hardcoded "Segoe UI" silently fell back to an arbitrary
+    family on Linux and macOS.
+    """
+    available = set(tkfont.families())
+    for name in candidates:
+        if name in available:
+            return name
+    return tkfont.nametofont(fallback).actual("family")
+
+
+UI_FAMILY = _pick_font(
+    ("Inter", "Segoe UI", "SF Pro Text", "Cantarell", "Noto Sans", "Open Sans",
+     "Ubuntu", "DejaVu Sans"),
+    "TkDefaultFont",
+)
+MONO_FAMILY = _pick_font(
+    ("Consolas", "JetBrains Mono", "Cascadia Mono", "SF Mono", "Source Code Pro",
+     "Noto Sans Mono", "DejaVu Sans Mono", "Liberation Mono"),
+    "TkFixedFont",
+)
+FONT_UI      = (UI_FAMILY, 10)
+FONT_BOLD    = (UI_FAMILY, 10, "bold")
+FONT_SECTION = (UI_FAMILY, 9, "bold")
+FONT_MONO    = (MONO_FAMILY, 9)
+
+style = ttk.Style(root)
+# "clam" is the only stock theme that honours colour options properly; the
+# default theme ignores most of them and keeps its 1990s bevels.
+if "clam" in style.theme_names():
+    style.theme_use("clam")
+
+
+def _load_saved_theme() -> str:
+    try:
+        name = json.loads(SETTINGS_PATH.read_text()).get("theme")
+    except (OSError, ValueError, AttributeError):
+        return DEFAULT_THEME
+    return name if name in THEMES else DEFAULT_THEME
+
+
+def _save_theme(name: str) -> None:
+    try:
+        SETTINGS_PATH.write_text(json.dumps({"theme": name}, indent=2))
+    except OSError:
+        pass          # a read-only home is not worth failing the UI over
+
+
+def apply_theme(name: str, *, persist: bool = False) -> None:
+    """Rebind the palette and restyle every widget in place."""
+    global BG, SURFACE, FIELD, BORDER, FG, MUTED, ACCENT, ACCENT_HOVER
+    global ACCENT_ACTIVE, NEUTRAL, NEUTRAL_HOVER, DANGER, DANGER_HOVER
+    global DISABLED_BG, ON_ACCENT, CURRENT_THEME
+
+    p = THEMES.get(name) or THEMES[DEFAULT_THEME]
+    CURRENT_THEME = name if name in THEMES else DEFAULT_THEME
+    BG, SURFACE, FIELD, BORDER = p["bg"], p["surface"], p["field"], p["border"]
+    FG, MUTED, ACCENT = p["fg"], p["muted"], p["accent"]
+    ACCENT_HOVER, ACCENT_ACTIVE = p["accent_hover"], p["accent_active"]
+    NEUTRAL, NEUTRAL_HOVER = p["neutral"], p["neutral_hover"]
+    DANGER, DANGER_HOVER, DISABLED_BG = p["danger"], p["danger_hover"], p["disabled"]
+    ON_ACCENT = _readable_on(ACCENT)
+
+    _style_widgets()
+    _restyle_log(p)
+    if persist:
+        _save_theme(CURRENT_THEME)
+
+
+def _restyle_log(p: dict[str, str]) -> None:
+    """Recolour the log pane. No-op until it has been built."""
+    text = globals().get("output_text")
+    if text is None:
+        return
+    text.configure(background=FIELD, foreground=FG, insertbackground=FG,
+                   highlightbackground=BORDER, highlightcolor=BORDER,
+                   selectbackground=ACCENT, selectforeground=ON_ACCENT)
+    for tag in LOG_TAG_NAMES:
+        colour = MUTED if tag == "dim" else p[f"log_{tag}"]
+        text.tag_configure(tag, foreground=colour)
+
+
+def _style_widgets() -> None:
+    root.configure(bg=BG)
+    style.configure(".", background=SURFACE, foreground=FG, font=FONT_UI,
+                    borderwidth=0, focuscolor=SURFACE)
+    style.configure("TFrame", background=SURFACE)
+    style.configure("App.TFrame", background=BG)
+    style.configure("TLabel", background=SURFACE, foreground=FG)
+    style.configure("Bg.TLabel", background=BG, foreground=MUTED)
+    style.configure("TCheckbutton", background=SURFACE, foreground=FG,
+                    indicatorcolor=FIELD, bordercolor=MUTED, focuscolor=SURFACE)
+    style.map("TCheckbutton",
+              background=[("active", SURFACE)],
+              foreground=[("disabled", MUTED)],
+              indicatorcolor=[("selected", ACCENT), ("!selected", FIELD)],
+              bordercolor=[("selected", ACCENT), ("active", ACCENT)])
+
+    # Cards: flat fill, hairline border, quiet section titles.
+    style.configure("TLabelframe", background=SURFACE, bordercolor=BORDER,
+                    relief="solid", borderwidth=1)
+    style.configure("TLabelframe.Label", background=SURFACE, foreground=MUTED,
+                    font=FONT_SECTION)
+
+    # Buttons share one padding so every action is the same height. The primary
+    # and destructive actions are distinguished by colour, not by size.
+    style.configure("TButton", background=NEUTRAL, foreground=FG, bordercolor=BORDER,
+                    relief="flat", padding=(14, 8), font=FONT_UI, anchor="center")
+    style.map("TButton",
+              background=[("disabled", DISABLED_BG), ("pressed", BORDER), ("active", NEUTRAL_HOVER)],
+              foreground=[("disabled", MUTED)],
+              bordercolor=[("focus", ACCENT)])
+    style.configure("Primary.TButton", background=ACCENT, foreground=ON_ACCENT,
+                    bordercolor=ACCENT, font=FONT_BOLD)
+    style.map("Primary.TButton",
+              background=[("disabled", DISABLED_BG), ("pressed", ACCENT_ACTIVE), ("active", ACCENT_HOVER)],
+              foreground=[("disabled", MUTED)])
+    on_danger = _readable_on(DANGER)
+    style.configure("Danger.TButton", background=NEUTRAL, foreground=DANGER)
+    style.map("Danger.TButton",
+              background=[("disabled", DISABLED_BG), ("pressed", DANGER_HOVER), ("active", DANGER)],
+              foreground=[("disabled", MUTED), ("active", on_danger), ("pressed", on_danger)])
+
+    for _cls in ("TEntry", "TSpinbox", "TCombobox"):
+        style.configure(_cls, fieldbackground=FIELD, background=NEUTRAL, foreground=FG,
+                        bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER,
+                        insertcolor=FG, arrowcolor=MUTED, relief="flat", padding=5)
+        style.map(_cls,
+                  bordercolor=[("focus", ACCENT)],
+                  lightcolor=[("focus", ACCENT)],
+                  darkcolor=[("focus", ACCENT)],
+                  fieldbackground=[("disabled", DISABLED_BG), ("readonly", FIELD)],
+                  foreground=[("disabled", MUTED)])
+    style.map("TCombobox", arrowcolor=[("disabled", BORDER)])
+    # option_add only affects widgets created afterwards, so an existing
+    # dropdown list keeps its old colours until reopened -- acceptable.
+    root.option_add("*TCombobox*Listbox.background", FIELD)
+    root.option_add("*TCombobox*Listbox.foreground", FG)
+    root.option_add("*TCombobox*Listbox.selectBackground", ACCENT)
+    root.option_add("*TCombobox*Listbox.selectForeground", ON_ACCENT)
+
+    # A slim accent bar reads as progress; the stock trough looked like an empty box.
+    style.configure("Horizontal.TProgressbar", background=ACCENT, troughcolor=NEUTRAL,
+                    bordercolor=NEUTRAL, lightcolor=ACCENT, darkcolor=ACCENT, thickness=8)
+    style.configure("Vertical.TScrollbar", background=NEUTRAL_HOVER, troughcolor=SURFACE,
+                    bordercolor=SURFACE, arrowcolor=MUTED, relief="flat")
+    style.map("Vertical.TScrollbar", background=[("active", MUTED)])
+
+
+apply_theme(_load_saved_theme())
+
+# ───────────── tooltips ─────────────────────────────────────────────────────
+class Tooltip:
+    """Hover help, themed to match the palette.
+
+    A plain `tk.Toplevel` is used rather than a ttk widget so the border can be
+    faked with a 1px outer frame -- ttk gives no portable border on a Toplevel.
+    """
+
+    DELAY_MS = 450
+    WRAP_PX = 340
+
+    def __init__(self, widget: tk.Widget, text: str) -> None:
+        self.widget = widget
+        self.text = text
+        self._after: str | None = None
+        self._win: tk.Toplevel | None = None
+        # add="+" so existing handlers on the widget are preserved.
+        widget.bind("<Enter>", self._schedule, add="+")
+        widget.bind("<Leave>", self.hide, add="+")
+        widget.bind("<ButtonPress>", self.hide, add="+")
+
+    def _schedule(self, _event: object = None) -> None:
+        self._cancel()
+        self._after = self.widget.after(self.DELAY_MS, self._show)
+
+    def _cancel(self) -> None:
+        if self._after is not None:
+            try:
+                self.widget.after_cancel(self._after)
+            except tk.TclError:
+                pass
+            self._after = None
+
+    def _show(self) -> None:
+        if self._win is not None or not self.text:
+            return
+        try:
+            x = self.widget.winfo_rootx() + 14
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
+        except tk.TclError:
+            return
+        try:
+            win = tk.Toplevel(self.widget)
+            win.wm_overrideredirect(True)
+            win.configure(bg=BORDER)
+            tk.Label(
+                win, text=self.text, justify="left", wraplength=self.WRAP_PX,
+                bg=FIELD, fg=FG, font=FONT_UI, padx=10, pady=7,
+            ).pack(padx=1, pady=1)
+
+            # Keep it on screen. The bottom-row buttons sit near the lower edge,
+            # where a tall tip would otherwise be cut off.
+            win.update_idletasks()
+            w, h = win.winfo_reqwidth(), win.winfo_reqheight()
+            margin = 8
+            x = min(x, win.winfo_screenwidth() - w - margin)
+            x = max(margin, x)
+            if y + h > win.winfo_screenheight() - margin:
+                above = self.widget.winfo_rooty() - h - 6
+                y = above if above >= margin else max(margin, win.winfo_screenheight() - h - margin)
+
+            win.wm_geometry(f"+{x}+{y}")
+            win.attributes("-topmost", True)
+        except tk.TclError:
+            return
+        self._win = win
+
+    def hide(self, _event: object = None) -> None:
+        self._cancel()
+        if self._win is not None:
+            try:
+                self._win.destroy()
+            except tk.TclError:
+                pass
+            self._win = None
+
+
+def tip(widget, text: str):
+    """Attach hover help and return the widget, so it can be .grid()'d inline."""
+    Tooltip(widget, text)
+    return widget
+
+
+main = ttk.Frame(root, padding=PAD_X, style="App.TFrame")
 main.grid(row=0, column=0, sticky="nsew")
 main.columnconfigure(0, weight=1)
 for i in range(5):
@@ -72,13 +423,27 @@ paths_frame = ttk.LabelFrame(main, text="File Paths", padding=PAD_X)
 paths_frame.grid(row=0, column=0, sticky="ew")
 paths_frame.columnconfigure(1, weight=1)
 
+TIP_SOURCE = (
+    "Folder to read from. Tag and Move scan it for audiobook folders; "
+    "Find Duplicates scans it for duplicate audio files.\n\n"
+    "You can point it straight at a single book folder."
+)
+TIP_DEST = (
+    "Library folder to write into. Move and Restructure place books here as "
+    "Author/Title (Year).\n\n"
+    "For Find Duplicates this is optional: set it to compare two folders "
+    "against each other, or leave it empty to scan the source alone."
+)
+
 ttk.Label(paths_frame, text="Source:").grid(row=0, column=0, sticky="w", padx=(0, PAD_X), pady=(0, PAD_Y))
-ttk.Entry(paths_frame, textvariable=source_var).grid(row=0, column=1, sticky="ew", pady=(0, PAD_Y))
-ttk.Button(paths_frame, text="Browse", command=browse_src).grid(row=0, column=2, sticky="ew", padx=(PAD_X, 0), pady=(0, PAD_Y))
+tip(ttk.Entry(paths_frame, textvariable=source_var), TIP_SOURCE).grid(row=0, column=1, sticky="ew", pady=(0, PAD_Y))
+tip(ttk.Button(paths_frame, text="Browse", command=browse_src),
+    "Pick the source folder.").grid(row=0, column=2, sticky="ew", padx=(PAD_X, 0), pady=(0, PAD_Y))
 
 ttk.Label(paths_frame, text="Destination:").grid(row=1, column=0, sticky="w", padx=(0, PAD_X), pady=(0, PAD_Y))
-ttk.Entry(paths_frame, textvariable=dest_var).grid(row=1, column=1, sticky="ew", pady=(0, PAD_Y))
-ttk.Button(paths_frame, text="Browse", command=browse_dst).grid(row=1, column=2, sticky="ew", padx=(PAD_X, 0), pady=(0, PAD_Y))
+tip(ttk.Entry(paths_frame, textvariable=dest_var), TIP_DEST).grid(row=1, column=1, sticky="ew", pady=(0, PAD_Y))
+tip(ttk.Button(paths_frame, text="Browse", command=browse_dst),
+    "Pick the destination folder.").grid(row=1, column=2, sticky="ew", padx=(PAD_X, 0), pady=(0, PAD_Y))
 
 
 commit_var = tk.BooleanVar()
@@ -96,10 +461,11 @@ use_llm_var = tk.BooleanVar(value=bool(DEFAULT_LLM_ENDPOINT))
 
 operation_frame = ttk.LabelFrame(main, text="Operation Settings", padding=PAD_X)
 operation_frame.grid(row=1, column=0, sticky="ew", pady=(PAD_Y, 0))
-for col in (0, 2):
+# Columns 0-3 hug their content; a trailing spacer absorbs the slack. Giving
+# column 3 the weight stretched the Threads spinbox to the window edge.
+for col in range(4):
     operation_frame.columnconfigure(col, weight=0)
-operation_frame.columnconfigure(1, weight=1)
-operation_frame.columnconfigure(3, weight=1)
+operation_frame.columnconfigure(4, weight=1)
 
 ttk.Label(operation_frame, text="Timeout (s):").grid(row=0, column=0, sticky="w")
 timeout_spin = ttk.Spinbox(
@@ -110,9 +476,9 @@ timeout_spin = ttk.Spinbox(
     width=6,
     increment=5,
 )
-timeout_spin.grid(row=0, column=1, sticky="w", padx=(0, PAD_X))
+timeout_spin.grid(row=0, column=1, sticky="w", padx=(0, PAD_X * 2))
 
-ttk.Label(operation_frame, text="Threads:").grid(row=0, column=2, sticky="w")
+ttk.Label(operation_frame, text="Threads:").grid(row=0, column=2, sticky="w", padx=(0, PAD_X))
 threads_spin = ttk.Spinbox(
     operation_frame,
     from_=1,
@@ -120,7 +486,7 @@ threads_spin = ttk.Spinbox(
     textvariable=threads_var,
     width=5,
 )
-threads_spin.grid(row=0, column=3, sticky="ew")
+threads_spin.grid(row=0, column=3, sticky="w")
 
 ttk.Label(operation_frame, text="Compare by:").grid(row=1, column=0, sticky="w", pady=(PAD_Y, 0))
 compare_combo = ttk.Combobox(
@@ -132,15 +498,54 @@ compare_combo = ttk.Combobox(
 )
 compare_combo.grid(row=1, column=1, sticky="w", pady=(PAD_Y, 0))
 
-checkbox_frame = ttk.Frame(operation_frame)
-checkbox_frame.grid(row=2, column=0, columnspan=3, sticky="w", pady=(PAD_Y, 0))
+Tooltip(timeout_spin,
+        "Per-file read timeout, in seconds, while hashing for duplicates.\n\n"
+        "Only applies when Network Mode is ticked. Use it to stop a flaky "
+        "NAS from hanging the scan. 0 means no timeout.")
+Tooltip(threads_spin,
+        "How many files to hash in parallel during Find Duplicates.\n\n"
+        "Higher is faster on local disks; lower is kinder to a network share. "
+        "Does not affect tagging.")
+Tooltip(compare_combo,
+        "How duplicates are matched.\n\n"
+        "hash - compares SHA1 contents. Accurate, and catches renamed files, "
+        "but has to read every candidate.\n"
+        "name - compares file names only. Much faster, but misses renames and "
+        "can flag unrelated files that happen to share a name.")
 
-ttk.Checkbutton(checkbox_frame, text="Commit", variable=commit_var).grid(row=0, column=0, sticky="w", padx=(0, PAD_X))
-ttk.Checkbutton(checkbox_frame, text="Copy", variable=copy_var).grid(row=0, column=1, sticky="w", padx=(0, PAD_X))
-ttk.Checkbutton(checkbox_frame, text="Yes", variable=yes_var).grid(row=0, column=2, sticky="w", padx=(0, PAD_X))
-ttk.Checkbutton(checkbox_frame, text="Recurse", variable=recurse_var).grid(row=0, column=3, sticky="w", padx=(0, PAD_X))
-ttk.Checkbutton(checkbox_frame, text="Network Mode", variable=network_var).grid(row=1, column=0, sticky="w", padx=(0, PAD_X), pady=(PAD_Y // 2, 0))
-ttk.Checkbutton(checkbox_frame, text="Only src log", variable=only_src_log_var).grid(row=1, column=1, sticky="w", padx=(0, PAD_X), pady=(PAD_Y // 2, 0))
+checkbox_frame = ttk.Frame(operation_frame)
+checkbox_frame.grid(row=2, column=0, columnspan=5, sticky="ew", pady=(PAD_Y, 0))
+for _c in range(4):
+    checkbox_frame.columnconfigure(_c, weight=1, uniform="opts")
+
+tip(ttk.Checkbutton(checkbox_frame, text="Commit", variable=commit_var),
+    "Actually write the changes.\n\n"
+    "Left unticked, Tag and Move only preview what they would do and no file "
+    "is touched. Tick this once the preview looks right."
+    ).grid(row=0, column=0, sticky="w", padx=(0, PAD_X))
+tip(ttk.Checkbutton(checkbox_frame, text="Copy", variable=copy_var),
+    "Copy books into the destination instead of moving them, leaving the "
+    "source untouched. Needs Commit to have any effect."
+    ).grid(row=0, column=1, sticky="w", padx=(0, PAD_X))
+tip(ttk.Checkbutton(checkbox_frame, text="Yes", variable=yes_var),
+    "Auto-accept every metadata match without asking.\n\n"
+    "Faster for a big run, but a wrong match gets written without you seeing "
+    "it. Leave off to confirm low-confidence matches yourself."
+    ).grid(row=0, column=2, sticky="w", padx=(0, PAD_X))
+tip(ttk.Checkbutton(checkbox_frame, text="Recurse", variable=recurse_var),
+    "Search sub-folders as well as the top level.\n\n"
+    "Applies to Find Duplicates when scanning a single folder."
+    ).grid(row=0, column=3, sticky="w", padx=(0, PAD_X))
+tip(ttk.Checkbutton(checkbox_frame, text="Network Mode", variable=network_var),
+    "Treat the source as a network share and enforce the Timeout above on "
+    "every file read.\n\nWithout this, Timeout is ignored and a stalled share "
+    "can hang the scan indefinitely."
+    ).grid(row=1, column=0, sticky="w", padx=(0, PAD_X), pady=(PAD_Y // 2, 0))
+tip(ttk.Checkbutton(checkbox_frame, text="Only src log", variable=only_src_log_var),
+    "Limit the duplicate scan to files already listed in the source's "
+    "duplicate_log.txt, instead of walking the whole folder again.\n\n"
+    "Useful for re-checking a previous run's findings quickly."
+    ).grid(row=1, column=1, sticky="w", padx=(0, PAD_X), pady=(PAD_Y // 2, 0))
 
 MODEL_CHOICES = (
     DEFAULT_LLM_MODEL,
@@ -156,11 +561,16 @@ llm_frame.columnconfigure(3, weight=1)
 
 llm_controls: list[tk.Widget] = []
 
-ttk.Checkbutton(
+tip(ttk.Checkbutton(
     llm_frame,
     text="Enable LLM fallback",
     variable=use_llm_var,
     command=lambda: toggle_llm_controls(),
+),
+    "When the online providers cannot find a confident match, ask a local "
+    "LLM to work the metadata out instead.\n\n"
+    "Turn it off to rely on Audible/Goodreads/Open Library/Google Books alone; "
+    "unmatched books then go to the review log."
 ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, PAD_Y))
 
 ttk.Label(llm_frame, text="Endpoint:").grid(row=1, column=0, sticky="e", padx=(0, PAD_X), pady=(0, PAD_Y))
@@ -169,9 +579,21 @@ endpoint_entry.grid(row=1, column=1, columnspan=3, sticky="ew", pady=(0, PAD_Y))
 llm_controls.append(endpoint_entry)
 
 ttk.Label(llm_frame, text="Model:").grid(row=2, column=0, sticky="e", padx=(0, PAD_X), pady=(0, PAD_Y))
-model_combo = ttk.Combobox(llm_frame, textvariable=llm_model_var, values=MODEL_CHOICES, state="readonly")
-model_combo.grid(row=2, column=1, sticky="ew", pady=(0, PAD_Y))
+# Editable, and spanning the same columns as Endpoint above it. It was a
+# half-width readonly box, yet the CLI accepts any model name -- and
+# toggle_llm_controls() already flipped it to editable on the first toggle.
+model_combo = ttk.Combobox(llm_frame, textvariable=llm_model_var, values=MODEL_CHOICES)
+model_combo.grid(row=2, column=1, columnspan=3, sticky="ew", pady=(0, PAD_Y))
 llm_controls.append(model_combo)
+
+Tooltip(endpoint_entry,
+        "URL of an OpenAI-compatible chat-completions endpoint, such as the "
+        "local server LM Studio exposes.\n\n"
+        f"Default: {DEFAULT_LLM_ENDPOINT}\n"
+        "Set to 'none' to disable the fallback.")
+Tooltip(model_combo,
+        "Model to request from that endpoint. It must already be loaded there.\n\n"
+        "The list is only a shortcut - you can type any model name.")
 
 
 
@@ -183,16 +605,9 @@ def toggle_llm_controls() -> None:
         except tk.TclError:
             pass
 
-LOG_TAG_STYLES: dict[str, dict[str, object]] = {
-    "red": {"foreground": "#d13c3c"},
-    "green": {"foreground": "#1d7a3a"},
-    "yellow": {"foreground": "#b58900"},
-    "cyan": {"foreground": "#0ea5e9"},
-    "magenta": {"foreground": "#a855f7"},
-    "blue": {"foreground": "#2563eb"},
-    "dim": {"foreground": "#6c757d"},
-}
-LOG_SUPPORTED_TAGS = set(LOG_TAG_STYLES) | {"bold"}
+# The tag colours themselves live in the active theme and are applied by
+# _restyle_log(), so switching theme recolours existing log output too.
+LOG_SUPPORTED_TAGS = set(LOG_TAG_NAMES) | {"bold"}
 LOG_TAG_FONT_CACHE: dict[str, tkfont.Font] = {}
 RICH_TAG_PATTERN = re.compile(r"\[(/?)([a-zA-Z0-9_+-]*)]")
 
@@ -253,37 +668,89 @@ def stop_current() -> None:
 actions_frame = ttk.LabelFrame(main, text="Actions", padding=PAD_X)
 actions_frame.grid(row=3, column=0, sticky="ew", pady=(PAD_Y, 0))
 for i in range(5):
-    actions_frame.columnconfigure(i, weight=1)
+    actions_frame.columnconfigure(i, weight=1, uniform="actions")
 
 log_frame = ttk.LabelFrame(main, text="Log", padding=PAD_X)
 log_frame.grid(row=4, column=0, sticky="nsew", pady=(PAD_Y, 0))
 log_frame.columnconfigure(0, weight=1)
 log_frame.rowconfigure(0, weight=1)
 
-output_text = tk.Text(log_frame, height=15, wrap="word", state="disabled")
+output_text = tk.Text(
+    log_frame,
+    height=11,
+    wrap="word",
+    state="disabled",
+    relief="flat",
+    borderwidth=0,
+    highlightthickness=1,
+    highlightbackground=BORDER,
+    highlightcolor=BORDER,
+    background=FIELD,
+    foreground=FG,
+    insertbackground=FG,
+    selectbackground=ACCENT,
+    selectforeground="#ffffff",
+    padx=10,
+    pady=8,
+    spacing1=1,
+    spacing3=1,
+)
 output_text.grid(row=0, column=0, sticky="nsew")
 
 scrollbar = ttk.Scrollbar(log_frame, orient="vertical", command=output_text.yview)
 scrollbar.grid(row=0, column=1, sticky="ns", padx=(PAD_X // 2, 0))
 output_text.configure(yscrollcommand=scrollbar.set)
 
-_log_base_font = tkfont.nametofont("TkDefaultFont")
+# CLI output is column-aligned, so render the log monospaced.
+_log_base_font = tkfont.Font(family=MONO_FAMILY, size=FONT_MONO[1])
 output_text.configure(font=_log_base_font)
 _bold_font = _log_base_font.copy()
 _bold_font.configure(weight="bold")
 LOG_TAG_FONT_CACHE["bold"] = _bold_font
 output_text.tag_configure("bold", font=_bold_font)
-for tag_name, style_opts in LOG_TAG_STYLES.items():
-    output_text.tag_configure(tag_name, **style_opts)
+# Colour tags come from the active theme now that the widget exists.
+apply_theme(CURRENT_THEME)
 
 progress_var = tk.IntVar(value=0)
 progress = ttk.Progressbar(log_frame, variable=progress_var, maximum=100)
 progress.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(PAD_Y, 0))
 
+# ───────────── status row: theme picker (left) + ETA (right) ────────────────
+status_row = ttk.Frame(main, style="App.TFrame")
+status_row.grid(row=5, column=0, sticky="ew", pady=(PAD_Y, 0))
+status_row.columnconfigure(1, weight=1)
+
+theme_var = tk.StringVar(value=CURRENT_THEME)
+
+
+def on_theme_change(_event: object = None) -> None:
+    apply_theme(theme_var.get(), persist=True)
+
+
+ttk.Label(status_row, text="Theme:", style="Bg.TLabel").grid(row=0, column=0, padx=(0, 6))
+theme_combo = ttk.Combobox(
+    status_row,
+    textvariable=theme_var,
+    values=list(THEMES),
+    state="readonly",
+    width=18,
+)
+theme_combo.grid(row=0, column=1, sticky="w")
+theme_combo.bind("<<ComboboxSelected>>", on_theme_change)
+Tooltip(theme_combo,
+        "Colour theme for this window. Applies immediately and is remembered "
+        "for next launch.\n\n"
+        "Neutral Slate keeps the surfaces grey and puts colour only in the "
+        "accent; the others tint the surfaces too.")
+
 eta_var = tk.StringVar(value="ETA: --:--")
-ttk.Label(main, textvariable=eta_var).grid(row=5, column=0, sticky="e", pady=(PAD_Y, 0))
+ttk.Label(status_row, textvariable=eta_var, style="Bg.TLabel").grid(
+    row=0, column=2, sticky="e"
+)
 
 toggle_llm_controls()
+root.update_idletasks()
+root.minsize(root.winfo_reqwidth(), 620)
 
 def gather_llm_settings() -> dict[str, object]:
     enabled = bool(use_llm_var.get())
@@ -868,13 +1335,37 @@ tag_button = ttk.Button(actions_frame, text="Tag", style="Primary.TButton", comm
 tag_button.grid(row=0, column=0, sticky="ew", padx=(0, PAD_X), pady=(0, PAD_Y))
 move_button = ttk.Button(actions_frame, text="Move", command=run)
 move_button.grid(row=0, column=1, sticky="ew", padx=(0, PAD_X), pady=(0, PAD_Y))
-restructure_button = ttk.Button(actions_frame, text="Restructure Folders", command=restructure)
+restructure_button = ttk.Button(actions_frame, text="Restructure", command=restructure)
 restructure_button.grid(row=0, column=2, sticky="ew", padx=(0, PAD_X), pady=(0, PAD_Y))
 dup_button = ttk.Button(actions_frame, text="Find Duplicates", command=find_dupes)
 dup_button.grid(row=0, column=3, sticky="ew", pady=(0, PAD_Y))
-stop_button = ttk.Button(actions_frame, text="Stop", command=stop_current, state="disabled")
+stop_button = ttk.Button(actions_frame, text="Stop", style="Danger.TButton",
+                         command=stop_current, state="disabled")
 stop_button.grid(row=0, column=4, sticky="ew", padx=(PAD_X, 0), pady=(0, PAD_Y))
 action_buttons.extend([tag_button, move_button, restructure_button, dup_button])
+
+Tooltip(tag_button,
+        "Look up metadata and write tags to the files where they are, without "
+        "moving anything.\n\n"
+        "Uses the online providers, falling back to the LLM if enabled. "
+        "Respects Commit: unticked, it only previews.")
+Tooltip(move_button,
+        "Tag each book, then move it into the destination as "
+        "Author/Title (Year), flattening any disc sub-folders.\n\n"
+        "Tick Copy to leave the source in place. Respects Commit.")
+Tooltip(restructure_button,
+        "Reorganise a library that is already tagged into "
+        "Author/Year - Title, using existing tags, metadata.json or the "
+        "folder name.\n\nDoes no metadata lookup. Respects Commit and Copy.")
+Tooltip(dup_button,
+        "Find duplicate audio files, comparing by the Compare by setting.\n\n"
+        "With a destination set, compares the two folders against each other; "
+        "otherwise scans the source alone. Results are written to "
+        "duplicate_log.txt and nothing is deleted.")
+Tooltip(stop_button,
+        "Ask the running job to stop.\n\n"
+        "It finishes the file it is on before halting, so it may take a "
+        "moment. Work already written is left as it is.")
 
 if __name__ == "__main__":
     poll_queue()
