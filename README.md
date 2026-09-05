@@ -36,7 +36,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 
 - Local LM Studio fallback now runs a staged pipeline: provider scores ≥90 are accepted immediately, otherwise a "Metadata Refiner" call merges provider matches with MCP web searches (Audible, Open Library, Google Books, Goodreads, plus the generic `search`/`fetch_content` helpers); stubborn cases escalate to a SequentialThinking reasoning pass before a final "Tag Evaluator" assigns a confidence score.
 
-- Optional DuckDuckGo Search integration (no key required) feeds fresh web snippets to the LLM when initial metadata replies are incomplete, improving author/year/series recovery.
+- Optional DuckDuckGo Search integration (no key required) feeds fresh web snippets to the LLM when initial metadata replies are incomplete, improving author/year/series recovery. Tavily support was removed: it needed a paid key that most installs lacked, so it only ever added a failed request before the DuckDuckGo fallback ran.
 
 - LLM replies are retried with stronger prompts when fields stay blank, and any residual gaps (author/year/series/etc.) are resolved inside the staged pipeline before the verifier scores the final JSON.
 
@@ -313,6 +313,8 @@ The action row is Tag / Move / Restructure / Find Duplicates / Stop, all one hei
 **Theming.** A Theme dropdown in the bottom status row switches between seven dark palettes live, without restarting; the choice is saved to `~/.abtools_gui.json`. Palettes are plain data in the `THEMES` dict at the top of `AbtoolsGui.py`, so adding one is a single entry - `apply_theme()` restyles every widget, including already-printed log output. Fonts are resolved against the families actually installed rather than hardcoded, so the UI does not fall back to something arbitrary on Linux or macOS.
 
 **Hover help.** Every button, entry, spinbox, combobox and checkbox carries a tooltip describing what it actually does. Tooltips are clamped to the screen so the bottom-row buttons do not push them off the edge.
+
+**Providers.** A Provider dropdown covers LM Studio, Ollama, vLLM and **OpenRouter**, filling in the endpoint and checking it. The local runners need no credentials; OpenRouter needs an API key, supplied either in the API key field or — preferably — via the `ABTOOLS_LLM_API_KEY` or `OPENROUTER_API_KEY` environment variable. The key is held in memory only and is never written to the settings file. The CLI takes the same value via `--llm-api-key`.
 
 **Model discovery.** The Model dropdown is filled from the server itself: the GUI queries the endpoint's `/v1/models` shortly after launch, whenever you finish editing the Endpoint field, and on demand via the `↻` button. A status line reports how many models the server has loaded, warns when the selected model is not among them, and says so plainly when the endpoint cannot be reached — in which case the list falls back to models you have used before. Endpoint, model and the recent-model list persist in `~/.abtools_gui.json`. You can still type any model name.
 

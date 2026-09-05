@@ -1,6 +1,6 @@
 # Proposal: Dynamic LLM Model Configuration
 
-**Status:** Phases 1 and 2 shipped; scope fixed to **local providers only** (decided 2026-09-05)
+**Status:** Phases 1-3 shipped. Scope **widened to include hosted providers** on 2026-09-05, superseding the earlier local-only decision.
 **Date:** 2026-09-05
 **Scope:** `AbtoolsGui.py`, `ablib/core/config.py`, `ablib/metadata/llm.py`, `mcp_server/`
 **Goal:** remove the hardcoded `MODEL_CHOICES` list and make endpoint/model configuration discoverable, persistent and consistent across the GUI, CLI and MCP server.
@@ -17,7 +17,7 @@ The core idea — query the server's `/v1/models` endpoint instead of shipping a
 |---|---|---|
 | 1. Live auto-discovery via `/v1/models` | **Adopt** | Needs thread-marshalling and robust URL derivation (§3.1, §3.3) |
 | 3. Persistent settings + MRU model list | **Adopt, with #1** | Must extend the existing settings file, not add a second (§3.4) |
-| 2. Provider presets | Optional, cheap | Local runners only — remote is out of scope (§3.2) |
+| 2. Provider presets | **Shipped** | LM Studio / Ollama / vLLM / OpenRouter (§3.2) |
 | 4. Config cascade (env vars) | Defer to last | Largest blast radius; real payoff is the MCP server, not the GUI (§4.4) |
 
 **Recommended order:** fix the open P2 correctness bugs first (§5), then ship options 1 + 3 as a single change, then reassess 2 and 4.
@@ -99,11 +99,15 @@ The sketch says to make the HTTP call in the background "so it never freezes the
 
 The probe must post its result to `output_queue` and let `poll_queue()` apply it on the UI thread. `poll_queue` already has a message-type switch (`stdout` / `progress` / `prompt` / `status`); this adds one more case.
 
-### 3.2 Remote providers are out of scope
+### 3.2 Remote providers — decision reversed, now supported
 
-**Decided 2026-09-05: local providers only.** §2.2 showed `_call_llm` sends no headers, so hosted providers cannot work without new auth plumbing — and that plumbing is now explicitly not wanted. Ship presets for local runners only (LM Studio / Ollama / vLLM), and offer no "Custom / Remote" entry.
+**Superseded.** An earlier note here recorded a local-only scope. That was reversed the same day when OpenRouter was requested, which required exactly the auth plumbing §2.2 identified as missing.
 
-This also removes the auth prerequisite from Phase 3 and drops decision 1 in §6.
+**Shipped:** `RuntimeConfig.llm_api_key` (defaulting from `ABTOOLS_LLM_API_KEY` or `OPENROUTER_API_KEY`), `_auth_headers()` in `ablib/metadata/llm.py` sending `Authorization: Bearer …` plus OpenRouter's `HTTP-Referer`/`X-Title` attribution headers, a `--llm-api-key` CLI flag, and an API-key field in the GUI. Local servers ignore the header, so nothing regresses for them.
+
+**The key is never written to disk.** It is held in memory only and pre-filled from the environment; the settings file was checked to confirm no trace of it after use.
+
+**One trap worth recording:** OpenRouter serves `/v1/models` *without* authentication, so a successful model probe says nothing about whether completions will work. The GUI therefore keeps a "API key required to run" note visible alongside the model count — otherwise you see 431 models and reasonably conclude you are ready.
 
 ### 3.3 Use `urlsplit`, not string manipulation
 
@@ -207,15 +211,19 @@ elif typ == "models":
 
 **Removals:** the `MODEL_CHOICES` constant disappears entirely.
 
-### Phase 3 — provider presets (optional)
+### Phase 3 — provider presets ✅ **shipped 2026-09-05**
 
-A Provider dropdown that fills in the endpoint and triggers a probe. Local runners only until auth lands:
+A Provider dropdown fills in the endpoint and probes it immediately.
 
-| Provider | Endpoint |
-|---|---|
-| LM Studio | `http://127.0.0.1:1234/v1/chat/completions` |
-| Ollama | `http://127.0.0.1:11434/v1/chat/completions` |
-| vLLM | `http://127.0.0.1:8000/v1/chat/completions` |
+| Provider | Endpoint | Key |
+|---|---|---|
+| LM Studio | `http://127.0.0.1:1234/v1/chat/completions` | — |
+| LM Studio (ABtools default) | `http://127.0.0.1:8888/v1/chat/completions` | — |
+| Ollama | `http://127.0.0.1:11434/v1/chat/completions` | — |
+| vLLM | `http://127.0.0.1:8000/v1/chat/completions` | — |
+| OpenRouter | `https://openrouter.ai/api/v1/chat/completions` | required |
+
+Verified live against OpenRouter: 431 models discovered, bearer token sent.
 
 ### Phase 4 — config cascade (largest, defer)
 
@@ -241,6 +249,6 @@ All three are small. Recommendation: land those first, then Phase 1 + 2 together
 
 ## 6. Decisions needed
 
-1. ~~**Auth:** is remote/hosted provider support wanted?~~ **Resolved 2026-09-05: no — local only.** No `api_key` on `RuntimeConfig`, no headers in `_call_llm`, no "Remote" preset.
+1. ~~**Auth:** is remote/hosted provider support wanted?~~ **Resolved 2026-09-05: yes.** Initially answered "local only", reversed the same day for OpenRouter. `llm_api_key`, `_auth_headers()`, `--llm-api-key` and the GUI field are all in place.
 2. ~~**Probe on startup:**~~ **Resolved: probe once at launch**, ~300ms after the window appears. Safe now that scope is local-only.
 3. **Phase 4 scope:** GUI + CLI only, or extend to the MCP server at the same time?
