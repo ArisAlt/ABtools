@@ -926,10 +926,11 @@ tip(ttk.Checkbutton(tag_opts, text="Auto-accept", variable=yes_var),
     "run, but a wrong match is written without you seeing it."
     ).grid(row=0, column=2, sticky="w")
 tip(ttk.Checkbutton(tag_opts, text="Move unmatched", variable=move_unmatched_var),
-    "Move books that nothing could identify into <library>/_unmatched/.\n\n"
+    "Move books that nothing could identify into <library>/_unmatched/ "
+    "(or, when restructuring, <library>/Unknown Author/).\n\n"
     "Left off (the default) they stay exactly where they are in the source "
     "tree, untouched \u2014 for a folder with no usable tags, its path is the "
-    "last clue about what it is."
+    "last clue about what it is.\n\nShared with the Organise tab."
     ).grid(row=1, column=0, sticky="w", pady=(PAD_Y // 2, 0))
 tip(ttk.Checkbutton(tag_opts, text="Auto-decline", variable=no_var),
     "Decline every match that would otherwise prompt (--no).\n\nUse it to "
@@ -1744,6 +1745,7 @@ def restructure() -> None:
     # Snapshot on the UI thread -- see the note in find_dupes().
     commit_flag = commit_var.get()
     copy_flag = copy_var.get()
+    move_unmatched_flag = move_unmatched_var.get()
 
     output_text.configure(state="normal")
     output_text.delete("1.0", tk.END)
@@ -1763,10 +1765,12 @@ def restructure() -> None:
                     dst,
                     dry=not commit_flag,
                     copy=copy_flag,
+                    move_unmatched=move_unmatched_flag,
                 )
                 print(
                     f"Processed {stats['books']} books - moved: {stats['moved']}, "
-                    f"skipped: {stats['skipped']}, dry-run: {stats['dry_run']}"
+                    f"skipped: {stats['skipped']}, dry-run: {stats['dry_run']}, "
+                    f"left in place: {stats['left_in_place']}"
                 )
             if stop_event.is_set():
                 output_queue.put(("status", "stopped"))

@@ -33,8 +33,8 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 | **P0** | [4.10](#410-combobookpy-first-track-tags-short-circuit-the-entire-metadata-pipeline) | combobook trusts the first track's tags unconditionally; junk artist tags become author folders | 🛠️ **Fixed (2026-09-05)** |
 | **P1** | [4.11](#411-read_tags-prefers-tit2-track-title-over-talb-album-title) | `read_tags` returns the *track* title, not the book title | 🛠️ **Fixed (2026-09-05)** |
 | P2 | [4.12](#412-combobookpy-unidentifiable-folders-were-swept-into-_unmatched) | Unmatched folders were moved into `_unmatched/`, destroying their source path | 🛠️ **Fixed (2026-09-05)** |
-| **P1** | [4.13](#413-restructure_for_audiobookshelfpy-books-at-the-source-root-are-skipped-silently) | restructure silently skips books at the source root; reports success having done nothing | 🔴 **Open** |
-| P2 | [4.14](#414-restructure_for_audiobookshelfpy-no-leave-in-place-for-books-it-cannot-identify) | restructure still sweeps unidentified books into `Unknown Author/` | 🔴 **Open** |
+| **P1** | [4.13](#413-restructure_for_audiobookshelfpy-books-at-the-source-root-are-skipped-silently) | restructure silently skips books at the source root; reports success having done nothing | 🛠️ **Fixed (2026-09-05)** |
+| P2 | [4.14](#414-restructure_for_audiobookshelfpy-no-leave-in-place-for-books-it-cannot-identify) | restructure still sweeps unidentified books into `Unknown Author/` | 🛠️ **Fixed (2026-09-05)** |
 | P2 | [4.9](#49-metadatajson-does-not-match-audiobookshelfs-schema) | Sidecar schema likely ignored by Audiobookshelf | 🛠️ **Fixed (2026-09-05)** |
 | — | [8](#8-mcp-tool-runtime-verification) | MCP tools executed for real: 3 working, 2 blocked by the remote host | Verified |
 
@@ -548,7 +548,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
   ```
 
 ### 4.13 `restructure_for_audiobookshelf.py`: Books at the Source Root Are Skipped Silently
-- **Status**: 🔴 **OPEN (found 2026-09-05)** — this is [4.2](#42-combookpy--ablibclimainpy-root-folder-ignored-when-pointing-directly-to-a-book) again, in the one tool that never got the fix. `combobook.py` and `ablib/cli/main.py` were both corrected to `[root, *root.rglob("*")]`; `restructure_for_audiobookshelf.py` was not.
+- **Status**: 🛠️ **FIXED (2026-09-05)** — `discover_books()` now walks `[source_root, *source_root.rglob("*")]` and yields any directory holding a book, deriving the author from the path depth (empty when the layout has no author level). Verified 6/6 discovery parity with `combobook.leaf_dirs()`, and pointing the tool at a single book now processes it. This was [4.2](#42-combookpy--ablibclimainpy-root-folder-ignored-when-pointing-directly-to-a-book) again, in the one tool that never got the fix. `combobook.py` and `ablib/cli/main.py` were both corrected to `[root, *root.rglob("*")]`; `restructure_for_audiobookshelf.py` was not.
 - **File**: [`restructure_for_audiobookshelf.py:128-138`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/restructure_for_audiobookshelf.py#L128-L138) — `discover_books`
 - **Error**: `discover_books()` assumes every directory under the source root is an *author* directory, and only ever yields at depth 2 (`<source>/<Author>/<Book>`) or depth 3 (`<source>/<Author>/<Series>/<Book>`). Two shapes therefore yield nothing:
   1. a book folder sitting **directly** under the source root — the loop treats it as an author directory, looks inside for sub-directories, finds only audio files, and moves on;
@@ -571,7 +571,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 - **Fix**: walk the tree the way `combobook.leaf_dirs()` does — consider the root itself and every descendant, yield any directory that `has_audio()`, and derive the author from the parent only when there is one. Then report a count of directories inspected alongside books found, so a mismatch is visible rather than silent.
 
 ### 4.14 `restructure_for_audiobookshelf.py`: No "Leave In Place" for Books It Cannot Identify
-- **Status**: 🔴 **OPEN (found 2026-09-05)** — the counterpart to [4.12](#412-combobookpy-unidentifiable-folders-were-swept-into-_unmatched), which was fixed only in `combobook.py`.
+- **Status**: 🛠️ **FIXED (2026-09-05)** — `target_for` was split into `resolve_book_metadata()` (what was resolved) and `target_for()` (where it goes), so `restructure_library()` can see the author was never identified and decline the move. Books resolving to `Unknown Author` are left in place and counted as `left_in_place`; `--move-unmatched` restores the sweep, matching combobook's flag name. The counterpart to [4.12](#412-combobookpy-unidentifiable-folders-were-swept-into-_unmatched).
 - **File**: [`restructure_for_audiobookshelf.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/restructure_for_audiobookshelf.py) — `target_for` / `restructure_library`
 - **Error**: when nothing resolves an author, `target_for()` returns `"Unknown Author"` and the book is moved there regardless. Unlike combobook, this tool has no provider or LLM fallback to recover from, and no option to decline the move.
 - **Impact**: on the audit fixture, two books were moved out of a meaningful source path into a shared bucket:
@@ -581,6 +581,20 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
   ```
   `Unknown Author/` is `_unmatched/` by another name, and 4.12 already established why that is the wrong default: the source path is the last evidence about a book nothing could identify.
 - **Fix**: apply the 4.12 decision here too — skip the move when the resolved author is `"Unknown Author"`, report it, and gate the old behaviour behind the same `--move-unmatched` flag so both organisers take the same option name.
+
+- **Verification**:
+  ```
+  $ restructure_for_audiobookshelf.py src lib
+  [unidentified] left in place: src/AttheGatesofDarkness Part1 Track 01/At the Gates of Darkness
+  [dry-run] src/Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon
+              -> lib/Feist/Riftwar Saga/A Darkness at Sethanon      <- was skipped entirely
+  [unidentified] left in place: src/Side 01/Riftwar saga 03 - Silverthorn
+  Processed 6 books (dry-run) - moved: 0, skipped: 0, left in place: 2   <- was "Processed 5"
+
+  $ restructure_for_audiobookshelf.py ".../Faerie Tale (1988)" lib
+  Processed 1 books ...                                             <- was "Processed 0"
+  ```
+  Also confirmed: a book found at the source root no longer takes the source directory's own name as its series, multi-disc books still yield the book folder rather than one entry per disc, and a second pass over the output moves nothing (`moved: 0, skipped: 2`, tree unchanged).
 
 ## 5. Metadata, Providers & Tagging Logic Errors
 

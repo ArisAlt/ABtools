@@ -34,7 +34,7 @@ from ablib.metadata.utils import (
 )
 from ablib.tagging.files import read_sidecar_metadata, read_tags
 
-VERSION = "5.6"
+VERSION = "5.7"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -123,19 +123,49 @@ def parse_book_folder(name: str) -> Tuple[Optional[str], Optional[str], Optional
 def discover_books(source_root: Path) -> Iterable[Tuple[str, Path]]:
     """
     Yield ``(author_name, book_dir)`` pairs for folders containing audio.
-    Supports both flat ``<source>/<Author>/<Book>`` and nested
-    ``<source>/<Author>/<Series>/<Book>`` library layouts.
+
+    Walks the whole tree rather than assuming a fixed depth, so
+    ``<source>/<Author>/<Book>``, ``<source>/<Author>/<Series>/<Book>``,
+    a book sitting directly at ``<source>/<Book>``, and ``source_root``
+    itself being one book are all found. The previous version iterated
+    top-level directories as authors and only ever yielded at depth 2 or 3,
+    silently dropping the last two shapes and still reporting success
+    (bug.md 4.13 -- the same fault as 4.2, which was fixed in combobook and
+    ablib.cli.main but never here).
+
+    A multi-disc book yields the *book* folder, not one entry per disc.
+    ``author_name`` is empty when the layout carries no author level; the
+    caller resolves it from tags, sidecars and the folder name instead.
     """
-    for author_dir in sorted(p for p in source_root.iterdir() if p.is_dir()):
-        author_name = author_dir.name.strip() or "Unknown Author"
-        for sub_dir in sorted(p for p in author_dir.iterdir() if p.is_dir()):
-            if has_audio(sub_dir):
-                yield author_name, sub_dir
-            else:
-                # Check for series folder containing books
-                for sub_sub_dir in sorted(p for p in sub_dir.iterdir() if p.is_dir()):
-                    if has_audio(sub_sub_dir):
-                        yield author_name, sub_sub_dir
+    leaves: list[Path] = []
+    disc_dirs: set[Path] = set()
+    for candidate in [source_root, *sorted(source_root.rglob("*"))]:
+        if not candidate.is_dir():
+            continue
+        discs = disc_children(candidate)
+        if discs:
+            leaves.append(candidate)   # the discs are parts of this book
+            disc_dirs.update(discs)
+            continue
+        if not has_audio(candidate):
+            continue
+        try:
+            if any(c.is_dir() and has_audio(c) for c in candidate.iterdir()):
+                continue               # audio-bearing sub-folders -> not a leaf
+        except OSError:
+            continue
+        leaves.append(candidate)
+
+    for book_dir in leaves:
+        if book_dir in disc_dirs:
+            continue
+        try:
+            depth = len(book_dir.relative_to(source_root).parts)
+        except ValueError:
+            depth = 0
+        # <source>/<Author>/... has an author level; <source>/<Book> does not.
+        author_name = book_dir.parents[depth - 2].name.strip() if depth >= 2 else ""
+        yield author_name, book_dir
 
 
 def _find_audio_file(folder: Path) -> Optional[Path]:
@@ -153,20 +183,22 @@ def _find_audio_file(folder: Path) -> Optional[Path]:
     return None
 
 
-def target_for(
+def resolve_book_metadata(
     author: str,
     book_dir: Path,
-    dest_root: Path,
     series: Optional[str] = None,
-) -> Path:
+) -> Dict[str, Optional[str]]:
     """
-    Compute destination path matching Audiobookshelf canonical layout:
-        <dest_root>/<author>/[series]/<title (year)>
+    Work out a book's author / title / year / series from what is on disk.
 
-    Resolves metadata in priority order:
+    Priority order:
       1. Embedded audio tags
       2. Sidecars (metadata.json, book.nfo)
       3. Folder name & directory structure hierarchy
+
+    Split out of `target_for` so the caller can see *what* was resolved, not
+    just where it would land -- `restructure_library` needs to know the author
+    was never identified in order to decline the move (bug.md 4.14).
     """
     # 1. Inspect embedded tags
     audio_file = _find_audio_file(book_dir)
@@ -177,8 +209,12 @@ def target_for(
 
     # 3. Folder name and hierarchy heuristics
     folder_year, folder_author, folder_series, folder_title = parse_book_folder(book_dir.name)
-    parent_is_series = (
-        book_dir.parent.name != author
+    # Only <source>/<Author>/<Series>/<Book> has a series level. Without the
+    # `author` check a book found directly at the source root would take the
+    # source directory's own name as its series.
+    parent_is_series = bool(
+        author
+        and book_dir.parent.name != author
         and book_dir.parent != book_dir.parent.parent
     )
     hierarchy_series = book_dir.parent.name if parent_is_series else None
@@ -233,12 +269,29 @@ def target_for(
             resolved_title = parsed_title
     resolved_series = resolved_series or hierarchy_series
 
+    return {
+        "author": resolved_author,
+        "title": resolved_title,
+        "year": resolved_year,
+        "series": resolved_series,
+    }
+
+
+def target_for(
+    author: str,
+    book_dir: Path,
+    dest_root: Path,
+    series: Optional[str] = None,
+) -> Path:
+    """Destination path in Audiobookshelf canonical layout:
+    ``<dest_root>/<author>/[series]/<title (year)>``."""
+    resolved = resolve_book_metadata(author, book_dir, series)
     return format_canonical_dest(
         dest_root=dest_root,
-        author=resolved_author,
-        title=resolved_title,
-        year=resolved_year,
-        series=resolved_series,
+        author=resolved["author"],
+        title=resolved["title"],
+        year=resolved["year"],
+        series=resolved["series"],
     )
 
 
@@ -255,18 +308,42 @@ def move_or_copy(src: Path, dst: Path, *, copy: bool) -> None:
         shutil.move(src, dst)
 
 
+UNKNOWN_AUTHOR = "Unknown Author"
+
+
 def restructure_library(
     source: Path,
     dest: Path,
     *,
     dry: bool,
     copy: bool,
+    move_unmatched: bool = False,
 ) -> Dict[str, int]:
-    """Restructure books under source into Audiobookshelf canonical layout under dest."""
-    stats: Dict[str, int] = {"books": 0, "moved": 0, "dry_run": 0, "skipped": 0}
+    """Restructure books under source into Audiobookshelf canonical layout under dest.
+
+    A book whose author nothing could identify is left where it is unless
+    `move_unmatched` is set. This tool has no provider or LLM fallback to
+    recover with, so filing it under "Unknown Author/" is `_unmatched/` by
+    another name -- and its position in the source tree is the last evidence
+    about what it is (bug.md 4.12, 4.14).
+    """
+    stats: Dict[str, int] = {
+        "books": 0, "moved": 0, "dry_run": 0, "skipped": 0, "left_in_place": 0,
+    }
     for author, book_dir in discover_books(source):
         stats["books"] += 1
-        destination = target_for(author, book_dir, dest)
+        resolved = resolve_book_metadata(author, book_dir)
+        if resolved["author"] == UNKNOWN_AUTHOR and not move_unmatched:
+            print(f"[unidentified] left in place: {book_dir}")
+            stats["left_in_place"] += 1
+            continue
+        destination = format_canonical_dest(
+            dest_root=dest,
+            author=resolved["author"],
+            title=resolved["title"],
+            year=resolved["year"],
+            series=resolved["series"],
+        )
         if destination.resolve() == book_dir.resolve():
             stats["skipped"] += 1
             continue
@@ -292,6 +369,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("destination", type=Path, help="Destination Audiobookshelf library root")
     parser.add_argument("--copy", action="store_true", help="Copy instead of move")
     parser.add_argument(
+        "--move-unmatched",
+        action="store_true",
+        help=f"Move books whose author could not be identified into "
+             f"<destination>/{UNKNOWN_AUTHOR}/ (default: leave them in place)",
+    )
+    parser.add_argument(
         "--commit",
         action="store_true",
         help="Perform the move/copy (default is dry-run)",
@@ -307,12 +390,16 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     dry = not args.commit
-    stats = restructure_library(source, destination, dry=dry, copy=args.copy)
+    stats = restructure_library(
+        source, destination, dry=dry, copy=args.copy,
+        move_unmatched=args.move_unmatched,
+    )
 
     summary = (
         f"Processed {stats['books']} books "
         f"({'dry-run' if dry else 'moved'}) - "
-        f"moved: {stats['moved']}, skipped: {stats['skipped']}"
+        f"moved: {stats['moved']}, skipped: {stats['skipped']}, "
+        f"left in place: {stats['left_in_place']}"
     )
     print(summary)
     return 0

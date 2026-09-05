@@ -104,3 +104,29 @@ Lesson worth keeping: the original 4.8 "7/7 parity" test passed because it
 compared two formatters using a pre-built record. A parity test has to start
 from the input the tools actually receive — files on disk — or it verifies the
 half that was never in doubt.
+
+## 2026-09-05 (final pass) — 4.13 / 4.14 fixed, whole tree lint-clean
+
+Re-audit after the merge of PR #53 turned up two more gaps, both fixes that
+had landed in combobook and were never carried across to restructure.
+
+- **4.13**: `discover_books()` assumed a fixed `<Author>/<Book>` depth, so a
+  book at the source root -- or the root itself being one book -- was skipped
+  silently while the run reported success (`Processed 0 books ... skipped: 0`).
+  Now walks `[root, *root.rglob("*")]` like `combobook.leaf_dirs`, deriving the
+  author from path depth. 6/6 discovery parity.
+- **4.14**: split `target_for` into `resolve_book_metadata()` + `target_for()`
+  so `restructure_library` can see the author was never identified and decline
+  the move. `--move-unmatched` restores the sweep, same flag name as combobook.
+
+Also: `repair_m4b` gained the `Iterable` import (harmless at runtime thanks to
+`from __future__ import annotations` -- 7.1 stays correctly refuted -- but it
+was the last static warning), and `ab_encode` lost two function-local imports
+shadowing module-level ones. `pyflakes` is now clean across the whole tree.
+
+Verified but NOT changed: multi-disc books were already handled correctly by
+the old `discover_books` (I suspected a 4.1-style split and was wrong --
+`has_audio` already accounts for bare disc subfolders). Restructuring is
+idempotent: a second pass over the output moves nothing.
+
+Test suite is 38 tests, on `main`.

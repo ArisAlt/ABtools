@@ -18,7 +18,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from typing import Optional
+from typing import Iterable, Optional
 
 from mutagen.mp4 import MP4, MP4StreamInfoError
 

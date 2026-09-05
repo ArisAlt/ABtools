@@ -284,7 +284,6 @@ def main() -> None:
     # Map futures back to folder names so we can label the bar
     future_to_folder: dict[Future[dict[str, str]], str] = {}
     active_futures: set[Future[dict[str, str]]] = set()
-    import threading
     lock = threading.Lock()
 
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
@@ -303,7 +302,6 @@ def main() -> None:
             )
             
             # Background thread to keep the progress bar description lively
-            import time
             stop_monitor = threading.Event()
             def monitor_progress() -> None:
                 while not stop_monitor.is_set():

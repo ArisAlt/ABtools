@@ -308,6 +308,8 @@ Folders are moved to `<library>/Author/Series?/Title (Year)/`.
 
 Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when run with `--copy` alongside `--commit`.
 
+Both also accept `--move-unmatched`. Left off (the default), a book neither tool could identify stays exactly where it is in the source tree rather than being swept into `_unmatched/` (combobook) or `Unknown Author/` (restructure) — for a book with no usable tags, its source path is the last clue about what it is.
+
 
 
 ## `AbtoolsGui.py`

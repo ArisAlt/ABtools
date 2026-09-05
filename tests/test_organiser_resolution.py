@@ -207,3 +207,112 @@ def test_unmatched_folder_is_left_alone(tmp_path):
     assert sorted(p.name for p in book.iterdir()) == before
     assert summary["left_in_place"] == 1
     assert not list((tmp_path / "lib").glob("**/*.mp3"))
+
+
+# ── discovery: every book must be found, whatever the depth ─────────────────
+
+def test_book_directly_at_the_source_root_is_found(tmp_path):
+    """bug.md 4.13: discover_books assumed a fixed <Author>/<Book> depth and
+    silently skipped anything else, while still reporting success."""
+    import combobook
+    import restructure_for_audiobookshelf as restructure
+
+    src = tmp_path / "src"
+    _write_book(src, "Raymond E. Feist/Faerie Tale (1988)", "01.mp3",
+                artist="Raymond E. Feist", album="Faerie Tale", date="1988")
+    _write_book(src, "Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon",
+                "01.mp3")
+
+    found = {b.relative_to(src).as_posix() for _, b in restructure.discover_books(src)}
+    assert "Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon" in found
+    # and it must agree with the other organiser's view of the same tree
+    assert found == {p.relative_to(src).as_posix() for p in combobook.leaf_dirs(src)}
+
+
+def test_pointing_straight_at_one_book_finds_it(tmp_path):
+    """Previously reported 'Processed 0 books ... skipped: 0' and did nothing."""
+    import restructure_for_audiobookshelf as restructure
+
+    book = _write_book(tmp_path / "src", "Raymond E. Feist/Faerie Tale (1988)",
+                       "01.mp3", artist="Raymond E. Feist", album="Faerie Tale")
+    assert [b for _, b in restructure.discover_books(book)] == [book]
+
+
+def test_root_level_book_gets_no_invented_series(tmp_path):
+    """The source directory's own name must not become the series level."""
+    import restructure_for_audiobookshelf as restructure
+
+    src = tmp_path / "my_audiobooks"
+    book = _write_book(src, "Faerie Tale (1988)", "01.mp3",
+                       artist="Raymond E. Feist", album="Faerie Tale", date="1988")
+    author, _ = next(iter(restructure.discover_books(src)))
+    resolved = restructure.resolve_book_metadata(author, book)
+    assert resolved["series"] != "my_audiobooks"
+    assert resolved["series"] is None
+
+
+# ── unidentified books are not swept into Unknown Author/ ───────────────────
+
+def test_restructure_leaves_unidentified_books_in_place(tmp_path):
+    """bug.md 4.14: 'Unknown Author/' is '_unmatched/' by another name."""
+    import restructure_for_audiobookshelf as restructure
+
+    src = tmp_path / "src"
+    book = _write_book(src, "Side 01/Riftwar saga 03 - Silverthorn",
+                       "Side 01 - 01.mp3", artist="Side 01",
+                       album="Riftwar saga 03 - Silverthorn")
+    lib = tmp_path / "lib"
+
+    stats = restructure.restructure_library(src, lib, dry=False, copy=False)
+    assert stats["left_in_place"] == 1
+    assert stats["moved"] == 0
+    assert book.exists()
+    assert not list(lib.rglob("*.mp3"))
+
+
+def test_move_unmatched_restores_the_old_behaviour(tmp_path):
+    import restructure_for_audiobookshelf as restructure
+
+    src = tmp_path / "src"
+    _write_book(src, "Side 01/Riftwar saga 03 - Silverthorn", "Side 01 - 01.mp3",
+                artist="Side 01", album="Riftwar saga 03 - Silverthorn")
+    lib = tmp_path / "lib"
+
+    stats = restructure.restructure_library(
+        src, lib, dry=False, copy=False, move_unmatched=True
+    )
+    assert stats["moved"] == 1
+    assert (lib / "Unknown Author" / "Riftwar saga" / "Silverthorn").is_dir()
+
+
+def test_multi_disc_book_yields_the_book_not_each_disc(tmp_path):
+    import restructure_for_audiobookshelf as restructure
+
+    src = tmp_path / "src"
+    for disc, track in (("Disc 1", "01.mp3"), ("Disc 2", "02.mp3")):
+        _write_book(src, f"Raymond E. Feist/Magician (1982)/{disc}", track,
+                    artist="Raymond E. Feist", album="Magician", date="1982")
+
+    found = [b.relative_to(src).as_posix() for _, b in restructure.discover_books(src)]
+    assert found == ["Raymond E. Feist/Magician (1982)"]
+
+
+def test_restructuring_is_idempotent(tmp_path):
+    """A second pass over the output must not shuffle an already-correct tree."""
+    import restructure_for_audiobookshelf as restructure
+
+    src = tmp_path / "src"
+    _write_book(src, "Raymond E. Feist/Serpentwar Saga/Rage of a Demon King (1998)",
+                "01.mp3", artist="Raymond E. Feist", album="Rage of a Demon King",
+                date="1998")
+    lib = tmp_path / "lib"
+
+    restructure.restructure_library(src, lib, dry=False, copy=False)
+    before = sorted(p.relative_to(lib).as_posix() for p in lib.rglob("*"))
+
+    stats = restructure.restructure_library(lib, lib, dry=False, copy=False)
+    after = sorted(p.relative_to(lib).as_posix() for p in lib.rglob("*"))
+
+    assert stats["moved"] == 0
+    assert stats["skipped"] == stats["books"]
+    assert before == after
