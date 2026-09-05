@@ -59,79 +59,84 @@ root.rowconfigure(0, weight=1)
 #       fg / muted / accent (+hover,+active) / neutral (+hover) /
 #       danger (+hover) / disabled / log_* semantic accents.
 THEMES: dict[str, dict[str, str]] = {
-    # Near-neutral surfaces, colour only in the accent. Ages best.
+    # Near-neutral surfaces, crisp contrast, sapphire blue accent.
     "Neutral Slate": {
-        "bg": "#0f1115", "surface": "#171a21", "field": "#1e222b", "border": "#2a2f3a",
-        "fg": "#e6e8ee", "muted": "#8b93a3",
-        "accent": "#3b82f6", "accent_hover": "#2f6fe0", "accent_active": "#2559b8",
-        "neutral": "#232833", "neutral_hover": "#2e3440",
-        "danger": "#f87171", "danger_hover": "#dc4c4c", "disabled": "#1a1d24",
+        "bg": "#0c0e12", "surface": "#151821", "field": "#1c202c", "border": "#2c3242",
+        "fg": "#e6eaf2", "muted": "#8892a4",
+        "accent": "#3b82f6", "accent_hover": "#2563eb", "accent_active": "#1d4ed8",
+        "neutral": "#202533", "neutral_hover": "#2b3245",
+        "danger": "#f87171", "danger_hover": "#dc2626", "disabled": "#161922",
         "log_green": "#4ade80", "log_red": "#f87171", "log_yellow": "#fbbf24",
         "log_blue": "#60a5fa", "log_cyan": "#22d3ee", "log_magenta": "#c084fc",
     },
     "Tokyo Night": {
-        "bg": "#1a1b26", "surface": "#24283b", "field": "#1f2335", "border": "#363b54",
-        # muted lifted from the canonical #565f89/#7982a9: those are tuned for
-        # Tokyo Night's darker bg and fall under 4.5:1 on our card surface.
-        "fg": "#c0caf5", "muted": "#8b94b6",
-        "accent": "#7aa2f7", "accent_hover": "#6a92e7", "accent_active": "#5a82d7",
-        "neutral": "#2f3549", "neutral_hover": "#3b4261",
-        "danger": "#f7768e", "danger_hover": "#e05a73", "disabled": "#1e2030",
+        "bg": "#16161e", "surface": "#1f2335", "field": "#24283b", "border": "#363b54",
+        "fg": "#c0caf5", "muted": "#7aa2f7",
+        "accent": "#7aa2f7", "accent_hover": "#668ee0", "accent_active": "#547bc8",
+        "neutral": "#292e42", "neutral_hover": "#3b4261",
+        "danger": "#f7768e", "danger_hover": "#e05a73", "disabled": "#1c1f2e",
         "log_green": "#9ece6a", "log_red": "#f7768e", "log_yellow": "#e0af68",
         "log_blue": "#7aa2f7", "log_cyan": "#7dcfff", "log_magenta": "#bb9af7",
     },
     "Catppuccin Mocha": {
-        "bg": "#1e1e2e", "surface": "#313244", "field": "#181825", "border": "#45475a",
-        # muted lifted from Catppuccin's #9399b2 (subtext0), which lands just
-        # under 4.5:1 on the #313244 surface.
-        "fg": "#cdd6f4", "muted": "#9ba1b9",
+        "bg": "#181825", "surface": "#1e1e2e", "field": "#252538", "border": "#36374f",
+        "fg": "#cdd6f4", "muted": "#a6adc8",
         "accent": "#89b4fa", "accent_hover": "#74a3f0", "accent_active": "#5f92e6",
-        "neutral": "#45475a", "neutral_hover": "#585b70",
-        "danger": "#f38ba8", "danger_hover": "#e07396", "disabled": "#252537",
+        "neutral": "#313244", "neutral_hover": "#45475a",
+        "danger": "#f38ba8", "danger_hover": "#e07396", "disabled": "#222233",
         "log_green": "#a6e3a1", "log_red": "#f38ba8", "log_yellow": "#f9e2af",
         "log_blue": "#89b4fa", "log_cyan": "#94e2d5", "log_magenta": "#cba6f7",
     },
     "Nord": {
-        "bg": "#2e3440", "surface": "#3b4252", "field": "#434c5e", "border": "#4c566a",
-        "fg": "#eceff4", "muted": "#aab3c2",
-        "accent": "#88c0d0", "accent_hover": "#8fbcbb", "accent_active": "#5e81ac",
-        "neutral": "#434c5e", "neutral_hover": "#4c566a",
-        "danger": "#bf616a", "danger_hover": "#a54e57", "disabled": "#353b48",
-        # log_red lifted from Nord's aurora red #bf616a, which is only 2.1:1
-        # against Nord's comparatively light field colour.
+        "bg": "#242933", "surface": "#2e3440", "field": "#3b4252", "border": "#434c5e",
+        "fg": "#eceff4", "muted": "#98a4b8",
+        "accent": "#88c0d0", "accent_hover": "#77b2c2", "accent_active": "#5e81ac",
+        "neutral": "#3b4252", "neutral_hover": "#4c566a",
+        "danger": "#bf616a", "danger_hover": "#a54e57", "disabled": "#2c333f",
         "log_green": "#a3be8c", "log_red": "#d4939a", "log_yellow": "#ebcb8b",
         "log_blue": "#81a1c1", "log_cyan": "#88c0d0", "log_magenta": "#b48ead",
     },
     "Gruvbox Dark": {
-        "bg": "#1d2021", "surface": "#282828", "field": "#32302f", "border": "#504945",
+        "bg": "#1d2021", "surface": "#282828", "field": "#32302f", "border": "#4a4440",
         "fg": "#ebdbb2", "muted": "#a89984",
         "accent": "#fabd2f", "accent_hover": "#e6a800", "accent_active": "#d79921",
         "neutral": "#3c3836", "neutral_hover": "#504945",
-        "danger": "#fb4934", "danger_hover": "#cc241", "disabled": "#252525",
+        "danger": "#fb4934", "danger_hover": "#cc241d", "disabled": "#252525",
         "log_green": "#b8bb26", "log_red": "#fb4934", "log_yellow": "#fabd2f",
         "log_blue": "#83a598", "log_cyan": "#8ec07c", "log_magenta": "#d3869b",
     },
     # Matches Dev/Bchips-main/gui.py.
     "Bchips Violet": {
-        "bg": "#1a1b2e", "surface": "#252641", "field": "#2f3055", "border": "#2f3055",
-        "fg": "#e2e8f0", "muted": "#8892a8",
-        "accent": "#7c3aed", "accent_hover": "#6d28d9", "accent_active": "#5b21b6",
-        "neutral": "#2f3055", "neutral_hover": "#3a3b66",
-        "danger": "#ef4444", "danger_hover": "#dc2626", "disabled": "#232438",
+        "bg": "#121324", "surface": "#1a1c36", "field": "#232548", "border": "#353765",
+        "fg": "#e2e8f0", "muted": "#939bb5",
+        "accent": "#8b5cf6", "accent_hover": "#7c3aed", "accent_active": "#6d28d9",
+        "neutral": "#26284d", "neutral_hover": "#36396b",
+        "danger": "#ef4444", "danger_hover": "#dc2626", "disabled": "#1e203b",
         "log_green": "#22c55e", "log_red": "#ef4444", "log_yellow": "#f59e0b",
         "log_blue": "#60a5fa", "log_cyan": "#22d3ee", "log_magenta": "#a78bfa",
     },
-    # Sampled from color-meanings.com's dark-palettes illustration.
-    "Color-Meanings": {
-        "bg": "#161638", "surface": "#302442", "field": "#1b435e", "border": "#563457",
-        "fg": "#e9e7f2", "muted": "#9d94b8",
-        "accent": "#38667e", "accent_hover": "#457a95", "accent_active": "#2c5266",
-        "neutral": "#563457", "neutral_hover": "#6a4269",
-        "danger": "#ff8f9c", "danger_hover": "#d9536a", "disabled": "#241d33",
-        "log_green": "#5ddc9a", "log_red": "#ff8f9c", "log_yellow": "#f2c14e",
-        "log_blue": "#7fb3e8", "log_cyan": "#6fd3e8", "log_magenta": "#c79ae8",
+    "Dracula": {
+        "bg": "#21222c", "surface": "#282a36", "field": "#343746", "border": "#44475a",
+        "fg": "#f8f8f2", "muted": "#a0a6bd",
+        "accent": "#bd93f9", "accent_hover": "#aa7df2", "accent_active": "#915de6",
+        "neutral": "#343746", "neutral_hover": "#44475a",
+        "danger": "#ff5555", "danger_hover": "#e04444", "disabled": "#1e1f29",
+        "log_green": "#50fa7b", "log_red": "#ff5555", "log_yellow": "#f1fa8c",
+        "log_blue": "#8be9fd", "log_cyan": "#8be9fd", "log_magenta": "#ff79c6",
+    },
+    "GitHub Light": {
+        "bg": "#f6f8fa", "surface": "#ffffff", "field": "#f0f2f5", "border": "#d0d7de",
+        "fg": "#1f2328", "muted": "#656d76",
+        "accent": "#0969da", "accent_hover": "#0858b7", "accent_active": "#064593",
+        "neutral": "#eaeef2", "neutral_hover": "#dfe5eb",
+        "danger": "#cf222e", "danger_hover": "#a40e26", "disabled": "#f3f4f6",
+        "log_green": "#1a7f37", "log_red": "#cf222e", "log_yellow": "#9a6700",
+        "log_blue": "#0969da", "log_cyan": "#0550ae", "log_magenta": "#8250df",
     },
 }
+# Backward compatibility alias for any saved configuration
+THEMES["Color-Meanings"] = THEMES["Dracula"]
+
 DEFAULT_THEME = "Neutral Slate"
 LOG_TAG_NAMES = ("red", "green", "yellow", "cyan", "magenta", "blue", "dim")
 SETTINGS_PATH = Path.home() / ".abtools_gui.json"
@@ -229,6 +234,12 @@ def save_settings(**changes: object) -> None:
     data["version"] = SETTINGS_VERSION
     try:
         SETTINGS_PATH.write_text(json.dumps(data, indent=2))
+        # The file can now hold an API key, so keep it owner-only. Best effort:
+        # chmod is a no-op on Windows and must not break saving.
+        try:
+            SETTINGS_PATH.chmod(0o600)
+        except OSError:
+            pass
     except OSError:
         pass
 
@@ -294,19 +305,24 @@ def _restyle_log(p: dict[str, str]) -> None:
 def _style_widgets() -> None:
     root.configure(bg=BG)
     style.configure(".", background=SURFACE, foreground=FG, font=FONT_UI,
+                    bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER,
                     borderwidth=0, focuscolor=SURFACE)
     style.configure("TFrame", background=SURFACE)
     style.configure("App.TFrame", background=BG)
     style.configure("TLabel", background=SURFACE, foreground=FG)
     style.configure("Bg.TLabel", background=BG, foreground=MUTED)
     style.configure("Muted.TLabel", background=SURFACE, foreground=MUTED)
-    style.configure("Bg.TCheckbutton", background=BG, foreground=MUTED)
+    style.configure("Bg.TCheckbutton", background=BG, foreground=MUTED, padding=(4, 2))
     style.map("Bg.TCheckbutton", background=[("active", BG)],
               foreground=[("active", FG)],
-              indicatorcolor=[("selected", ACCENT), ("!selected", FIELD)])
-    # Bchips-style elements: flat cards with a small muted heading instead of a
-    # bordered LabelFrame, a big app title, and a status strip.
-    style.configure("Card.TFrame", background=SURFACE)
+              indicatorcolor=[("selected", ACCENT), ("!selected", FIELD)],
+              bordercolor=[("selected", ACCENT), ("active", ACCENT), ("!selected", BORDER)],
+              checkcolor=[("selected", ON_ACCENT)])
+
+    # Elevated cards: flat surface with a crisp hairline border and quiet section headings.
+    style.configure("Card.TFrame", background=SURFACE, bordercolor=BORDER,
+                    lightcolor=BORDER, darkcolor=BORDER, relief="solid", borderwidth=1)
+    style.configure("CardBody.TFrame", background=SURFACE, borderwidth=0)
     style.configure("CardHeading.TLabel", background=SURFACE, foreground=MUTED,
                     font=FONT_SECTION)
     style.configure("Title.TLabel", background=BG, foreground=FG, font=FONT_TITLE)
@@ -314,29 +330,37 @@ def _style_widgets() -> None:
     style.configure("Dot.TLabel", background=SURFACE, foreground=MUTED, font=FONT_DOT)
     style.configure("State.TLabel", background=SURFACE, foreground=FG, font=FONT_STATE)
     style.configure("Badge.TLabel", background=FIELD, foreground=FG, font=FONT_MONO,
-                    padding=(8, 3))
+                    bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER,
+                    relief="solid", borderwidth=1, padding=(8, 3))
     style.configure("Divider.TFrame", background=BORDER)
 
     # Folder picker list.
     style.configure("Treeview", background=FIELD, fieldbackground=FIELD,
-                    foreground=FG, borderwidth=0, rowheight=26, font=FONT_UI)
+                    foreground=FG, bordercolor=BORDER, borderwidth=1, relief="solid",
+                    rowheight=26, font=FONT_UI)
     style.map("Treeview",
               background=[("selected", ACCENT)],
               foreground=[("selected", ON_ACCENT)])
-    style.configure("Treeview.Heading", background=NEUTRAL, foreground=MUTED,
-                    relief="flat", font=FONT_SECTION)
+    style.configure("Treeview.Heading", background=NEUTRAL, foreground=FG,
+                    bordercolor=BORDER, relief="solid", borderwidth=1, font=FONT_SECTION,
+                    padding=(6, 4))
     style.map("Treeview.Heading", background=[("active", NEUTRAL_HOVER)])
 
-    # Notebook: tabs sit on the window background and the selected one takes the
-    # card surface, so it reads as physically connected to the panel below.
+    # Notebook: seamless tab bar with active tab blending directly into the panel below,
+    # eliminating clam's default #eeebe7 lightcolor client border (the white line).
     style.configure("TNotebook", background=BG, borderwidth=0,
+                    bordercolor=BG, lightcolor=BG, darkcolor=BG,
                     tabmargins=(0, 0, 0, 0), padding=0)
     style.configure("TNotebook.Tab", background=BG, foreground=MUTED,
-                    padding=(18, 10), borderwidth=0, font=FONT_UI)
+                    bordercolor=BG, lightcolor=BG, darkcolor=BG,
+                    padding=(18, 9), borderwidth=0, relief="flat", font=FONT_BOLD)
     style.map("TNotebook.Tab",
               background=[("selected", SURFACE), ("active", NEUTRAL)],
               foreground=[("selected", FG), ("active", FG)],
-              expand=[("selected", (0, 0, 0, 0))])
+              bordercolor=[("selected", BG), ("active", BG)],
+              lightcolor=[("selected", BG), ("active", BG)],
+              darkcolor=[("selected", BG), ("active", BG)],
+              relief=[("selected", "flat"), ("active", "flat")])
     # Drop the dotted focus ring clam draws inside a selected tab.
     try:
         style.layout("TNotebook.Tab", [
@@ -345,65 +369,95 @@ def _style_widgets() -> None:
                     ("Notebook.label", {"side": "top", "sticky": ""})]})]})])
     except tk.TclError:
         pass
+
+    # Checkbuttons: high-contrast indicator with guaranteed visible checkmark on any accent.
     style.configure("TCheckbutton", background=SURFACE, foreground=FG,
-                    indicatorcolor=FIELD, bordercolor=MUTED, focuscolor=SURFACE)
+                    indicatorcolor=FIELD, bordercolor=BORDER, focuscolor=SURFACE,
+                    padding=(4, 2))
     style.map("TCheckbutton",
               background=[("active", SURFACE)],
               foreground=[("disabled", MUTED)],
               indicatorcolor=[("selected", ACCENT), ("!selected", FIELD)],
-              bordercolor=[("selected", ACCENT), ("active", ACCENT)])
+              bordercolor=[("selected", ACCENT), ("active", ACCENT), ("!selected", BORDER)],
+              checkcolor=[("selected", ON_ACCENT)])
 
-    # Cards: flat fill, hairline border, quiet section titles.
+    # Cards / Labelframe fallback
     style.configure("TLabelframe", background=SURFACE, bordercolor=BORDER,
                     relief="solid", borderwidth=1)
     style.configure("TLabelframe.Label", background=SURFACE, foreground=MUTED,
                     font=FONT_SECTION)
 
-    # Buttons share one padding so every action is the same height. The primary
-    # and destructive actions are distinguished by colour, not by size.
+    # Modern action buttons: unified height, clean 1px hairline borders, responsive hovers.
     style.configure("TButton", background=NEUTRAL, foreground=FG, bordercolor=BORDER,
-                    relief="flat", padding=(14, 10), font=FONT_BOLD, anchor="center")
+                    lightcolor=BORDER, darkcolor=BORDER,
+                    relief="solid", borderwidth=1, padding=(14, 8), font=FONT_BOLD, anchor="center")
     style.map("TButton",
               background=[("disabled", DISABLED_BG), ("pressed", BORDER), ("active", NEUTRAL_HOVER)],
-              foreground=[("disabled", MUTED)],
-              bordercolor=[("focus", ACCENT)])
+              foreground=[("disabled", MUTED), ("active", FG)],
+              bordercolor=[("focus", ACCENT), ("active", ACCENT), ("disabled", DISABLED_BG)],
+              lightcolor=[("focus", ACCENT), ("active", ACCENT)],
+              darkcolor=[("focus", ACCENT), ("active", ACCENT)])
+
     style.configure("Primary.TButton", background=ACCENT, foreground=ON_ACCENT,
-                    bordercolor=ACCENT, font=FONT_BOLD)
+                    bordercolor=ACCENT, lightcolor=ACCENT, darkcolor=ACCENT,
+                    relief="solid", borderwidth=1, font=FONT_BOLD, padding=(14, 8), anchor="center")
     style.map("Primary.TButton",
               background=[("disabled", DISABLED_BG), ("pressed", ACCENT_ACTIVE), ("active", ACCENT_HOVER)],
-              foreground=[("disabled", MUTED)])
+              foreground=[("disabled", MUTED), ("active", ON_ACCENT)],
+              bordercolor=[("active", ACCENT_HOVER), ("pressed", ACCENT_ACTIVE)],
+              lightcolor=[("active", ACCENT_HOVER)],
+              darkcolor=[("active", ACCENT_HOVER)])
+
     on_danger = _readable_on(DANGER)
-    style.configure("Danger.TButton", background=NEUTRAL, foreground=DANGER)
+    style.configure("Danger.TButton", background=SURFACE, foreground=DANGER,
+                    bordercolor=DANGER, lightcolor=DANGER, darkcolor=DANGER,
+                    relief="solid", borderwidth=1, font=FONT_BOLD, padding=(14, 8), anchor="center")
     style.map("Danger.TButton",
               background=[("disabled", DISABLED_BG), ("pressed", DANGER_HOVER), ("active", DANGER)],
-              foreground=[("disabled", MUTED), ("active", on_danger), ("pressed", on_danger)])
+              foreground=[("disabled", MUTED), ("active", on_danger), ("pressed", on_danger)],
+              bordercolor=[("active", DANGER_HOVER), ("pressed", DANGER_HOVER)],
+              lightcolor=[("active", DANGER_HOVER)],
+              darkcolor=[("active", DANGER_HOVER)])
 
-    for _cls in ("TEntry", "TSpinbox", "TCombobox"):
-        style.configure(_cls, fieldbackground=FIELD, background=NEUTRAL, foreground=FG,
+    # Text inputs & spinboxes
+    for _cls in ("TEntry", "TSpinbox"):
+        style.configure(_cls, fieldbackground=FIELD, background=FIELD, foreground=FG,
                         bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER,
-                        insertcolor=FG, arrowcolor=MUTED, relief="flat", padding=(8, 6))
+                        insertcolor=FG, relief="solid", borderwidth=1, padding=(9, 6))
         style.map(_cls,
-                  bordercolor=[("focus", ACCENT)],
-                  lightcolor=[("focus", ACCENT)],
-                  darkcolor=[("focus", ACCENT)],
+                  bordercolor=[("focus", ACCENT), ("active", ACCENT)],
+                  lightcolor=[("focus", ACCENT), ("active", ACCENT)],
+                  darkcolor=[("focus", ACCENT), ("active", ACCENT)],
                   fieldbackground=[("disabled", DISABLED_BG), ("readonly", FIELD)],
                   foreground=[("disabled", MUTED)])
-    style.map("TCombobox", arrowcolor=[("disabled", BORDER)])
-    # option_add only affects widgets created afterwards, so an existing
-    # dropdown list keeps its old colours until reopened -- acceptable.
+
+    # Combobox: seamless unified field background (no mismatched arrow button color)
+    style.configure("TCombobox", fieldbackground=FIELD, background=FIELD, foreground=FG,
+                    bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER,
+                    insertcolor=FG, arrowcolor=MUTED, relief="solid", borderwidth=1, padding=(9, 6))
+    style.map("TCombobox",
+              background=[("active", NEUTRAL_HOVER), ("disabled", DISABLED_BG)],
+              bordercolor=[("focus", ACCENT), ("active", ACCENT)],
+              lightcolor=[("focus", ACCENT), ("active", ACCENT)],
+              darkcolor=[("focus", ACCENT), ("active", ACCENT)],
+              fieldbackground=[("disabled", DISABLED_BG), ("readonly", FIELD)],
+              foreground=[("disabled", MUTED)],
+              arrowcolor=[("active", FG), ("disabled", BORDER)])
+
+    # Combobox dropdown listbox options
     root.option_add("*TCombobox*Listbox.background", FIELD)
     root.option_add("*TCombobox*Listbox.foreground", FG)
     root.option_add("*TCombobox*Listbox.selectBackground", ACCENT)
     root.option_add("*TCombobox*Listbox.selectForeground", ON_ACCENT)
 
-    # A slim accent bar reads as progress; the stock trough looked like an empty box.
-    style.configure("Horizontal.TProgressbar", background=ACCENT, troughcolor=NEUTRAL,
-                    bordercolor=NEUTRAL, lightcolor=ACCENT, darkcolor=ACCENT, thickness=8)
-    style.configure("Vertical.TScrollbar", background=NEUTRAL_HOVER, troughcolor=SURFACE,
-                    bordercolor=SURFACE, arrowcolor=MUTED, relief="flat", width=12)
-    style.map("Vertical.TScrollbar", background=[("active", MUTED)])
-    # A bare trough + thumb. clam's stepper arrows at each end are the most
-    # dated widget in the stock theme.
+    # Sleek accent progress bar
+    style.configure("Horizontal.TProgressbar", background=ACCENT, troughcolor=FIELD,
+                    bordercolor=BORDER, lightcolor=ACCENT, darkcolor=ACCENT, thickness=6)
+
+    # Modern minimal scrollbars
+    style.configure("Vertical.TScrollbar", background=NEUTRAL, troughcolor=SURFACE,
+                    bordercolor=SURFACE, arrowcolor=MUTED, relief="flat", width=10)
+    style.map("Vertical.TScrollbar", background=[("active", ACCENT)])
     try:
         style.layout("Vertical.TScrollbar", [
             ("Vertical.Scrollbar.trough", {"sticky": "ns", "children": [
@@ -502,7 +556,8 @@ main.grid(row=0, column=0, sticky="nsew")
 main.columnconfigure(0, weight=1)
 for i in range(6):
     main.rowconfigure(i, weight=0)
-main.rowconfigure(4, weight=1)          # the log takes the slack
+main.rowconfigure(4, weight=1, minsize=150)   # the log takes the slack,
+                                             # and never collapses away
 
 source_var = tk.StringVar()
 dest_var = tk.StringVar()
@@ -648,7 +703,7 @@ def card(parent, heading: str, row: int, *, sticky: str = "ew", pady=(PAD_Y, 0))
     ttk.Label(holder, text=heading, style="CardHeading.TLabel").grid(
         row=0, column=0, columnspan=6, sticky="w", pady=(0, PAD_Y)
     )
-    body = ttk.Frame(holder, style="Card.TFrame")
+    body = ttk.Frame(holder, style="CardBody.TFrame")
     body.grid(row=1, column=0, sticky="nsew")
     holder.columnconfigure(0, weight=1)
     holder.rowconfigure(1, weight=1)
@@ -743,6 +798,7 @@ channels_var = tk.StringVar(value="1")         # ab_encode -c
 workers_var = tk.IntVar(value=4)               # ab_encode -w
 cleanup_var = tk.BooleanVar()                  # ab_encode --cleanup
 api_key_var = tk.StringVar(value=CONFIG.llm_api_key or "")   # --llm-api-key
+remember_key_var = tk.BooleanVar()             # opt in to storing it on disk
 provider_var = tk.StringVar(value="LM Studio") # proposal.md Phase 3
 
 def models_url(endpoint: str) -> str:
@@ -833,6 +889,16 @@ def _fit_notebook(_event: object = None) -> None:
     tab.update_idletasks()
     notebook.configure(height=max(tab.winfo_reqheight(), 140))
 
+    # Grow the window if the new tab would push the log off the bottom. Tag &
+    # Move needs ~490px against Organise's ~190, so switching to it inside a
+    # fixed-size window silently unmapped the log pane entirely -- output was
+    # being written the whole time, just to a widget that was off-screen.
+    root.update_idletasks()
+    needed = main.winfo_reqheight() + PAD_X * 2
+    if root.winfo_height() < needed:
+        cap = root.winfo_screenheight() - 90
+        root.geometry(f"{root.winfo_width()}x{min(needed, cap)}")
+
 
 notebook.bind("<<NotebookTabChanged>>", _fit_notebook)
 
@@ -863,12 +929,15 @@ tip(ttk.Checkbutton(tag_opts, text="Auto-decline", variable=no_var),
     ).grid(row=0, column=3, sticky="w")
 
 ttk.Label(tag_tab, text="LLM threshold:").grid(row=1, column=0, sticky="w", pady=(PAD_Y, 0))
-threshold_spin = ttk.Spinbox(tag_tab, from_=80, to=100, textvariable=llm_threshold_var, width=6)
+threshold_spin = ttk.Spinbox(tag_tab, from_=0, to=100, textvariable=llm_threshold_var,
+                             width=6, increment=5)
 threshold_spin.grid(row=1, column=1, sticky="w", pady=(PAD_Y, 0))
 Tooltip(threshold_spin,
-        "Provider matches scoring below this are sent to the LLM, and if that "
-        "cannot help you are asked to confirm.\n\nHigher means more checking "
-        "and more prompts. Clamped to 80-100.")
+        "Providers are searched first. A best score BELOW this goes to the LLM "
+        "fallback, and if that cannot help either you are asked to confirm.\n\n"
+        "85 (default) trusts only strong matches. 70 accepts weaker ones "
+        "without asking. 0 disables the LLM entirely and uses providers only; "
+        "100 sends everything short of a perfect match to the LLM.")
 tip(ttk.Checkbutton(tag_tab, text="Debug output", variable=debug_var),
     "Print full tracebacks and LLM diagnostics to the log."
     ).grid(row=1, column=2, sticky="w", pady=(PAD_Y, 0))
@@ -937,8 +1006,37 @@ llm_controls.append(api_key_entry)
 Tooltip(api_key_entry,
         "Bearer token for a hosted endpoint such as OpenRouter. Local servers "
         "(LM Studio, Ollama, vLLM) ignore it and can be left blank.\n\n"
-        "Deliberately NOT saved to disk. Pre-filled from ABTOOLS_LLM_API_KEY or "
-        "OPENROUTER_API_KEY if either is set, which is the safer way to supply it.")
+        "Pre-filled from ABTOOLS_LLM_API_KEY or OPENROUTER_API_KEY when either "
+        "is set, which avoids storing it at all.")
+
+remember_key_check = ttk.Checkbutton(llm_frame, text="Remember key",
+                                     variable=remember_key_var,
+                                     command=lambda: _remember_key_changed())
+remember_key_check.grid(row=7, column=1, columnspan=3, sticky="w", pady=(PAD_Y // 2, 0))
+llm_controls.append(remember_key_check)
+Tooltip(remember_key_check,
+        "Save the key in ~/.abtools_gui.json so it survives a restart.\n\n"
+        "It is stored in PLAIN TEXT. The file is written with owner-only "
+        "permissions (0600), but anything running as you can still read it. "
+        "An environment variable is safer; untick this to erase a stored key.")
+
+
+def _remember_key_changed() -> None:
+    """Persist or erase the key the moment the choice is made."""
+    if remember_key_var.get():
+        save_settings(llm_api_key=(api_key_var.get() or "").strip(),
+                      remember_key=True)
+    else:
+        # Actively remove a previously stored key rather than just stopping
+        # future writes -- unticking must delete what is already on disk.
+        data = load_settings()
+        data.pop("llm_api_key", None)
+        data["remember_key"] = False
+        try:
+            SETTINGS_PATH.write_text(json.dumps(data, indent=2))
+            SETTINGS_PATH.chmod(0o600)
+        except OSError:
+            pass
 
 
 def refresh_models(*, explicit: bool = False) -> None:
@@ -1162,16 +1260,16 @@ output_text = tk.Text(
     borderwidth=0,
     highlightthickness=1,
     highlightbackground=BORDER,
-    highlightcolor=BORDER,
+    highlightcolor=ACCENT,
     background=FIELD,
     foreground=FG,
     insertbackground=FG,
     selectbackground=ACCENT,
-    selectforeground="#ffffff",
+    selectforeground=ON_ACCENT,
     padx=12,
     pady=10,
-    spacing1=1,
-    spacing3=1,
+    spacing1=2,
+    spacing3=2,
 )
 output_text.grid(row=0, column=0, sticky="nsew")
 
@@ -1721,7 +1819,12 @@ def tag_only() -> None:
 
                 base_for_logs = src if src.is_dir() else src.parent
                 core_config.update_paths(base_for_logs)
-                CONFIG.debug = False
+                # Do NOT reset CONFIG.debug here. apply_llm_settings() has just
+                # honoured the Debug checkbox, and every LLM diagnostic in
+                # ablib.metadata.llm is gated on it -- request failures, HTTP
+                # status codes, non-JSON replies, tool-loop aborts. Forcing it
+                # False made a failing endpoint (an unauthenticated OpenRouter
+                # call, say) report nothing but "no metadata found".
 
                 leaves = tag_cli.walk_leaves(src)
                 args = tag_args
@@ -2116,9 +2219,16 @@ if __name__ == "__main__":
         _value = _saved.get(_key)
         if isinstance(_value, str) and _value.strip():
             _var.set(_value)
-    # `cleanup` (deletes source audio) and the API key are deliberately not
-    # restored -- like Commit, destructive or secret settings should be a
-    # fresh decision each run.
+    # A stored key is restored only if the user opted in, and never overrides
+    # one supplied by the environment -- exporting ABTOOLS_LLM_API_KEY should
+    # still win. `cleanup` (deletes source audio) is never restored: like
+    # Commit, a destructive setting should be a fresh decision each run.
+    if isinstance(_saved.get("remember_key"), bool):
+        remember_key_var.set(_saved["remember_key"])
+    if remember_key_var.get() and not CONFIG.llm_api_key:
+        _stored_key = _saved.get("llm_api_key")
+        if isinstance(_stored_key, str) and _stored_key.strip():
+            api_key_var.set(_stored_key.strip())
     for _key, _var in (("copy", copy_var), ("yes", yes_var), ("recurse", recurse_var),
                        ("network", network_var), ("only_src_log", only_src_log_var),
                        ("use_llm", use_llm_var), ("no", no_var), ("debug", debug_var),
@@ -2150,6 +2260,7 @@ if __name__ == "__main__":
             use_llm=use_llm_var.get(), timeout=timeout_var.get(),
             threads=threads_var.get(), compare_by=compare_by_var.get(),
             llm_endpoint=llm_endpoint_var.get(), llm_model=llm_model_var.get(),
+            remember_key=remember_key_var.get(),
             no=no_var.get(), llm_threshold=llm_threshold_var.get(),
             debug=debug_var.get(), show_files=show_files_var.get(),
             overwrite=overwrite_var.get(), bitrate=bitrate_var.get(),
@@ -2157,6 +2268,9 @@ if __name__ == "__main__":
             provider=provider_var.get(),
             geometry=root.winfo_geometry(),
         )
+        # Only written when explicitly opted in; otherwise any stored key is
+        # cleared, so unticking the box actually removes it.
+        _remember_key_changed()
         root.destroy()
 
     root.protocol("WM_DELETE_WINDOW", _persist_and_close)

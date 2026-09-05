@@ -16,9 +16,15 @@ from ablib.metadata.utils import derive_label_hints
 from .http import audible, gbooks, goodreads, openlib
 
 try:
-    from duckduckgo_search import DDGS
-except ImportError:
-    DDGS = None
+    # duckduckgo_search was renamed to ddgs; importing the old name emits a
+    # RuntimeWarning on every search. Same DDGS class and same result keys
+    # (title/href/body), so nothing below changes.
+    from ddgs import DDGS
+except ImportError:  # pragma: no cover - fall back to the pre-rename package
+    try:
+        from duckduckgo_search import DDGS
+    except ImportError:
+        DDGS = None
 
 CONFIG = config.config
 
@@ -347,7 +353,7 @@ def _ddg_search_raw(query: str, max_results: int = 5) -> list[dict[str, Any]]:
     try:
         results = []
         with DDGS() as ddgs:
-            # ddgs.text returns an iterator of dicts {'title':..., 'href':..., 'body':...}
+            # ddgs.text yields dicts {'title':..., 'href':..., 'body':...}
             for r in ddgs.text(query, max_results=max_results):
                 results.append({
                     "title": r.get("title"),

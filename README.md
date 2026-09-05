@@ -82,7 +82,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 
 - Whisper transcription settings have been retired from the GUI and CLI; tagging now relies solely on metadata lookups and LM Studio research.
 
-- GUI ships seven dark themes (Neutral Slate, Tokyo Night, Catppuccin Mocha, Nord, Gruvbox Dark, Bchips Violet, Color-Meanings), switchable live from the Theme dropdown and remembered between launches in `~/.abtools_gui.json`. Every theme is contrast-checked to WCAG AA for UI text.
+- GUI ships eight polished themes (Neutral Slate, Tokyo Night, Catppuccin Mocha, Nord, Gruvbox Dark, Bchips Violet, Dracula, and GitHub Light), switchable live from the Theme dropdown and remembered between launches in `~/.abtools_gui.json`. Every theme is contrast-checked to WCAG AA for UI text.
 
 - GUI shows hover help on every button, field and checkbox, explaining what each option actually does - including the non-obvious ones (Timeout only applies with Network Mode on; Destination is optional for Find Duplicates; Find Duplicates never deletes anything).
 
@@ -310,11 +310,11 @@ Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when 
 
 The action row is Tag / Move / Restructure / Find Duplicates / Stop, all one height, with the primary and destructive actions distinguished by colour rather than size.
 
-**Theming.** A Theme dropdown in the bottom status row switches between seven dark palettes live, without restarting; the choice is saved to `~/.abtools_gui.json`. Palettes are plain data in the `THEMES` dict at the top of `AbtoolsGui.py`, so adding one is a single entry - `apply_theme()` restyles every widget, including already-printed log output. Fonts are resolved against the families actually installed rather than hardcoded, so the UI does not fall back to something arbitrary on Linux or macOS.
+**Theming.** A Theme dropdown in the bottom status row switches between eight curated dark and light palettes live, without restarting; the choice is saved to `~/.abtools_gui.json`. Palettes are plain data in the `THEMES` dict at the top of `AbtoolsGui.py`, so adding one is a single entry - `apply_theme()` restyles every widget, including already-printed log output. Fonts are resolved against the families actually installed rather than hardcoded, so the UI does not fall back to something arbitrary on Linux or macOS.
 
 **Hover help.** Every button, entry, spinbox, combobox and checkbox carries a tooltip describing what it actually does. Tooltips are clamped to the screen so the bottom-row buttons do not push them off the edge.
 
-**Providers.** A Provider dropdown covers LM Studio, Ollama, vLLM and **OpenRouter**, filling in the endpoint and checking it. The local runners need no credentials; OpenRouter needs an API key, supplied either in the API key field or — preferably — via the `ABTOOLS_LLM_API_KEY` or `OPENROUTER_API_KEY` environment variable. The key is held in memory only and is never written to the settings file. The CLI takes the same value via `--llm-api-key`.
+**Providers.** A Provider dropdown covers LM Studio, Ollama, vLLM and **OpenRouter**, filling in the endpoint and checking it. The local runners need no credentials; OpenRouter needs an API key, supplied either in the API key field or — preferably — via the `ABTOOLS_LLM_API_KEY` or `OPENROUTER_API_KEY` environment variable. By default the key is held in memory only. Ticking **Remember key** stores it in `~/.abtools_gui.json` so it survives a restart — in **plain text**, though the file is written owner-only (`0600`). Unticking erases the stored key rather than merely stopping future writes. An environment variable is safer and always takes precedence over a stored key. The CLI takes the same value via `--llm-api-key`.
 
 **Model discovery.** The Model dropdown is filled from the server itself: the GUI queries the endpoint's `/v1/models` shortly after launch, whenever you finish editing the Endpoint field, and on demand via the `↻` button. A status line reports how many models the server has loaded, warns when the selected model is not among them, and says so plainly when the endpoint cannot be reached — in which case the list falls back to models you have used before. Endpoint, model and the recent-model list persist in `~/.abtools_gui.json`. You can still type any model name.
 

@@ -28,6 +28,8 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 | P2 | [5.x](#5-metadata-providers--tagging-logic-errors) | Metadata corruption and crashes on specific inputs | 🛠️ Fixed (5.1-5.14) |
 | P2 | [2.3](#23-ablibclimainpy-preview-mode-fails-to-inspect-or-preview-metadata) | Preview showed folder names only | 🛠️ Fixed |
 | P3 | [7.x](#7-edge-cases-type-errors--performance-issues) | Latent / narrow edge cases | Mostly closed — [7.3](#73-combobookpy-unsafe-index-access-in-tags_from_track) open |
+| **P1** | [4.6](#46-restructure_for_audiobookshelfpy-ignores-tags-and-sidecars-entirely) / [4.7](#47-restructure_for_audiobookshelfpy-no-series-level-in-the-output-layout) / [4.8](#48-the-two-organisers-produce-incompatible-layouts) | Restructure ignores tags and drops series; the two organisers disagree | **Open** |
+| P2 | [4.9](#49-metadatajson-does-not-match-audiobookshelfs-schema) | Sidecar schema likely ignored by Audiobookshelf | Open |
 | — | [8](#8-mcp-tool-runtime-verification) | MCP tools executed for real: 3 working, 2 blocked by the remote host | Verified |
 
 > **Fix ordering note (already observed):** 2.1 had to be fixed *before* 3.1. The dry-run tag writes were only harmless while the ffmpeg bug made every write fail. Fixing 3.1 first would have turned a silent no-op into live data modification during preview.
@@ -340,6 +342,51 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ---
 
+### 4.6 `restructure_for_audiobookshelf.py`: Ignores Tags and Sidecars Entirely
+- **Status**: ✅ **Verified** — reproduced with a fully tagged book. *(Found 2026-09-05 while checking Audiobookshelf compliance.)*
+- **File**: [`restructure_for_audiobookshelf.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/restructure_for_audiobookshelf.py) — `target_for` / `parse_book_folder`
+- **Error**: the module imports only `argparse, shutil, sys, pathlib, typing, re`. There is **no `mutagen` and no `json`**, so it has no mechanism to read either embedded tags or `metadata.json` / `book.nfo`. Every value is derived from the folder name by `parse_book_folder()`.
+- **Contradicts the docs**: `README.md` states *"It reads tags from the audio files first, then `metadata.json` or `book.nfo`, and finally falls back to folder names."* Only the last of those three happens.
+- **Impact**: reproduced against a book whose tags carried `date=2006` and whose `metadata.json` carried `year=2006`, `series=Mistborn`:
+
+  ```
+  input   Brandon Sanderson/The Final Empire   (tagged, both sidecars present)
+  output  Brandon Sanderson/Unknown - The Final Empire
+  ```
+
+  The year was available in two places and still came out `Unknown`, purely because the folder name lacked it.
+- **Fix**: resolve metadata in the documented order — embedded tags, then `metadata.json`/`book.nfo`, then the folder name — before computing the destination.
+
+### 4.7 `restructure_for_audiobookshelf.py`: No Series Level in the Output Layout
+- **Status**: ✅ **Verified** by inspection and reproduction. *(Found 2026-09-05.)*
+- **File**: [`restructure_for_audiobookshelf.py:102-106`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/restructure_for_audiobookshelf.py#L102-L106)
+- **Code**: `return dest_root / author_slug / book_slug`, where `book_slug = slug(f"{year} - {title}")`.
+- **Error**: there is no series directory in the path, so the `Author/Series/Book` arrangement Audiobookshelf documents for series cannot be produced. A book known to be *Mistborn #1* lands directly under the author.
+- **Also contradicts the docs**: `README.md` claims the output is `<library>/Author/Series?/Title (Year)/`, that *"Series names and volume numbers are detected with fuzzy matching (e.g. `Book 3`, `#3`, `Volume III`)"*, and that `--interactive` *"prompts for missing series info"*. None of that exists — the parser accepts only `--copy`, `--commit` and `--version`.
+- **Fix**: insert an optional series component, populated from whatever 4.6 resolves.
+
+### 4.8 The Two Organisers Produce Incompatible Layouts
+- **Status**: ✅ **Verified** — both run against the same book. *(Found 2026-09-05.)*
+- **Files**: [`restructure_for_audiobookshelf.py:102`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/restructure_for_audiobookshelf.py#L102) vs [`combobook.py:741-758`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L741-L758)
+- **Error**: the same toolkit emits two different conventions for the same book:
+
+  | Tool | Result |
+  |---|---|
+  | `restructure_for_audiobookshelf.py` | `Brandon Sanderson/Unknown - The Final Empire` |
+  | `combobook.py` (`dest_path`) | `Brandon Sanderson/Mistborn/The Final Empire (2006)` |
+
+  They differ in the series level, in year placement (`Year - Title` vs `Title (Year)`), and consequently in sort order.
+- **Impact**: using Move and Restructure over one library leaves it in two conventions, which defeats the point of an organiser. Whichever is chosen, both tools should emit it.
+- **Fix**: pick one canonical layout — `combobook`'s is the closer match to Audiobookshelf and the one the README already documents — and have both tools build the destination through a single shared helper so they cannot drift again.
+
+### 4.9 `metadata.json` Does Not Match Audiobookshelf's Schema
+- **Status**: ⚠️ **Verified on our side; the ABS key names need confirming against current Audiobookshelf docs before acting.** *(Found 2026-09-05.)*
+- **File**: [`ablib/tagging/files.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/tagging/files.py) — `export_metadata`
+- **Error**: `export_metadata` writes `title`, `author`, `year`, `series`, `series_index`. Audiobookshelf's own `metadata.json` uses `authors` (an array), `publishedYear`, `narrators`, and a series array — so of the fields we emit, only `title` and `series` overlap by name.
+- **Impact**: Audiobookshelf most likely ignores the file and falls back to embedded tags and folder-name parsing. That makes [4.6](#46-restructure_for_audiobookshelfpy-ignores-tags-and-sidecars-entirely) worse, because the folder name is the only thing `restructure` consults.
+- **Caveat**: the ABtools side above is measured. The ABS field names are from recollection and should be checked against the current Audiobookshelf documentation before any schema change — writing to a wrongly guessed schema would be worse than the present generic file.
+- **Fix**: either emit ABS's schema (once confirmed) alongside the generic file, or document plainly that `metadata.json` is for other consumers and that Audiobookshelf is served by tags plus folder layout.
+
 ## 5. Metadata, Providers & Tagging Logic Errors
 
 ### 5.1 `ablib/tagging/files.py`: Non-String Metadata Crashes XML Serializer
@@ -499,7 +546,15 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 - **Correction**: `scaffold.md` describes the repo file as *"Sample client configuration"*, and `README.md` documents `~/.abclient.json` as the real location. The current behaviour matches both documents, and `AbClient(path=...)` already allows an explicit override. Treating the repo sample as live config would be a **behaviour change**, and would make a checked-in file silently override user settings.
 - **Action**: Optional ergonomics improvement only. If adopted, load the repo file as a *lower*-precedence default beneath `~/.abclient.json`, never above it.
 
+### 6.3 `AbtoolsGui.py`: Tkinter `clam` Default `lightcolor: #EEEBE7` Draws Glaring White Line Around Tab Container
+- **Status**: 🛠️ **FIXED (2026-09-05)** — configured root `.` with `bordercolor/lightcolor/darkcolor = BORDER` and `TNotebook` with `bordercolor=BG, lightcolor=BG, darkcolor=BG`, borderless flat tabs.
+- **File**: [`AbtoolsGui.py:305-365`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/AbtoolsGui.py#L305-L365)
+- **Error**: In Tkinter's `clam` theme engine, the `Notebook.client` container element draws a 3D bevel around the active tab area using a built-in default `lightcolor: #EEEBE7` (off-white) unless overridden. Because `style.configure(".")` and `TNotebook` omitted `lightcolor`, a bright white rectangular line framed the entire notebook content across dark themes (measured empirically across `y=36`, `y=514`, `x=24`, `x=693`).
+- **Impact**: In all dark themes, the tab area was framed by a jarring, high-contrast off-white line that cut through the dark theme styling.
+- **Fix applied**: Configured root `.` style with `bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER` to eliminate any clam `#eeebe7` fallback, and configured `TNotebook` with `bordercolor=BG, lightcolor=BG, darkcolor=BG` and `tabmargins=(0, 0, 0, 0)` with borderless `flat` tabs. Active tabs now seamlessly flow directly into the tab card body with zero white border.
+
 ---
+
 
 ## 7. Edge Cases, Type Errors & Performance Issues
 

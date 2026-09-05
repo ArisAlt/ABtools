@@ -37,7 +37,11 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
         llm_threshold = int(getattr(args, "llm_threshold", 85))
     except (TypeError, ValueError):
         llm_threshold = 85
-    llm_threshold = max(80, min(100, llm_threshold))
+    # Clamped to 0-100, not 80-100. The old floor silently raised any request
+    # below 80 -- asking for 70 quietly became 80 and the LLM fired far more
+    # often than intended. 0 disables the fallback entirely (no score is below
+    # it); 100 sends everything short of a perfect match to the LLM.
+    llm_threshold = max(0, min(100, llm_threshold))
     setattr(args, "llm_threshold", llm_threshold)
 
     # Preview runs the whole pipeline -- lookups, refinement, validation -- and
@@ -399,7 +403,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=85,
         metavar="SCORE",
-        help="use the local LLM when provider score falls below SCORE (default: 85, minimum: 80)",
+        help=(
+            "Use the LLM when the best provider score falls below SCORE "
+            "(default: 85, range 0-100). 0 never uses it; 100 uses it for "
+            "anything short of a perfect match."
+        ),
     )
     parser.add_argument(
         "--show-config",
@@ -450,7 +458,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         CONFIG.llm_api_key = args.llm_api_key.strip() or None
 
 
-    args.llm_threshold = max(80, min(100, args.llm_threshold))
+    args.llm_threshold = max(0, min(100, args.llm_threshold))
     if not args.root.exists():
         sys.exit("path not found")
 

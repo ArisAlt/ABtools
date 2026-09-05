@@ -1,4 +1,4 @@
-<!-- ABtools/scaffold.md - v2.31 - 2025-11-06 -->
+<!-- ABtools/scaffold.md - v2.32 - 2026-09-05 -->
 # Audiobook Tagging & Organization - Scaffold
 
 ## Project Layout
@@ -37,7 +37,7 @@ AudioBooks_tools/
 - **Tagging CLI (`ablib/cli/main.py`)** drives folder analysis, metadata lookups, optional tag stripping, and writes tags plus `metadata.json` / `book.nfo`. It normalises guesses from folder names, consults multiple providers (Audible, Goodreads, Open Library, Google Books), escalates to LM Studio tooling when confidence drops below 90, and records `tag_log.txt` / `review_log.txt` alongside the selected root.
 - **Legacy shim (`search_and_tag.py`)** keeps the historical command name; it simply imports and runs `ablib.cli.main.main()`.
 - **`combobook.py`** wraps the CLI to tag audio, then reorganises folders into `Author/Year - Title`. Supports `--commit`, `--copy`, `--yes`, and embeds tags via FFmpeg so renamed tracks carry metadata.
-- **`AbtoolsGui.py`** provides a Tkinter front end with source/library pickers, commit/copy/yes toggles, duplicate scan and restructure actions, adjustable hashing threads and network timeouts, and LM Studio endpoint/model controls mirroring CLI defaults with scrollable log output.
+- **`AbtoolsGui.py`** provides a Tkinter front end with source/library pickers, commit/copy/yes toggles, duplicate scan and restructure actions, adjustable hashing threads and network timeouts, dynamic model auto-discovery, 8 curated dark/light themes, and scrollable log output.
 - **`restructure_for_audiobookshelf.py`** reorganises `<source>/<Author>/<Book>` folders into `<dest>/<Author>/<Year - Title>` using simple year/title heuristics, trimming disc prefixes and tails. Runs as a dry-run unless `--commit` is supplied, with an optional `--copy` mode.
 - **`flatten_discs.py`** flattens `Disc 01` style folders into a single directory with sequentially numbered tracks. Preview-only by default; add `--commit` (and optionally `--yes`) to apply changes.
 - **`find_duplicates.py`** scans one or two roots, compares by SHA1 hash or filename, writes grouped results to `duplicate_log.txt`, shows progress (with optional `tqdm`), supports per-file timeouts for UNC paths, and parallelises hashing (`--threads`).
@@ -72,10 +72,10 @@ AudioBooks_tools/
 | Tagging CLI | 2.30 | `ablib/core/constants.py` |
 | combobook | 1.18 | `combobook.py` |
 | AbtoolsGui | 0.17 | `AbtoolsGui.py` |
-| flatten_discs | 1.4 | `flatten_discs.py` |
+| flatten_discs | 1.5 | `flatten_discs.py` |
 | find_duplicates | 0.5 | `find_duplicates.py` |
 | abclient | 0.2 | `abclient.py` |
 | restructure | 5.4 | `restructure_for_audiobookshelf.py` |
-| repair_m4b | 1.0 | `repair_m4b.py` |
+| repair_m4b | 1.1 | `repair_m4b.py` |
 | MCP server | 1.1.0 | `mcp_server/server.py` |
-| ab_encode | 1.0 | `ab_encode.py` |
+| ab_encode | 1.3 | `ab_encode.py` |
