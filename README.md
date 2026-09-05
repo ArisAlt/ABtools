@@ -18,13 +18,13 @@ This repository contains small utilities for preparing audiobook folders for [Au
 
 - Uses data from Audible, Goodreads, OpenLibrary, and Google Books
 
-- Reorganizes folders into a clean structure using metadata from tags,
+- Reorganizes folders into Audiobookshelf canonical layout using metadata from tags,
 
-  `metadata.json` or `book.nfo`: `Author/Year - Title`
+  `metadata.json` or `book.nfo`: `Author/[Series]/Title (Year)`
 
 - Strips old or broken tags if needed
 
-- Writes metadata to both `metadata.json` and `book.nfo` (for Kodi-style readers)
+- Writes metadata to both `metadata.json` (conforming to Audiobookshelf's official sidecar schema) and `book.nfo` (for Kodi/XML-style readers)
 
 - Preview (omit `--commit`, or untick Commit in the GUI) runs the full pipeline — folder guess, provider lookups and scores, LLM/MCP refinement, validation — and prints exactly what it *would* write, without touching a single file or log
 
@@ -178,10 +178,10 @@ pip install -r requirements.txt
 
 
 
-| `combobook.py` | v1.18 | `combobook.py` |
+| `combobook.py` | v1.20 | `combobook.py` |
 | `AbtoolsGui.py` | v0.17 | `AbtoolsGui.py` |
 | `flatten_discs.py` | v1.5 | `flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v5.4 | `restructure_for_audiobookshelf.py` |
+| `restructure_for_audiobookshelf.py` | v5.5 | `restructure_for_audiobookshelf.py` |
 | `repair_m4b.py` | v1.1 | `repair_m4b.py` |
 | `search_and_tag.py` | v2.30 | `search_and_tag.py` |
 | `ab_encode.py` | v1.3 | `ab_encode.py` |
@@ -198,7 +198,7 @@ Run any script with `--version` to print its version and file location.
 
 ## `combobook.py`
 
-`combobook.py` tags, flattens and moves audiobook folders in a single pass. It searches Open Library, Google Books and Audible, ranks potential matches using fuzzy similarity and asks you to confirm before tagging and moving files. When provider lookups and prompts fail, the script now consults the shared LM Studio fallback to propose metadata, tags every track automatically, and logs which folders used the AI assist. Only when both paths fail does it fall back to moving the folder into an `_unmatched` directory inside your library for manual review.
+`combobook.py` tags, flattens and moves audiobook folders in a single pass. It searches Open Library, Google Books and Audible, ranks potential matches using fuzzy similarity and asks you to confirm before tagging and moving files. Existing tags are treated as evidence rather than as the answer: an `artist` frame holding a disc marker, a track index or the file's own name is rejected and the book falls through to the folder name, the providers and the LLM, so a bad tag can no longer become a top-level library folder. With `--yes`, matches below `--auto-accept-score` (0.75) are declined, and two candidates by different authors tying on the same title are refused rather than decided by sort order. When provider lookups and prompts fail, the script now consults the shared LM Studio fallback to propose metadata, tags every track automatically, and logs which folders used the AI assist. When both paths fail the folder is **left exactly where it is**, untouched, and reported as unmatched — for a book with no usable tags, its position in the source tree is the last clue about what it is, and flattening it into a single `_unmatched` bucket throws that away. Pass `--move-unmatched` (or tick **Move unmatched** in the GUI) to collect them under `<library>/_unmatched/` instead.
 
 
 
@@ -291,6 +291,12 @@ python combobook.py "source_folder" "library_folder" --commit --yes
 # Tag + copy instead of move
 
 python combobook.py "source_folder" "library_folder" --commit --copy
+```
+
+Collect the books nothing could identify into `<library>/_unmatched/` rather than leaving them in the source tree:
+
+```bash
+python combobook.py "source_folder" "library_folder" --commit --move-unmatched
 
 ```
 
@@ -392,7 +398,7 @@ Successful LLM suggestions still skip the review log and are written to tags, me
 
 ## `restructure_for_audiobookshelf.py`
 
-`restructure_for_audiobookshelf.py` reorganizes a source collection into Audiobookshelf layout. It reads tags from the audio files first, then `metadata.json` or `book.nfo`, and finally falls back to folder names. Disc folders are flattened and books are moved or copied to `<library>/Author/Series?/Title (Year)/`. Series names and volume numbers are detected with fuzzy matching (e.g. `Book 3`, `#3`, `Volume III`). When run with `--interactive`, the script prompts for missing series info. Metadata matching is handled by `search_and_tag.py`. Track renaming now avoids collisions by staging files with temporary names first.
+`restructure_for_audiobookshelf.py` reorganizes a source collection into Audiobookshelf canonical layout (`<dest>/Author/[Series]/Title (Year)` or `<dest>/Author/[Series]/Title` if year is omitted). It resolves metadata in priority order: embedded audio tags first (ID3, MP4, Vorbis), then sidecars (`metadata.json` or `book.nfo`), and finally falls back to folder name patterns and directory hierarchy. Series names and indices are detected via pattern matching (e.g. `Book 3`, `#3`, `Vol. 2`) or source folder nesting. Multi-disc books (`Disc 1`, `CD 2`) are preserved as unified titles.
 
 
 

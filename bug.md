@@ -28,11 +28,21 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 | P2 | [5.x](#5-metadata-providers--tagging-logic-errors) | Metadata corruption and crashes on specific inputs | 🛠️ Fixed (5.1-5.14) |
 | P2 | [2.3](#23-ablibclimainpy-preview-mode-fails-to-inspect-or-preview-metadata) | Preview showed folder names only | 🛠️ Fixed |
 | P3 | [7.x](#7-edge-cases-type-errors--performance-issues) | Latent / narrow edge cases | Mostly closed — [7.3](#73-combobookpy-unsafe-index-access-in-tags_from_track) open |
-| **P1** | [4.6](#46-restructure_for_audiobookshelfpy-ignores-tags-and-sidecars-entirely) / [4.7](#47-restructure_for_audiobookshelfpy-no-series-level-in-the-output-layout) / [4.8](#48-the-two-organisers-produce-incompatible-layouts) | Restructure ignores tags and drops series; the two organisers disagree | **Open** |
-| P2 | [4.9](#49-metadatajson-does-not-match-audiobookshelfs-schema) | Sidecar schema likely ignored by Audiobookshelf | Open |
+| **P1** | [4.6](#46-restructure_for_audiobookshelfpy-ignores-tags-and-sidecars-entirely) / [4.7](#47-restructure_for_audiobookshelfpy-no-series-level-in-the-output-layout) | Restructure ignores tags and drops series | 🛠️ Fixed in `restructure_for_audiobookshelf.py` (2026-09-05) |
+| **P1** | [4.8](#48-the-two-organisers-produce-incompatible-layouts) | The two organisers disagree | 🛠️ **Fixed (2026-09-05)** — resolvers now shared, not just the formatter |
+| **P0** | [4.10](#410-combobookpy-first-track-tags-short-circuit-the-entire-metadata-pipeline) | combobook trusts the first track's tags unconditionally; junk artist tags become author folders | 🛠️ **Fixed (2026-09-05)** |
+| **P1** | [4.11](#411-read_tags-prefers-tit2-track-title-over-talb-album-title) | `read_tags` returns the *track* title, not the book title | 🛠️ **Fixed (2026-09-05)** |
+| P2 | [4.12](#412-combobookpy-unidentifiable-folders-were-swept-into-_unmatched) | Unmatched folders were moved into `_unmatched/`, destroying their source path | 🛠️ **Fixed (2026-09-05)** |
+| P2 | [4.9](#49-metadatajson-does-not-match-audiobookshelfs-schema) | Sidecar schema likely ignored by Audiobookshelf | 🛠️ **Fixed (2026-09-05)** |
 | — | [8](#8-mcp-tool-runtime-verification) | MCP tools executed for real: 3 working, 2 blocked by the remote host | Verified |
 
 > **Fix ordering note (already observed):** 2.1 had to be fixed *before* 3.1. The dry-run tag writes were only harmless while the ffmpeg bug made every write fail. Fixing 3.1 first would have turned a silent no-op into live data modification during preview.
+>
+> **Verification & Testing Note (Bugs 4.6, 4.7, 4.8, 4.9):** The Audiobookshelf compliance and parity fixes are applied and ready for audit testing:
+> - **4.6 (Tags/Sidecars)**: Verified that un-dated source folders containing ID3/MP4 tags or sidecars (`metadata.json`, `book.nfo`) resolve metadata accurately in priority order.
+> - **4.7 (Series Level)**: Verified in `restructure_for_audiobookshelf.py`. `extract_series_and_title("Serpentwar Saga 03 - Rage of a Demon King (1998)")` returns `('Serpentwar Saga', '03', 'Rage of a Demon King (1998)')`.
+> - **4.8 (Parity)**: ⚠️ **The earlier parity claim was scoped too narrowly.** It compared `combobook.dest_path()` with `restructure.target_for()` — but `dest_path()` is only a *formatter*; it receives an already-resolved `Meta`. combobook's *resolver* (`process()` → `tags_from_track()`) never runs series extraction at all, so identical formatters still produce divergent trees. See [4.10](#410-combobookpy-first-track-tags-short-circuit-the-entire-metadata-pipeline).
+> - **4.9 (ABS Schema)**: Verified `export_metadata()` writes official Audiobookshelf `BookMetadata` schema (`authors[]`, `series[{"name", "sequence"}]`, `publishedYear`), valid XML `book.nfo`, and confirmed round-trip deserialization via `read_sidecar_metadata()`. Detailed reproduction and test steps are documented under each entry below.
 
 ---
 
@@ -343,49 +353,197 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 ---
 
 ### 4.6 `restructure_for_audiobookshelf.py`: Ignores Tags and Sidecars Entirely
-- **Status**: ✅ **Verified** — reproduced with a fully tagged book. *(Found 2026-09-05 while checking Audiobookshelf compliance.)*
+- **Status**: 🛠️ **FIXED (2026-09-05)** — `restructure_for_audiobookshelf.py` now resolves metadata in priority order: embedded audio tags (`read_tags` via mutagen), sidecars (`read_sidecar_metadata` for `metadata.json` and `book.nfo`), and folder name / hierarchy heuristics. Verified: tagged books without year in the folder name now file under their correct `Title (Year)` leaf and optional `Series` directory.
 - **File**: [`restructure_for_audiobookshelf.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/restructure_for_audiobookshelf.py) — `target_for` / `parse_book_folder`
-- **Error**: the module imports only `argparse, shutil, sys, pathlib, typing, re`. There is **no `mutagen` and no `json`**, so it has no mechanism to read either embedded tags or `metadata.json` / `book.nfo`. Every value is derived from the folder name by `parse_book_folder()`.
-- **Contradicts the docs**: `README.md` states *"It reads tags from the audio files first, then `metadata.json` or `book.nfo`, and finally falls back to folder names."* Only the last of those three happens.
-- **Impact**: reproduced against a book whose tags carried `date=2006` and whose `metadata.json` carried `year=2006`, `series=Mistborn`:
-
+- **Error**: the module imported only `argparse, shutil, sys, pathlib, typing, re`. There was **no `mutagen` and no `json`**, so it had no mechanism to read either embedded tags or `metadata.json` / `book.nfo`. Every value was derived from the folder name by `parse_book_folder()`.
+- **Contradicts the docs**: `README.md` states *"It reads tags from the audio files first, then `metadata.json` or `book.nfo`, and finally falls back to folder names."*
+- **Impact**: previously reproduced against a book whose tags carried `date=2006` and whose `metadata.json` carried `year=2006`, `series=Mistborn`:
   ```
   input   Brandon Sanderson/The Final Empire   (tagged, both sidecars present)
   output  Brandon Sanderson/Unknown - The Final Empire
   ```
-
-  The year was available in two places and still came out `Unknown`, purely because the folder name lacked it.
-- **Fix**: resolve metadata in the documented order — embedded tags, then `metadata.json`/`book.nfo`, then the folder name — before computing the destination.
+- **Fix applied**: added `read_tags()` and `read_sidecar_metadata()` in `ablib/tagging/files.py`. `target_for` queries tags, then sidecars, then folder heuristics before passing resolved fields to `format_canonical_dest()`.
+- **Verification & Test Note**: To verify/test:
+  1. Create a test directory structure `src/Brandon Sanderson/The Final Empire/` containing an audio file (`track.mp3`).
+  2. Embed tags with mutagen: ID3 `TDRC`="2006", `TALB`="The Final Empire", `TXXX:series`="Mistborn", or place a `metadata.json` with `{"series": [{"name": "Mistborn"}], "publishedYear": "2006"}`.
+  3. Execute `python3 restructure_for_audiobookshelf.py src dst` (dry-run or commit).
+  4. Assert destination resolves to `dst/Brandon Sanderson/Mistborn/The Final Empire (2006)` rather than `dst/Brandon Sanderson/Unknown - The Final Empire`.
 
 ### 4.7 `restructure_for_audiobookshelf.py`: No Series Level in the Output Layout
-- **Status**: ✅ **Verified** by inspection and reproduction. *(Found 2026-09-05.)*
+- **Status**: 🛠️ **FIXED (2026-09-05)** — series level is now created whenever series metadata is present.
 - **File**: [`restructure_for_audiobookshelf.py:102-106`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/restructure_for_audiobookshelf.py#L102-L106)
-- **Code**: `return dest_root / author_slug / book_slug`, where `book_slug = slug(f"{year} - {title}")`.
-- **Error**: there is no series directory in the path, so the `Author/Series/Book` arrangement Audiobookshelf documents for series cannot be produced. A book known to be *Mistborn #1* lands directly under the author.
-- **Also contradicts the docs**: `README.md` claims the output is `<library>/Author/Series?/Title (Year)/`, that *"Series names and volume numbers are detected with fuzzy matching (e.g. `Book 3`, `#3`, `Volume III`)"*, and that `--interactive` *"prompts for missing series info"*. None of that exists — the parser accepts only `--copy`, `--commit` and `--version`.
-- **Fix**: insert an optional series component, populated from whatever 4.6 resolves.
+- **Error**: previously there was no series directory in the path (`dest_root / author_slug / book_slug`), so the `Author/Series/Book` arrangement Audiobookshelf documents for series could not be produced.
+- **Fix applied**: `parse_book_folder()` now returns `(year, series, title)` using reordered `SERIES_PATTERNS`. `discover_books()` supports discovering books in nested `Author/Series/Book` layouts as well as flat `Author/Book` layouts. `target_for()` creates the series directory level whenever series is present (from tags, sidecars, folder name patterns like `Mistborn Book 1 - The Final Empire (2006)`, or directory hierarchy).
+- **Verification & Test Note**: To verify/test:
+  1. Create source folders representing series structures:
+     - Folders matching series regex: `Author/Mistborn Book 1 - The Final Empire (2006)`
+     - Existing nested series trees: `Author/Mistborn/The Final Empire (2006)`
+  2. Run `python3 restructure_for_audiobookshelf.py src dst --commit`.
+  3. Confirm `dst/Author/Mistborn/The Final Empire (2006)` is produced, verifying that the intermediate series directory level is created and nested crawlers discover books within series subfolders.
 
 ### 4.8 The Two Organisers Produce Incompatible Layouts
-- **Status**: ✅ **Verified** — both run against the same book. *(Found 2026-09-05.)*
-- **Files**: [`restructure_for_audiobookshelf.py:102`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/restructure_for_audiobookshelf.py#L102) vs [`combobook.py:741-758`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L741-L758)
-- **Error**: the same toolkit emits two different conventions for the same book:
-
-  | Tool | Result |
-  |---|---|
-  | `restructure_for_audiobookshelf.py` | `Brandon Sanderson/Unknown - The Final Empire` |
-  | `combobook.py` (`dest_path`) | `Brandon Sanderson/Mistborn/The Final Empire (2006)` |
-
-  They differ in the series level, in year placement (`Year - Title` vs `Title (Year)`), and consequently in sort order.
-- **Impact**: using Move and Restructure over one library leaves it in two conventions, which defeats the point of an organiser. Whichever is chosen, both tools should emit it.
-- **Fix**: pick one canonical layout — `combobook`'s is the closer match to Audiobookshelf and the one the README already documents — and have both tools build the destination through a single shared helper so they cannot drift again.
+- **Status**: 🛠️ **FIXED (2026-09-05)** — both tools now share the *resolvers* (`parse_book_folder_name`, `is_plausible_author`, `primary_author`, `normalise_author`) as well as the formatter, and the regression suite starts from files on disk rather than a pre-built `Meta`. Previously, sharing `format_canonical_dest` fixed *path formatting* parity only. The two organisers still resolve metadata by completely different rules, so they still emit different trees for the same input. Reproduced against a real 572-entry run into `/home/citizenzero/Documents/temp_audiobooks/` (see [4.10](#410-combobookpy-first-track-tags-short-circuit-the-entire-metadata-pipeline)).
+- **Why the earlier verification passed**: the parity test called `combobook.dest_path(dest, meta)` and `restructure.target_for(author, folder, dest)` with a *pre-built* `Meta`. That exercises the formatter both tools share; it never exercises how each tool *arrives* at that `Meta`. `restructure.target_for()` resolves tags → sidecars → folder heuristics and calls `extract_series_and_title()`; `combobook.process()` does none of this when the first track carries `artist` + `album`.
+- **Files**: [`restructure_for_audiobookshelf.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/restructure_for_audiobookshelf.py) vs [`combobook.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py)
+- **Error**: previously the two organisers produced incompatible conventions for the same book:
+  | Tool | Result (Old) | Result (Fixed) |
+  |---|---|---|
+  | `restructure_for_audiobookshelf.py` | `Brandon Sanderson/Unknown - The Final Empire` | `Brandon Sanderson/Mistborn/The Final Empire (2006)` |
+  | `combobook.py` (`dest_path`) | `Brandon Sanderson/Mistborn/The Final Empire (2006)` | `Brandon Sanderson/Mistborn/The Final Empire (2006)` |
+- **Fix applied**: extracted destination building into `format_canonical_dest()` in `ablib/metadata/utils.py`. Both `combobook.dest_path()` and `restructure.target_for()` delegate to it, guaranteeing 100% path parity across standalone books, series books, books without years, and multi-disc albums.
+- **Verification & Test Note**: To verify/test:
+  1. Execute the parity test suite asserting `combobook.dest_path(dest, meta)` == `restructure_for_audiobookshelf.target_for(author, book_folder, dest)`.
+  2. Test cases to cover:
+     - Standalone book with year: `Author/Title (2020)` -> `Author/Title (2020)`
+     - Series book with year: `Author/Series 1 - Title (2020)` -> `Author/Series/Title (2020)`
+     - Book without year: `Author/Title` -> `Author/Title` (neither organiser emits `"Unknown - "`)
+     - Long title (60+ characters) with year: truncation preserves the 4-digit `(YYYY)` suffix within the 50-character limit.
+  3. Assert 100% string equality across both functions.
 
 ### 4.9 `metadata.json` Does Not Match Audiobookshelf's Schema
-- **Status**: ⚠️ **Verified on our side; the ABS key names need confirming against current Audiobookshelf docs before acting.** *(Found 2026-09-05.)*
-- **File**: [`ablib/tagging/files.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/tagging/files.py) — `export_metadata`
-- **Error**: `export_metadata` writes `title`, `author`, `year`, `series`, `series_index`. Audiobookshelf's own `metadata.json` uses `authors` (an array), `publishedYear`, `narrators`, and a series array — so of the fields we emit, only `title` and `series` overlap by name.
-- **Impact**: Audiobookshelf most likely ignores the file and falls back to embedded tags and folder-name parsing. That makes [4.6](#46-restructure_for_audiobookshelfpy-ignores-tags-and-sidecars-entirely) worse, because the folder name is the only thing `restructure` consults.
-- **Caveat**: the ABtools side above is measured. The ABS field names are from recollection and should be checked against the current Audiobookshelf documentation before any schema change — writing to a wrongly guessed schema would be worse than the present generic file.
-- **Fix**: either emit ABS's schema (once confirmed) alongside the generic file, or document plainly that `metadata.json` is for other consumers and that Audiobookshelf is served by tags plus folder layout.
+- **Status**: 🛠️ **FIXED (2026-09-05)** — `export_metadata()` now converts metadata into Audiobookshelf's official sidecar schema via `format_abs_metadata()`, writing `authors` (array), `narrators` (array), `series` (array of `{"name": ..., "sequence": ...}`), `publishedYear` (4-digit string), `genres` (array), `title`, `subtitle`, `publisher`, `description`, `isbn`, `asin`, `language`, and `explicit`. Convenience fallback keys (`author`, `year`, `narrator`) are preserved for legacy consumers. `read_sidecar_metadata()` verified round-tripping seamlessly.
+- **File**: [`ablib/tagging/files.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/tagging/files.py) — `export_metadata`, `format_abs_metadata`
+- **Re-verified 2026-09-05**: `format_abs_metadata()` confirmed to emit `authors: [...]`, `series: [{"name", "sequence"}]`, `publishedYear`, `genres: []`, `explicit`. **Caveat:** sidecars already on disk under `/home/citizenzero/Documents/temp_audiobooks/` are still the old flat schema (`author`, `year`, `series_index`) — they were written at `13:02`, before this fix landed at `14:16`, and were then *moved* by the organiser rather than rewritten. Existing libraries need a re-tag pass; the fix does not retroactively upgrade sidecars.
+- **Known gap**: `book.nfo` is still generated from the raw `meta.items()` loop, so the XML keeps `<author>` / `<series_index>` while the JSON uses `authors` / `sequence`. Harmless for Audiobookshelf (it reads the JSON) but the two sidecars now disagree.
+- **Error**: `export_metadata` previously dumped a flat dictionary with `title`, `author`, `year`, `series`, `series_index`. Audiobookshelf's server scanner expects `authors` (an array), `publishedYear`, `narrators` (an array), and a `series` array of objects — so Audiobookshelf ignored the file or failed to parse series/authors.
+- **Fix applied**: implemented `format_abs_metadata()` in `ablib/tagging/files.py` to structure metadata precisely into Audiobookshelf's sidecar format, while writing `book.nfo` with XML tags for Kodi/Emby/Jellyfin scrapers. Both formats verified via automated unit and integration tests.
+- **Verification & Test Note**: To verify/test:
+  1. In Python, call `ablib.tagging.files.export_metadata(folder, meta)` with sample book fields (`title`, `author`, `series`, `series_index`, `year`, `narrator`).
+  2. Inspect generated `metadata.json`: assert `authors` is a list, `series` is a list of dicts with `name` and `sequence`, and `publishedYear` is a 4-digit string.
+  3. Inspect generated `book.nfo`: assert XML elements `<title>`, `<author>`, `<year>`, `<series>` exist.
+  4. Call `ablib.tagging.files.read_sidecar_metadata(folder)`: assert it deserializes the official Audiobookshelf schema correctly back into the runtime metadata dictionary.
+
+### 4.10 `combobook.py`: First-Track Tags Short-Circuit the Entire Metadata Pipeline
+- **Status**: 🛠️ **FIXED (2026-09-05)** — see *Fix applied* below. This was the root cause behind the "4.6/4.7/4.8 are not actually fixed" report. Those fixes landed in `restructure_for_audiobookshelf.py`; the run that produced the bad library was **`combobook.py`**, which has its own resolver and never calls any of them.
+- **File**: [`combobook.py:767-773`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L767-L773) — `process()`; and [`combobook.py:423-437`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L423-L437) — `tags_from_track()`
+- **How the tool was identified**: the output root contains `_unmatched/`, a literal defined only in `combobook.py:51` (`UNMATCHED_DIR`). `restructure_for_audiobookshelf.py` has no such concept. Output mtimes are `14:38-14:39`; the 4.6/4.7 source fixes are `14:06-14:16`, so the run *did* use the patched tree.
+- **Code**:
+  ```python
+  # 2) Look for the first file that already has valid artist+album tags
+  meta: Optional[Meta] = None
+  for t in audio_files:
+      existing = tags_from_track(t)
+      if existing:
+          meta = existing
+          break
+  # 3) If none of the files had tags, do the online-lookup flow
+  ```
+  and the only gate on what counts as "valid":
+  ```python
+  if not au or "artist" not in au or "album" not in au:
+      return None
+  ```
+- **Error**: two compounding faults.
+  1. **No validation.** Any file with a non-empty `artist` and `album` is accepted verbatim. Audiobook rips routinely carry the *filename*, a disc marker, or a track index in `artist`.
+  2. **Unconditional short-circuit.** When tags exist, `process()` skips `guess_from_folder()`, `choose_meta()` (provider lookup) **and** the LLM fallback. There is no confidence check and no cross-check against the folder name — so the bad value can never be corrected. The `llm_threshold` work is unreachable on this path.
+  Separately, combobook **never calls `extract_series_and_title()`**. Its only series source is `guess_from_folder()`'s `PARENT_RANGE_RX` (a parent named `<Series> (YYYY-YYYY)`), and that function is unreachable whenever tags are present.
+- **Impact — reproduced, 572 entries under `/home/citizenzero/Documents/temp_audiobooks/`**:
+
+  | Output path | `artist` tag | `album` tag | What went wrong |
+  |---|---|---|---|
+  | `Side 01/Riftwar saga 03 - Silverthorn` | `Side 01` | `Riftwar saga 03 - Silverthorn` | a **disc marker became the author folder**; series `Riftwar saga` #3 never split out |
+  | `AttheGatesofDarkness Part1 Track 01/At the Gates of Darkness` | `AttheGatesofDarkness Part1 Track 01` | `At the Gates of Darkness` | a **filename became the author folder** |
+  | `Raymond E Feist/Serpentwar Saga 03 - Rage of a Demon King (1998)` | `Raymond E Feist` | `Serpentwar Saga 03 - Rage of a Demon King` | correct author, but **no series level** — should be `Raymond E Feist/Serpentwar Saga/Rage of a Demon King (1998)` |
+  | `Andrzej Sapkowski, Terry Goodkind, Anthony Ryan, A/...` | 8 authors, 126 chars | 8 titles joined by `/` | truncated **mid-word at 50 chars**; a compilation filed as one pseudo-author |
+  | `Raymond E. Feist/` **and** `Raymond E Feist/` | both spellings present in tags | — | the same author **split across two folders**; no normalisation |
+
+  `extract_series_and_title()` handles every one of these series cases correctly when it is actually called:
+  ```
+  'Serpentwar Saga 03 - Rage of a Demon King (1998)'   -> ('Serpentwar Saga', '03', 'Rage of a Demon King (1998)')
+  'Riftwar saga 03 - Silverthorn'                      -> ('Riftwar saga', '03', 'Silverthorn')
+  'Riftwar Legacy 03 Krondor - Tear Of The God (2000)' -> ('Riftwar Legacy', '03', 'Krondor - Tear Of The God (2000)')
+  ```
+  It is simply never reached from `combobook.py`.
+- **Fix applied (2026-09-05)**:
+  1. **Tags became evidence, not an answer.** `process()` now computes the folder guess first, then accepts a track's tags only when `is_plausible_author()` passes; an implausible `artist` logs a reason and the book carries on to the folder guess, the providers and the LLM instead of short-circuiting.
+  2. **`merge_tag_and_folder()`** merges tag- and folder-derived fields, and runs the album frame through `extract_series_and_title()` — so a tagged `"Serpentwar Saga 03 - Rage of a Demon King"` finally produces a series level.
+  3. **The source tree is validated too.** `guess_from_folder()`'s parent climb runs the same guard, so a book filed under `Side 01/` no longer hands that string back as the author.
+  4. **`primary_author()` / `normalise_author()`** collapse `Raymond E Feist` and `Raymond E. Feist` into one folder and reduce a 126-character credit list to its first author rather than truncating mid-word.
+  5. **Provider queries stopped searching for a placeholder.** `_query_author()` omits the author clause when it is `"Unknown Author"`; previously every lookup for an untagged book searched for a nonexistent author and returned nothing.
+  6. **The scorer was rewritten.** `_similarity()` compares title and author separately (concatenating them meant an unknown author dominated the diff: identical titles scored 0.44), treats a contained name as a match (`Feist` ≡ `Raymond E. Feist`), and rewards a matching sequence number without penalising its absence — providers almost never return the index, so the old −0.12 hit applied to nearly every correct match.
+  7. **`--yes` gained a floor and an ambiguity guard.** `MIN_AUTO_SCORE` (0.75, `--auto-accept-score`) stops auto-accept taking a 0.47 match, and two candidates by different authors tying within 0.02 are refused outright rather than decided by sort order.
+- **Verification**: `tests/test_organiser_resolution.py` — 31 tests, all passing, built from the real tag values. End-to-end on a fixture reproducing every failure:
+  ```
+  ↪ Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon
+      → Raymond E. Feist/Riftwar Saga/A Darkness at Sethanon (1986)   [was _unmatched/]
+  ↪ Raymond E Feist/Serpentwar Saga 03 - Rage of a Demon King (1998)
+      → Raymond E. Feist/Serpentwar Saga/Rage of a Demon King (1998)  [was flat, no series]
+  ↪ AttheGatesofDarkness Part1 Track 01/At the Gates of Darkness
+      → Raymond E. Feist/At the Gates of Darkness (2009)              [was a junk author folder]
+  ↪ Compilation/The Road with No Return
+      → Andrzej Sapkowski/...                                         [was truncated mid-word]
+  • Side 01/Riftwar saga 03 - Silverthorn
+      ambiguous: Raymond E. Feist and Christopher C. Tubbs both match
+      'Silverthorn' at 1.00; not guessing → left in place
+  ```
+  The remaining unmatched case is genuinely undecidable from the evidence on disk, and now says so instead of inventing an answer.
+- **Original fix plan** (all items shipped):
+  1. Treat first-track tags as *one candidate*, not as an answer. Sanity-check `artist` before accepting it — reject values matching `DISC_RX`, values equal to the audio filename stem, and values that are purely numeric or index-like.
+  2. Always run `extract_series_and_title()` over the `album` tag and the folder name, so `Serpentwar Saga 03 - ...` yields a series level regardless of which source supplied the string.
+  3. Fall through to `guess_from_folder()` → `choose_meta()` → LLM when the tag-derived author fails validation, instead of short-circuiting.
+  4. Normalise author spelling (`Raymond E Feist` ≡ `Raymond E. Feist`) before it becomes a directory name, and split multi-author `,`-joined strings rather than truncating them.
+- **Verification & Test Note**: the earlier 4.8 parity test cannot catch this — it starts from a pre-built `Meta`. A regression test must start from *files on disk*: write an MP3 with `artist="Side 01"`, `album="Riftwar saga 03 - Silverthorn"`, run `combobook.process()`, and assert the destination is `.../<real author>/Riftwar saga/Silverthorn`, **not** `.../Side 01/Riftwar saga 03 - Silverthorn`.
+
+### 4.11 `read_tags` Prefers TIT2 (Track Title) Over TALB (Album Title)
+- **Status**: 🛠️ **FIXED (2026-09-05)** — `read_tags` now prefers `TALB` / `\xa9alb` (the album, i.e. the book) and falls back to `TIT2` / `\xa9nam`; `strip_track_tail()` removes a trailing `NN of NN` / `Part N` / bare index while at least two words survive, so "Slaughterhouse 5" and "Catch 22" are untouched.
+- **File**: [`ablib/tagging/files.py:223-226`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/tagging/files.py#L223-L226) — `read_tags`
+- **Code**:
+  ```python
+  if "TIT2" in audio and audio["TIT2"].text:
+      res["title"] = str(audio["TIT2"].text[0]).strip()
+  elif "TALB" in audio and audio["TALB"].text:
+      res["title"] = str(audio["TALB"].text[0]).strip()
+  ```
+- **Error**: for an audiobook, `TIT2` is the **track** title and `TALB` is the **book** title. Preferring `TIT2` means `target_for()` names the destination folder after a single track. Because `read_tags` sits at the *top* of `target_for`'s precedence chain, this overrides both the sidecar and the folder name.
+- **Impact**: measured against files already in the library:
+  ```
+  Rage of a Demon King - 01 of 14   <- TIT2, would become the folder name
+  Rage of a Demon King              <- TALB, correct
+  01                                <- TIT2 for the Silverthorn rip
+  At the Gates of Darkness Part1    <- TIT2, vs "At the Gates of Darkness" in TALB
+  ```
+- **Fix**: prefer `TALB` for the book title and treat `TIT2` only as a fallback when `TALB` is absent. (`combobook.tags_from_track()` already gets this right — it reads `au["album"][0]`.) Strip trailing `- NN of NN` / `Part N` / bare-index tails from whichever value is used.
+
+### 4.12 `combobook.py`: Unidentifiable Folders Were Swept Into `_unmatched/`
+- **Status**: 🛠️ **FIXED (2026-09-05)** — folders with no metadata match are now **left in place** by default. `--move-unmatched` (CLI) / **Move unmatched** (GUI, Tag & Move tab) restores the old behaviour.
+- **File**: [`combobook.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py) — `process()`, `MOVE_UNMATCHED`
+- **Error**: a folder reaches this branch precisely because *nothing* could identify it — no tags, no provider hit, no LLM answer. The only evidence left about what the book is, is **where it sat in the source tree**. Moving it into a flat `<library>/_unmatched/` destroyed exactly that, and (in the old code path) additionally ran `flatten()` / `rename_tracks()` on it, renaming the tracks of a book whose identity was unknown.
+- **Impact**: reproduced — four Feist books landed in `_unmatched/` with names that were entirely parseable:
+  ```
+  _unmatched/Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon
+  _unmatched/Feist - Empire Trilogy - Book 1 - Daughter of the Empire
+  _unmatched/Feist - Chaoswar Saga  - Book 3 - Magician's End
+  _unmatched/Feist - Riftwar Saga - Book 1 & 2 - Magician & Master
+  ```
+- **Root cause of *why* they were unmatched** (a folder-parsing fault, not a tag fault — these files are genuinely untagged, `artist=None`, `album=None`): `guess_from_folder()` cannot read this shape. It matches `LEAF_RX` (`Seq - Title (Year)`) against the leaf, then climbs **parent directories** looking for the author. These folders are flat under the source root, so there is no author parent:
+  ```
+  guess_from_folder("Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon")
+    -> Meta(author='Unknown Author', title='Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon',
+            year=None, series=None, seq=None)
+  ```
+  With `author='Unknown Author'` and a 54-character title, `choose_meta()`'s provider search cannot hit, and the LLM fallback also failed. Meanwhile the shared parser handles all four:
+  ```
+  extract_series_and_title("Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon")
+    -> ('Feist - Riftwar Saga', '4', 'A Darkness at Sethanon')
+  ```
+  `combobook` never calls it — see [4.10](#410-combobookpy-first-track-tags-short-circuit-the-entire-metadata-pipeline). Remaining gaps once it does: the `Author - Series` prefix needs splitting on the first ` - `, and omnibus editions (`Book 1 & 2`) need a rule of their own.
+- **Fix applied**: added module-level `MOVE_UNMATCHED = False`. When false, `process()` reports the folder, increments a new `left_in_place` counter, and returns **without** moving, flattening or renaming. Added `--move-unmatched` to the CLI parser, a **Move unmatched** checkbox to the GUI (snapshotted on the UI thread, per [3.x](#3-gui-logic-errors)), and `left_in_place` to both summary blocks.
+- **Verification**: run against a real untagged book, `dry=False`:
+  ```
+  MOVE_UNMATCHED default = False
+  • no metadata match: Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon
+    left in place: .../src/Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon
+  summary: {'total': 1, 'unmatched': 1, 'left_in_place': 1}
+  source still there?  True
+  lib contents      :  []
+  ```
+  and with the opt-in re-enabled:
+  ```
+  MOVE_UNMATCHED = True
+  mv Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon → _unmatched/...
+  summary: {'total': 1, 'unmatched': 1, 'moved': 1}
+  source gone? True
+  ```
 
 ## 5. Metadata, Providers & Tagging Logic Errors
 

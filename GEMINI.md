@@ -5,7 +5,7 @@ It includes:
 - Tagging automation using metadata providers (Audible, Goodreads, Google Books, Open Library).
 - LLM integration for refining metadata and handling edge cases (with dynamic model auto-discovery and provider presets).
 - Duplicate detection and file restructuring tools.
-- A GUI front-end (`AbtoolsGui.py`) with 8 curated dark and light themes, seamless flat tab framing, and session persistence.
+- A GUI front-end (`AbtoolsGui.py`) with 9 curated dark and light themes, seamless flat tab framing, and session persistence.
 
 ## Key Files
 - `README.md`: usage instructions and CLI reference.
