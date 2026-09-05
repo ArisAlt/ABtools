@@ -368,14 +368,14 @@ def build_parser() -> argparse.ArgumentParser:
               --yes         auto-accept matches (tag mode)
               --no          auto-decline matches (tag mode)
               --striptags   delete *all* tags instead of adding
-              --llm-endpoint URL   OpenAI-compatible endpoint (default: {constants.DEFAULT_LLM_ENDPOINT})
-              --llm-model NAME     model to request from the endpoint (default: {constants.DEFAULT_LLM_MODEL_NAME})
+              --llm-endpoint URL   OpenAI-compatible endpoint (default: {config.config.llm_endpoint})
+              --llm-model NAME     model to request from the endpoint (default: {config.config.llm_model_name})
               --llm-threshold SCORE  confidence score before using the LLM (default: 85)
               --llm-api-key KEY    bearer token for a hosted endpoint (e.g. OpenRouter)
             """
         ),
     )
-    parser.add_argument("root", type=Path, help="file or folder")
+    parser.add_argument("root", type=Path, nargs="?", help="file or folder")
     parser.add_argument(
         "--debug", action="store_true", help="print full tracebacks on errors"
     )
@@ -386,12 +386,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--striptags", action="store_true")
     parser.add_argument(
         "--llm-endpoint",
-        default=constants.DEFAULT_LLM_ENDPOINT,
+        default=config.config.llm_endpoint or constants.DEFAULT_LLM_ENDPOINT,
         help="OpenAI-compatible completion endpoint (use 'none' to disable; default: %(default)s)",
     )
     parser.add_argument(
         "--llm-model",
-        default=constants.DEFAULT_LLM_MODEL_NAME,
+        default=config.config.llm_model_name or constants.DEFAULT_LLM_MODEL_NAME,
         help="Model name to request from the LM Studio endpoint (default: %(default)s)",
     )
     parser.add_argument(
@@ -400,6 +400,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=85,
         metavar="SCORE",
         help="use the local LLM when provider score falls below SCORE (default: 85, minimum: 80)",
+    )
+    parser.add_argument(
+        "--show-config",
+        action="store_true",
+        help="Print the effective settings and where each came from, then exit.",
     )
     parser.add_argument(
         "--llm-api-key",
@@ -417,6 +422,18 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.show_config:
+        rprint("[bold]effective configuration[/]")
+        for name, value, source in config.describe_config():
+            rprint(f"  {name:16} {value:<48} [dim]<- {source}[/]")
+        for problem in config.env_problems:
+            rprint(f"  [yellow]! {problem}[/]")
+        rprint("\n[dim]precedence: CLI flag > saved GUI settings > ABTOOLS_* env > defaults[/]")
+        return
+
+    if args.root is None:
+        parser.error("the following arguments are required: root")
     CONFIG.debug = args.debug
     base = args.root if args.root.is_dir() else args.root.parent
     config.update_paths(base)

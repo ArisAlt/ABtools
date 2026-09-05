@@ -15,17 +15,75 @@ from .constants import (
 )
 
 
+# ── environment cascade ─────────────────────────────────────────────────────
+# Precedence, highest first:
+#   explicit CLI flag / GUI selection  ->  saved GUI settings  ->  ABTOOLS_*
+#   environment variables  ->  the defaults in constants.py
+#
+# Only ABTOOLS_-prefixed names are honoured. OPENAI_BASE_URL and friends are
+# deliberately ignored: silently inheriting a variable set for a different tool
+# could point tagging at a paid hosted API without the user realising.
+ENV_PREFIX = "ABTOOLS_"
+
+# Misconfigured variables are recorded rather than swallowed, so --show-config
+# can report them instead of the user wondering why a setting had no effect.
+env_problems: list[str] = []
+
+
+def _env_str(name: str, fallback: Optional[str]) -> Optional[str]:
+    raw = os.environ.get(ENV_PREFIX + name)
+    if raw is None:
+        return fallback
+    return raw.strip() or None
+
+
+def _env_int(name: str, fallback: int) -> int:
+    raw = os.environ.get(ENV_PREFIX + name)
+    if raw is None:
+        return fallback
+    try:
+        return int(raw.strip())
+    except ValueError:
+        env_problems.append(
+            f"{ENV_PREFIX}{name}={raw!r} is not a whole number; using {fallback}"
+        )
+        return fallback
+
+
+def _env_bool(name: str, fallback: bool) -> bool:
+    raw = os.environ.get(ENV_PREFIX + name)
+    if raw is None:
+        return fallback
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off", ""}:
+        return False
+    env_problems.append(
+        f"{ENV_PREFIX}{name}={raw!r} is not a boolean; using {fallback}"
+    )
+    return fallback
+
+
 @dataclass
 class RuntimeConfig:
     """Mutable configuration shared across modules."""
 
-    debug: bool = False
+    debug: bool = field(default_factory=lambda: _env_bool("DEBUG", False))
     log_path: Path = field(default_factory=lambda: Path("tag_log.txt"))
     review_path: Path = field(default_factory=lambda: Path("review_log.txt"))
-    llm_endpoint: Optional[str] = DEFAULT_LLM_ENDPOINT
-    llm_model_name: Optional[str] = DEFAULT_LLM_MODEL_NAME
-    llm_timeout: int = LLM_TIMEOUT_DEFAULT
-    llm_max_tokens: int = LLM_MAX_TOKENS_DEFAULT
+    llm_endpoint: Optional[str] = field(
+        default_factory=lambda: _env_str("LLM_ENDPOINT", DEFAULT_LLM_ENDPOINT)
+    )
+    llm_model_name: Optional[str] = field(
+        default_factory=lambda: _env_str("LLM_MODEL", DEFAULT_LLM_MODEL_NAME)
+    )
+    llm_timeout: int = field(
+        default_factory=lambda: _env_int("LLM_TIMEOUT", LLM_TIMEOUT_DEFAULT)
+    )
+    llm_max_tokens: int = field(
+        default_factory=lambda: _env_int("LLM_MAX_TOKENS", LLM_MAX_TOKENS_DEFAULT)
+    )
     # Bearer token for hosted OpenAI-compatible providers such as OpenRouter.
     # Read from the environment so it need never be typed into the GUI or
     # written to a settings file in plain text.
@@ -38,6 +96,38 @@ class RuntimeConfig:
 
 
 config = RuntimeConfig()
+
+# Every setting the cascade governs: (attribute, environment variable, secret?)
+ENV_SETTINGS = (
+    ("llm_endpoint", "LLM_ENDPOINT", False),
+    ("llm_model_name", "LLM_MODEL", False),
+    ("llm_timeout", "LLM_TIMEOUT", False),
+    ("llm_max_tokens", "LLM_MAX_TOKENS", False),
+    ("llm_api_key", "LLM_API_KEY", True),
+    ("debug", "DEBUG", False),
+)
+
+
+def describe_config() -> list[tuple[str, str, str]]:
+    """(setting, effective value, where it came from) for --show-config.
+
+    Secrets are reported as set/unset, never printed.
+    """
+    rows: list[tuple[str, str, str]] = []
+    for attr, env_name, secret in ENV_SETTINGS:
+        value = getattr(config, attr, None)
+        if secret:
+            shown = "set" if value else "unset"
+        else:
+            shown = "none" if value is None else str(value)
+        if os.environ.get(ENV_PREFIX + env_name) is not None:
+            source = f"{ENV_PREFIX}{env_name}"
+        elif attr == "llm_api_key" and os.environ.get("OPENROUTER_API_KEY"):
+            source = "OPENROUTER_API_KEY"
+        else:
+            source = "default"
+        rows.append((attr, shown, source))
+    return rows
 
 
 def update_paths(base: Path) -> None:

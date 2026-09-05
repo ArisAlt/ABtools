@@ -1,6 +1,6 @@
 # Proposal: Dynamic LLM Model Configuration
 
-**Status:** Phases 1-3 shipped. Scope **widened to include hosted providers** on 2026-09-05, superseding the earlier local-only decision.
+**Status:** All four phases shipped. Scope **widened to include hosted providers** on 2026-09-05, superseding the earlier local-only decision.
 **Date:** 2026-09-05
 **Scope:** `AbtoolsGui.py`, `ablib/core/config.py`, `ablib/metadata/llm.py`, `mcp_server/`
 **Goal:** remove the hardcoded `MODEL_CHOICES` list and make endpoint/model configuration discoverable, persistent and consistent across the GUI, CLI and MCP server.
@@ -18,7 +18,7 @@ The core idea — query the server's `/v1/models` endpoint instead of shipping a
 | 1. Live auto-discovery via `/v1/models` | **Adopt** | Needs thread-marshalling and robust URL derivation (§3.1, §3.3) |
 | 3. Persistent settings + MRU model list | **Adopt, with #1** | Must extend the existing settings file, not add a second (§3.4) |
 | 2. Provider presets | **Shipped** | LM Studio / Ollama / vLLM / OpenRouter (§3.2) |
-| 4. Config cascade (env vars) | Defer to last | Largest blast radius; real payoff is the MCP server, not the GUI (§4.4) |
+| 4. Config cascade (env vars) | **Shipped** | The MCP server is now configurable at all — see §4.4 |
 
 **Recommended order:** fix the open P2 correctness bugs first (§5), then ship options 1 + 3 as a single change, then reassess 2 and 4.
 
@@ -225,13 +225,26 @@ A Provider dropdown fills in the endpoint and probes it immediately.
 
 Verified live against OpenRouter: 431 models discovered, bearer token sent.
 
-### Phase 4 — config cascade (largest, defer)
+### Phase 4 — config cascade ✅ **shipped 2026-09-05**
 
-Precedence: explicit CLI flag / GUI selection → user settings file → `ABTOOLS_*` env vars → `constants.py` defaults.
+Precedence, highest first: **explicit CLI flag / GUI selection → saved GUI settings → `ABTOOLS_*` env vars → `constants.py` defaults.**
 
-The GUI is not the main beneficiary. **`mcp_server/` currently has no way at all to configure the endpoint** — it has no CLI flags and reads whatever `constants.py` hardcodes. Env-var support would fix a genuine gap for anyone running the MCP server under LM Studio or in a container.
+**What landed**
 
-Because `RuntimeConfig` is a shared singleton (§2.1), this must be done carefully: the CLI, GUI and MCP server all mutate the same instance.
+- `RuntimeConfig` fields resolve through `_env_str` / `_env_int` / `_env_bool`, honouring `ABTOOLS_LLM_ENDPOINT`, `ABTOOLS_LLM_MODEL`, `ABTOOLS_LLM_TIMEOUT`, `ABTOOLS_LLM_MAX_TOKENS`, `ABTOOLS_LLM_API_KEY` and `ABTOOLS_DEBUG`.
+- The CLI's argparse defaults now read from the resolved config rather than `constants.py`, so an environment value survives unless a flag overrides it. Verified: env alone gives `from-env`, env plus `--llm-model from-flag` gives `from-flag`.
+- `--show-config` prints each setting, its effective value and its source, then exits. The API key is reported as `set`/`unset` and never printed.
+- A malformed value is reported rather than swallowed: `ABTOOLS_LLM_TIMEOUT='abc' is not a whole number; using 90`. Silent fallback would leave the user wondering why the setting had no effect.
+- `OPENAI_BASE_URL` / `OPENAI_MODEL_NAME` remain deliberately ignored, per §3.5.
+
+**The payoff, as predicted.** `mcp_server/tools/tagger.py` reads `core_config.config`, so it inherited the cascade with no changes of its own — the server went from having *no* configuration path to honouring the environment:
+
+```
+before        endpoint: http://127.0.0.1:8888/...  model: ibm/granite-4-h-tiny
+ABTOOLS_* set endpoint: http://127.0.0.1:11434/... model: qwen2.5-7b-instruct
+```
+
+`RuntimeConfig` remains the shared singleton described in §2.1; the cascade only changes how its *initial* values are resolved, so the CLI, GUI and MCP server continue to mutate one instance.
 
 ---
 

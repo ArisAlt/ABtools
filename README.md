@@ -490,6 +490,25 @@ A comprehensive codebase audit report documenting all known logic errors, fatal 
 
 All P0 and P1 entries are fixed. The remaining open items are the P2 metadata-correctness group in section 5, of which 5.2 (a regex that silently corrupts author/title for hyphenated names) is the highest impact.
 
+## Configuration
+
+Settings resolve in this order, highest first: an explicit CLI flag or GUI selection, then the saved GUI settings, then the environment, then the defaults in `ablib/core/constants.py`.
+
+| Variable | Sets |
+|---|---|
+| `ABTOOLS_LLM_ENDPOINT` | OpenAI-compatible chat-completions URL |
+| `ABTOOLS_LLM_MODEL` | Model name to request |
+| `ABTOOLS_LLM_API_KEY` | Bearer token for a hosted provider (`OPENROUTER_API_KEY` also accepted) |
+| `ABTOOLS_LLM_TIMEOUT` | Request timeout, seconds |
+| `ABTOOLS_LLM_MAX_TOKENS` | Response token budget |
+| `ABTOOLS_DEBUG` | Verbose diagnostics |
+
+Run `python search_and_tag.py --show-config` to see each effective value and where it came from. The API key is reported as set/unset, never printed.
+
+`OPENAI_BASE_URL` and `OPENAI_MODEL_NAME` are deliberately **not** honoured — silently inheriting a variable set for another tool could point tagging at a paid hosted API without you realising.
+
+This is also the only way to configure `mcp_server/`, which has no command-line flags of its own.
+
 ## Design Proposals
 
 [`proposal.md`](./proposal.md) covers making the LLM model configuration dynamic - discovering models from the server's `/v1/models` endpoint instead of the hardcoded list, persisting recently used models, and a configuration cascade for the CLI, GUI and MCP server.
