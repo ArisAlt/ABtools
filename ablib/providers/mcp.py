@@ -49,10 +49,23 @@ def _parse_provider_query(query: str) -> tuple[Optional[str], str]:
         return None, ""
     author = None
     title = cleaned
-    match = re.search(r"\bby\b", cleaned, flags=re.IGNORECASE)
-    if match:
-        title = cleaned[: match.start()].strip(" \"'-")
-        author = cleaned[match.end() :].strip(" \"'-") or None
+    # Split on the *last* "by", not the first: titles legitimately contain the
+    # word ("Stand by Me", "Side by Side"), and taking the first match turned
+    # "Stand by Me" into title="Stand", author="Me".
+    for match in reversed(list(re.finditer(r"\bby\b", cleaned, flags=re.IGNORECASE))):
+        head = cleaned[: match.start()].strip(" \"'-")
+        tail = cleaned[match.end():].strip(" \"'-")
+        if not head or not tail or any(ch.isdigit() for ch in tail):
+            continue
+        # Require a two-word author. Single words are too ambiguous -- "Side by
+        # Side" would otherwise split into title="Side" / author="Side".
+        # A mononym ("Homer") therefore stays unsplit, which is the harmless
+        # outcome: the full string is searched as a title and still matches,
+        # whereas a wrong split corrupts both fields.
+        if len(tail.split()) < 2:
+            continue
+        title, author = head, tail
+        break
     if not title:
         title = cleaned
     return author or None, title

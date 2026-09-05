@@ -52,6 +52,11 @@ def write_tags(file: Path, meta: Dict[str, str], index: int = 0, total: int = 0)
             audio["TDRC"] = TDRC(3, meta["year"])
         if meta.get("series"):
             audio.add(TXXX(3, desc="series", text=meta["series"]))
+        if meta.get("series_index"):
+            # Without this the series position is resolved and written to
+            # metadata.json/book.nfo but never embedded, so Audiobookshelf
+            # cannot order a series from the audio files alone.
+            audio.add(TXXX(3, desc="series-part", text=str(meta["series_index"])))
         if index:
             audio["TRCK"] = TRCK(3, f"{index}/{total or index}")
         audio.save(str(file))
@@ -65,6 +70,10 @@ def write_tags(file: Path, meta: Dict[str, str], index: int = 0, total: int = 0)
             mp4["\u00a9day"] = meta["year"]
         if meta.get("series"):
             mp4["----:com.apple.iTunes:series"] = [meta["series"].encode("utf-8")]
+        if meta.get("series_index"):
+            mp4["----:com.apple.iTunes:series-part"] = [
+                str(meta["series_index"]).encode("utf-8")
+            ]
         if index:
             mp4["trkn"] = [(index, total or 0)]
         mp4.save()
@@ -82,7 +91,10 @@ def export_metadata(path: Path, meta: Dict[str, str]) -> None:
         if not value:
             continue
         child = ET.SubElement(root, key)
-        child.text = value
+        # str(): meta carries non-string values (notably an int "score" from
+        # refine_metadata_via_mcp), and ElementTree refuses to serialise those,
+        # failing an otherwise successful tagging run at the very last step.
+        child.text = str(value)
     ET.ElementTree(root).write(
         target / "book.nfo", encoding="utf-8", xml_declaration=True
     )

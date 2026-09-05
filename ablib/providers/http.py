@@ -179,13 +179,20 @@ def best_match(
         candidates.append(pair)
         results[name] = pair
 
+    # Query in order, stopping as soon as one provider is confident enough.
+    # openlib/gbooks were previously never consulted here at all, so a book
+    # they could have matched fell through to the LLM fallback whenever
+    # Goodreads and Audible both missed -- despite README listing all four.
+    providers: list[tuple[str, object]] = []
     if client.is_on("use_goodreads", default=True):
-        add_result("goodreads", goodreads(author, title))
-        best = results.get("goodreads")
+        providers.append(("goodreads", goodreads))
+    providers += [("audible", audible), ("openlib", openlib), ("gbooks", gbooks)]
+
+    for name, lookup in providers:
+        add_result(name, lookup(author, title))
+        best = results.get(name)
         if best and best[0] >= 85:
             return best, results
-
-    add_result("audible", audible(author, title))
 
     if not candidates:
         return None, results

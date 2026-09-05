@@ -10,9 +10,10 @@ def search_goodreads(query: str):
     """Search Goodreads by title or author."""
     if not query:
         return {"error": "query is required"}
-    url = f"https://www.goodreads.com/search?q={query.replace(' ', '+')}"
+    # params= so the query is percent-encoded; see the note in audible.py.
+    url = "https://www.goodreads.com/search"
     try:
-        response = requests.get(url, headers=HEADERS, timeout=20)
+        response = requests.get(url, params={"q": query}, headers=HEADERS, timeout=20)
         response.raise_for_status()
     except requests.RequestException as exc:
         return {"error": f"goodreads_request_failed:{exc}"}

@@ -74,25 +74,26 @@ def guess_from_path(
         year = parts.pop()
 
     author: Optional[str] = None
-    if parts:
-        combined = " - ".join(parts[:-1]) if len(parts) >= 2 else parts[0]
-        series, series_index, title = extract_series_and_title(combined)
-        if not series and len(parts) >= 2:
-            author_candidate = strip_annotations(" - ".join(parts[:-1]).strip())
-            title = parts[-1]
+    if not parts:
+        title = leaf
+    elif len(parts) >= 2:
+        # The last segment is the title. Everything before it is author and/or
+        # series, and is only ever mined for series metadata -- previously a
+        # series pattern matching inside `combined` overwrote `title` with a
+        # fragment of the author text, silently discarding the real title.
+        combined = " - ".join(parts[:-1])
+        series, series_index, _ = extract_series_and_title(combined)
+        title = parts[-1]
+        if not series:
+            author_candidate = strip_annotations(combined.strip())
             if (
                 author_candidate
                 and not any(ch.isdigit() for ch in author_candidate)
                 and sum(ch.isalpha() for ch in author_candidate) >= 2
             ):
                 author = author_candidate
-            else:
-                author = None
-        else:
-            author = None
     else:
-        title = leaf
-        author = None
+        series, series_index, title = extract_series_and_title(parts[0])
 
     if not author:
         parent = strip_annotations(clean_tail(path.parent.name))
@@ -165,7 +166,11 @@ def derive_label_hints(label: str) -> dict[str, Optional[str]]:
         cleaned = cleaned[match.end() :].lstrip(" -_")
 
     author_hint: Optional[str] = None
-    parts = [part.strip() for part in re.split(r"\s*[--]\s*", cleaned) if part.strip()]
+    # Split only on a dash used as a *delimiter*, i.e. surrounded by whitespace.
+    # The previous class `[--]` was the range '-' to '-' (a plain hyphen) with
+    # optional surrounding space, so it also split inside hyphenated names:
+    # "Spider-Man - Stan Lee" -> ["Spider", "Man", "Stan Lee"].
+    parts = [part.strip() for part in re.split(r"\s+[-–—]\s+", cleaned) if part.strip()]
     title_part = cleaned
     if parts:
         possible_author = parts[0]

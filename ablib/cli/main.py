@@ -206,7 +206,12 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
                     meta = llm_meta
                     llm_used = True
 
-        if not llm_used and best_score is not None and best_score < 70 and not args.yes:
+        # Gate on the configured threshold, not a hardcoded 70. Previously a
+        # match scoring between 70 and --llm-threshold whose LLM fallback had
+        # failed was tagged with no prompt at all, and --no was silently a
+        # no-op for anything >= 70 because the check below sat inside this
+        # guard. --yes still bypasses the prompt entirely.
+        if not llm_used and best_score is not None and best_score < llm_threshold and not args.yes:
             score_val = (
                 f"{best_score:.1f}" if isinstance(best_score, float) else str(best_score)
             )
@@ -226,10 +231,12 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
             prompt_message = "\n".join(summary_lines)
             if args.no:
                 proceed = False
-            elif hasattr(Confirm, "ask"):
-                proceed = Confirm.ask(prompt_message, default=False)
             else:
-                proceed = Confirm(prompt_message, default=False)
+                # Every Confirm in play exposes .ask -- rich's classmethod, the
+                # console fallback's staticmethod, and the GUI's _GuiConfirm
+                # instance. The old `else: Confirm(...)` branch was therefore
+                # unreachable, and would have raised if it ever ran.
+                proceed = Confirm.ask(prompt_message, default=False)
             if not proceed:
                 log("SKIP", str(path))
                 review_log(path, "user_skip")

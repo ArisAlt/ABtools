@@ -367,7 +367,14 @@ def _can_use_rename(src: Path, dst: Path) -> bool:
 
 def safe_move(src: Path, dst: Path, copy: bool = False) -> None:
     if dst.exists():
-        raise FileExistsError(dst)
+        # process() deliberately allows an existing *empty* directory as the
+        # destination, then this used to reject it -- the two contradicted each
+        # other and the move died with FileExistsError. Consume it instead; the
+        # rename/copy below recreates it.
+        if dst.is_dir() and not any(dst.iterdir()):
+            dst.rmdir()
+        else:
+            raise FileExistsError(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
 
     rename_failed = False
@@ -593,11 +600,17 @@ def choose_meta(guess: Meta) -> Optional[Meta]:
     seen = set()
     unique = []
     for c in candidates:
+        # Google Books / Open Library can return an entry with no title, which
+        # made this dedup key raise AttributeError on None and abort the book.
+        if not c.title or not c.author:
+            continue
         key = (c.author.lower(), c.title.lower())
         if key not in seen:
             unique.append(c)
             seen.add(key)
     candidates = unique
+    if not candidates:
+        return None
 
     candidates.sort(key=lambda m: _similarity(guess, m), reverse=True)
 
@@ -734,9 +747,11 @@ def dest_path(lib: Path, meta: Meta) -> Path:
 
     # 3) Build the "Title (Year)" leaf
     title_text = meta.title or "Unknown Title"
-    if meta.year:
-        title_text = f"{title_text} ({meta.year})"
-    title_slug = _truncate(title_text, MAX_TITLE_LEN)
+    # Reserve room for the year and append it *after* truncating. Appending
+    # first meant a long title pushed the year off the end, or left a dangling
+    # "(" -- and stripped the very thing that disambiguates similar titles.
+    year_suffix = f" ({meta.year})" if meta.year else ""
+    title_slug = _truncate(title_text, max(1, MAX_TITLE_LEN - len(year_suffix))) + year_suffix
 
     # 4) Append the truncated title slug
     # 4) Append the truncated title slug
