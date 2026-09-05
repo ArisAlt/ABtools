@@ -1038,6 +1038,11 @@ def toggle_llm_controls() -> None:
             widget.configure(state=state)
         except tk.TclError:
             pass
+    # The fallback fields are in llm_controls too, so re-apply their own
+    # sub-state afterwards or enabling the card would revive fields the
+    # "Local fallback" tick had switched off.
+    if state == "normal":
+        _toggle_fallback_controls()
 
 
 # ───────────── tabbed operations ────────────────────────────────────────────
@@ -1209,9 +1214,13 @@ Tooltip(remember_key_check,
         "An environment variable is safer; untick this to erase a stored key.")
 
 
+# Rows 8-10 follow the card's existing grid: a right-aligned label in column 0
+# with its field spanning 1-3, and a bare checkbox sitting in column 1 to line
+# up under the fields rather than under the labels.
 fallback_check = ttk.Checkbutton(llm_frame, text="Local fallback",
-                                 variable=fallback_var)
-fallback_check.grid(row=8, column=0, columnspan=2, sticky="w", pady=(PAD_Y, 0))
+                                 variable=fallback_var,
+                                 command=lambda: _toggle_fallback_controls())
+fallback_check.grid(row=8, column=1, columnspan=3, sticky="w", pady=(PAD_Y, 0))
 llm_controls.append(fallback_check)
 Tooltip(fallback_check,
         "When the endpoint above cannot answer - a hosted free tier hitting "
@@ -1220,25 +1229,46 @@ Tooltip(fallback_check,
         "Only those failures trigger it. A model that answered badly is not "
         "asked twice.")
 
+fallback_label = ttk.Label(llm_frame, text="Fallback:")
+fallback_label.grid(row=9, column=0, sticky="e", padx=(0, PAD_X), pady=(PAD_Y // 2, 0))
 fallback_endpoint_entry = ttk.Entry(llm_frame, textvariable=fallback_endpoint_var)
-fallback_endpoint_entry.grid(row=8, column=2, columnspan=2, sticky="ew", pady=(PAD_Y, 0))
+fallback_endpoint_entry.grid(row=9, column=1, columnspan=3, sticky="ew",
+                             pady=(PAD_Y // 2, 0))
 llm_controls.append(fallback_endpoint_entry)
 Tooltip(fallback_endpoint_entry,
         "Local OpenAI-compatible endpoint, e.g. LM Studio on "
         "http://127.0.0.1:8888/v1/chat/completions")
 
-ttk.Label(llm_frame, text="Fallback model:").grid(
-    row=9, column=0, sticky="e", padx=(0, PAD_X), pady=(PAD_Y // 2, 0))
+fallback_model_label = ttk.Label(llm_frame, text="Fallback model:")
+fallback_model_label.grid(row=10, column=0, sticky="e", padx=(0, PAD_X),
+                          pady=(PAD_Y // 2, 0))
 fallback_model_entry = ttk.Entry(llm_frame, textvariable=fallback_model_var)
-fallback_model_entry.grid(row=9, column=1, sticky="ew", pady=(PAD_Y // 2, 0))
+fallback_model_entry.grid(row=10, column=1, sticky="ew", pady=(PAD_Y // 2, 0))
 llm_controls.append(fallback_model_entry)
 
-ttk.Label(llm_frame, text="Min score:").grid(
-    row=9, column=2, sticky="e", padx=(0, PAD_X), pady=(PAD_Y // 2, 0))
+score_label = ttk.Label(llm_frame, text="Min score:")
+score_label.grid(row=10, column=2, sticky="e", padx=(PAD_X, PAD_X),
+                 pady=(PAD_Y // 2, 0))
 fallback_score_spin = ttk.Spinbox(llm_frame, from_=0, to=100, width=5,
                                   textvariable=fallback_score_var)
-fallback_score_spin.grid(row=9, column=3, sticky="w", pady=(PAD_Y // 2, 0))
+fallback_score_spin.grid(row=10, column=3, sticky="w", pady=(PAD_Y // 2, 0))
 llm_controls.append(fallback_score_spin)
+
+# Grey the three fields out when the fallback is off, the way the master
+# "Enable LLM fallback" toggle greys the card.
+# Only the inputs, not the labels: the card's other rows leave "Endpoint:" and
+# "API key:" legible while their entries grey out.
+_fallback_fields = (fallback_endpoint_entry, fallback_model_entry,
+                    fallback_score_spin)
+
+
+def _toggle_fallback_controls() -> None:
+    state = "normal" if fallback_var.get() else "disabled"
+    for widget in _fallback_fields:
+        try:
+            widget.configure(state=state)
+        except tk.TclError:
+            pass
 Tooltip(fallback_score_spin,
         "How closely the local model's answer must match the folder before it "
         "is written, 0-100.\n\nA small local model asked \"which audiobook is "
