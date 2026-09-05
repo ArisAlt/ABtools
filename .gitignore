@@ -3,7 +3,11 @@ whisper_env/
 
 abtools_env/
 
-tests/
+# tests/ was ignored, which is why the regression suite documented in
+# scaffold.md never existed on disk. Tests belong in the repo; only their
+# caches do not.
+tests/__pycache__/
+.pytest_cache/
 
 __pycache__/
 

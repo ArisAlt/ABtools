@@ -10,3 +10,6 @@ ddgs
 # mcp_server/server.py uses the v1 FastMCP API. mcp 2.x renamed FastMCP to
 # MCPServer, so pin <2 until mcp_server is migrated.
 mcp<2
+# Dev only: tests/test_organiser_resolution.py needs pytest (and ffmpeg on PATH
+# to synthesise its audio fixtures).
+pytest
