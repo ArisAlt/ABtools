@@ -236,6 +236,29 @@ def test_every_match_threshold_is_the_shared_constant():
     assert config.llm_fallback_min_score == DEFAULT_MATCH_THRESHOLD
 
 
+def test_the_mcp_gate_and_its_callers_read_the_same_number():
+    """refine_metadata_via_mcp once stopped early at 90 while both callers
+    demanded 95, so a stage-1 result scoring 90-94 skipped SequentialThinking
+    and was then thrown away. One constant, checked at the call sites."""
+    import importlib
+    import inspect
+    from ablib.core.constants import DEFAULT_MATCH_THRESHOLD
+    from ablib.metadata.llm import MCP_ACCEPT_SCORE
+
+    assert MCP_ACCEPT_SCORE == DEFAULT_MATCH_THRESHOLD
+
+    # import_module, not `from ablib.cli import main`: the package re-exports a
+    # *function* called main, which shadows the submodule of the same name.
+    cli_main = importlib.import_module("ablib.cli.main")
+
+    # No caller may re-inline a literal bar of its own.
+    src = inspect.getsource(cli_main)
+    assert src.count("MCP_ACCEPT_SCORE") >= 3          # import + both gates
+    for line in src.splitlines():
+        if 'mcp_meta.get("score"' in line:
+            assert "MCP_ACCEPT_SCORE" in line, line
+
+
 def test_the_threshold_sits_between_the_measured_bands():
     """Right and wrong answers must fall either side of it, or the number is
     decoration. Cases are real results from the audited library."""

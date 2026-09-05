@@ -719,7 +719,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
   **70-80 is the wrong-answer band.** The gap is 81 → 97.
 - **Fix applied**: `combobook._similarity` delegates to the shared `score_candidate`, so both tools grade identically; its bands become 100 / 81 / 53 and the wrong-author cases are now **rejected**. Every threshold reads `DEFAULT_MATCH_THRESHOLD`: `ACCEPT_SCORE`, `--llm-threshold`, `--auto-accept-score`, `llm_fallback_min_score`, and both GUI spinboxes. `--auto-accept-score` changed scale from 0-1 to 0-100, and the ambiguity guard's tie window from 0.02 to 2.0.
-- **Deliberately not changed**: `MCP_ACCEPT_SCORE = 95` gates an *LLM refinement*, not a provider match — a different decision on a different scale, and loosening it would accept weaker LLM output, the opposite of the intent.
+- **Follow-up (same day)**: `MCP_ACCEPT_SCORE` now reads `DEFAULT_MATCH_THRESHOLD` too, at the user's direction, so there is one number in the project. It gates `calculate_combined_score`, which is a *different scale* (the model's self-reported score averaged with a fuzzy blend that includes the folder name), so the 83 bands measured on `score_candidate` do not transfer to it — recorded in the constant's comment. Practical effect: stage-1 MCP refinements scoring 83-94 are now accepted and skip the SequentialThinking stage, where they were previously discarded.
 - **Verification**: `test_the_threshold_sits_between_the_measured_bands` asserts real correct results land at/above 83 and real wrong ones below it; `test_every_match_threshold_is_the_shared_constant` stops them drifting apart again.
 
 ## 5. Metadata, Providers & Tagging Logic Errors

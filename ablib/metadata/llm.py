@@ -29,7 +29,15 @@ _MAX_CALLS_PER_TOOL: int = 5
 # ablib.cli.main so the two cannot drift: refine_metadata_via_mcp used to stop
 # early at 90 while its caller only accepted 95, so a stage-1 result scoring
 # 90-94 skipped the SequentialThinking stage and was then discarded anyway.
-MCP_ACCEPT_SCORE: int = 95
+#
+# Now tracks the one project-wide confidence bar. Caveat worth knowing: this
+# gates calculate_combined_score, which is NOT the same scale as
+# providers.http.score_candidate -- it averages the model's own self-reported
+# score with a fuzzy blend that includes the folder name. The bands documented
+# on DEFAULT_MATCH_THRESHOLD were measured on score_candidate and do not
+# transfer directly, so treat this as "one knob, deliberately set" rather than
+# as a measured cut-off.
+MCP_ACCEPT_SCORE: int = constants.DEFAULT_MATCH_THRESHOLD
 
 
 # Statuses another endpoint might not share, so they are worth retrying

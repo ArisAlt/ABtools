@@ -275,8 +275,12 @@ wrong-author matches. No number could fix it; the scorer had to go. It now
 delegates to the shared `score_candidate`, giving 100 / 81 / 53 and rejecting
 what it used to accept.
 
-Left `MCP_ACCEPT_SCORE = 95` alone: it gates an LLM refinement, not a provider
-match, and lowering it would accept weaker LLM output.
+`MCP_ACCEPT_SCORE` follows the same constant, on the user's instruction, so the
+project has exactly one confidence number. Worth remembering that it gates
+`calculate_combined_score` -- the model's own self-reported score averaged with
+a fuzzy blend including the folder name -- which is NOT the scale the 83 bands
+were measured on. Effect: stage-1 MCP refinements scoring 83-94 now get
+accepted and skip the SequentialThinking stage instead of being discarded.
 
 Caveat recorded in the docs: with no author known the score saturates at 100
 whether right or wrong, because there is nothing left to disagree about. The
