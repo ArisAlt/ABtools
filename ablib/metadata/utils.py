@@ -42,10 +42,13 @@ def extract_series_and_title(text: str) -> tuple[Optional[str], Optional[str], s
         groups = match.groups()
         if len(groups) == 3:
             series_name, series_index, title = groups
-            return series_name.strip(), series_index.strip(), title.strip()
+            cleaned_series = series_name.strip(" -_:. ,\t")
+            cleaned_title = title.strip(" -_:. \t")
+            return cleaned_series, series_index.strip(), cleaned_title
         if len(groups) == 2:
             series_index, title = groups
-            return None, series_index.strip(), title.strip()
+            cleaned_title = title.strip(" -_:. \t")
+            return None, series_index.strip(), cleaned_title
 
     return None, None, working
 
@@ -278,3 +281,213 @@ def validate_metadata_fields(meta: dict[str, Any]) -> tuple[bool, list[str]]:
             issues.append("short_description")
 
     return not (set(issues) & FATAL_VALIDATION_ISSUES), issues
+
+
+def slug(text: str) -> str:
+    """Return a filesystem-friendly string with illegal characters removed."""
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1F]', "", text or "")
+    return cleaned.strip().rstrip(". ")
+
+
+def truncate_component(name: str, limit: int) -> str:
+    """Return a slugged version of name truncated to at most `limit` characters,
+    trimming any trailing dots or spaces."""
+    slugged = slug(name)
+    if len(slugged) <= limit:
+        return slugged
+    return slugged[:limit].rstrip(". ")
+
+
+def format_canonical_dest(
+    dest_root: Path,
+    author: Optional[str] = None,
+    title: Optional[str] = None,
+    year: Optional[str] = None,
+    series: Optional[str] = None,
+    *,
+    max_author: int = 50,
+    max_series: int = 50,
+    max_title: int = 50,
+) -> Path:
+    """Build the canonical Audiobookshelf destination path:
+
+        <dest_root>/<author>/[series]/<title (year)>
+
+    Truncates each component per Audiobookshelf best practices:
+      • <author>  → at most max_author (default 50)
+      • <series>  → at most max_series (default 50)
+      • <title>   → at most max_title (default 50), preserving year suffix
+    When year is missing, empty, or 'Unknown', the year suffix is omitted.
+    """
+    author_folder = truncate_component(author or "Unknown Author", max_author)
+    dest = dest_root / author_folder
+
+    if series and series.strip() and series.strip().lower() not in {"unknown", "none", "null"}:
+        series_folder = truncate_component(series.strip(), max_series)
+        if series_folder:
+            dest /= series_folder
+
+    title_text = (title or "").strip() or "Unknown Title"
+    clean_year = (year or "").strip()
+    year_suffix = f" ({clean_year})" if clean_year and clean_year.lower() != "unknown" else ""
+
+    available_len = max(1, max_title - len(year_suffix))
+    title_slug = truncate_component(title_text, available_len) + year_suffix
+    dest /= title_slug
+
+    return dest
+
+
+# ── author sanity ───────────────────────────────────────────────────────────
+# Shared by combobook.process() and restructure.target_for() so the two
+# organisers agree on what counts as an author. See bug.md 4.8 / 4.10: a rip's
+# `artist` frame routinely holds a disc marker, a track index, or the filename,
+# and trusting it verbatim turns that string into a top-level library folder.
+
+JUNK_AUTHOR_RX = re.compile(
+    r"""^\s*
+        (?:\[|\(|\{)?\s*
+        (?:side|disc|disk|cd|dvd|part|pt|track|tape|chapter|ch|file|vol|volume)
+        \s*[\s._#-]*\d+
+        (?:\s*(?:of|/)\s*\d+)?
+        \s*(?:\]|\)|\})?\s*$""",
+    re.IGNORECASE | re.VERBOSE,
+)
+INDEX_ONLY_RX = re.compile(r"^\s*\d+\s*(?:(?:of|/)\s*\d+)?\s*$")
+UNKNOWN_AUTHORS = frozenset(
+    {"", "unknown", "unknown author", "various", "various artists", "va", "none", "null", "n/a"}
+)
+INITIAL_RX = re.compile(r"\b([A-Z])(?=\s|$)")
+
+
+def _comparable(text: str) -> str:
+    """Lowercase, strip punctuation and collapse whitespace, for equality tests."""
+    return re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
+
+
+def is_plausible_author(name: Optional[str], *, filename_stem: Optional[str] = None) -> bool:
+    """True when `name` could actually be a person, rather than rip debris.
+
+    Rejects disc/track markers ("Side 01", "CD 2"), bare indices ("01",
+    "3 of 12"), placeholder values, strings with no letters, and — when
+    `filename_stem` is given — a value that merely echoes the audio file's own
+    name ("AttheGatesofDarkness Part1 Track 01"), which is what a tagger writes
+    when it had nothing better to put in the field.
+    """
+    if not name:
+        return False
+    candidate = name.strip()
+    if candidate.lower() in UNKNOWN_AUTHORS:
+        return False
+    if JUNK_AUTHOR_RX.match(candidate) or INDEX_ONLY_RX.match(candidate):
+        return False
+    if not re.search(r"[A-Za-z]", candidate):
+        return False
+    # "Track 04" anywhere, not just anchored, is never part of a real name.
+    if re.search(r"\b(?:track|disc|disk|side|cd)\s*\d+\b", candidate, re.IGNORECASE):
+        return False
+    if filename_stem and _comparable(candidate) == _comparable(filename_stem):
+        return False
+    return True
+
+
+def normalise_author(name: Optional[str]) -> Optional[str]:
+    """Canonicalise an author string so one person yields one library folder.
+
+    Restores the period after a bare middle initial, so "Raymond E Feist" and
+    "Raymond E. Feist" stop producing two sibling directories, and collapses
+    runs of whitespace.
+    """
+    if not name:
+        return None
+    cleaned = re.sub(r"\s{2,}", " ", name.strip())
+    if not cleaned:
+        return None
+    return INITIAL_RX.sub(r"\1.", cleaned)
+
+
+def primary_author(name: Optional[str]) -> Optional[str]:
+    """Reduce a comma-joined credit list to a single filing name.
+
+    A compilation can carry a dozen names; at 126 characters `truncate_component`
+    cuts it mid-word into a pseudo-author no library will ever match. Filing
+    under the first credited author is wrong for exactly one book but readable,
+    reversible, and consistent between the two organisers. Two names are kept
+    as-is: co-authorship is a real, stable credit.
+    """
+    normalised = normalise_author(name)
+    if not normalised:
+        return None
+    parts = [p.strip() for p in normalised.split(",") if p.strip()]
+    if len(parts) >= 3:
+        return parts[0]
+    return normalised
+
+
+# ── self-describing folder names ────────────────────────────────────────────
+# Shared by combobook.parse_leaf_name() and restructure.parse_book_folder() so
+# both organisers read the same shapes out of a leaf directory name.
+
+BOOK_MARKER_RX = re.compile(
+    r"^(?:book|bk|vol|volume|part|pt|#)\s*\.?\s*(?P<seq>\d+(?:\.\d+)?)"
+    r"(?P<omnibus>\s*(?:&|\+|and|-|to)\s*\d+)?$",
+    re.IGNORECASE,
+)
+DASH_SPLIT_RX = re.compile(r"\s+[-–—]\s+")
+TRAILING_YEAR_RX = re.compile(r"\((\d{4})\)\s*$")
+
+
+def parse_book_folder_name(name: str) -> dict[str, Optional[str]]:
+    """Read author / series / sequence / title / year out of a folder name.
+
+    Recognises "<Author> - <Series> - Book <N> - <Title>" and its shorter
+    relatives, then falls back to `extract_series_and_title` for
+    "<Series> <NN> - <Title>". Returns a dict whose values are None when the
+    name carries no evidence for that field -- never a guess.
+
+    An omnibus ("Book 1 & 2") keeps the first sequence number; there is no
+    single correct answer, and the first is what a library sorts by.
+    """
+    result: dict[str, Optional[str]] = {
+        "author": None, "series": None, "series_index": None,
+        "title": None, "year": None,
+    }
+    working = clean_tail(name or "").strip()
+    if not working:
+        return result
+
+    year_match = TRAILING_YEAR_RX.search(working)
+    if year_match:
+        result["year"] = year_match.group(1)
+        working = working[: year_match.start()].strip()
+
+    segments = [s.strip() for s in DASH_SPLIT_RX.split(working) if s.strip()]
+    marker_at = next(
+        (i for i, seg in enumerate(segments) if BOOK_MARKER_RX.match(seg)), None
+    )
+    if marker_at is not None and marker_at < len(segments) - 1:
+        marker = BOOK_MARKER_RX.match(segments[marker_at])
+        result["series_index"] = marker.group("seq")
+        result["title"] = " - ".join(segments[marker_at + 1 :]).strip()
+        head = segments[:marker_at]
+        if len(head) >= 2:
+            result["author"] = normalise_author(head[0])
+            result["series"] = " - ".join(head[1:]).strip() or None
+        elif len(head) == 1:
+            # "<Series> - Book N - <Title>" carries no author. Reading the lone
+            # segment as the series is the safer error: a wrong series is a
+            # subfolder, a wrong author is a top-level library directory.
+            result["series"] = head[0]
+        return result
+
+    series, index, title = extract_series_and_title(working)
+    if series and " - " in series:
+        # extract_series_and_title keeps any author prefix glued to the series.
+        author_part, _, series_part = series.partition(" - ")
+        result["author"] = normalise_author(author_part)
+        result["series"] = series_part.strip() or None
+    else:
+        result["series"] = series
+    result["series_index"] = index
+    result["title"] = title or working
+    return result

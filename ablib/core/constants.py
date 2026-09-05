@@ -15,10 +15,10 @@ PAREN_RX = re.compile(r"\([^)]*\)")
 YEAR_RX = re.compile(r"^(\d{4})\s*[-_]\s*")
 
 SERIES_PATTERNS = [
+    re.compile(r"^(.+?)\s+(?:Book|Bk\.?)\s+(\d+(?:\.\d+)?)\s+(.+)$", re.IGNORECASE),
+    re.compile(r"^(.+?)\s+#(\d+(?:\.\d+)?)\s+(.+)$"),
+    re.compile(r"^(.+?)\s+Vol\.?(?:ume)?\s+(\d+(?:\.\d+)?)\s+(.+)$", re.IGNORECASE),
     re.compile(r"^(.+?)\s+(\d+(?:\.\d+)?)\s+(.+)$"),  # "Series 01 Title"
-    re.compile(r"^(.+?)\s+Book\s+(\d+)\s+(.+)$", re.IGNORECASE),
-    re.compile(r"^(.+?)\s+#(\d+)\s+(.+)$"),
-    re.compile(r"^(.+?)\s+Vol\.?\s+(\d+)\s+(.+)$", re.IGNORECASE),
     re.compile(r"^(\d+(?:\.\d+)?)\s+(.+)$"),  # "01 Title"
 ]
 
