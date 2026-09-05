@@ -25,7 +25,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 | P0 | [1.2](#12-abtoolsguipy-incompatible-main-call-when-clicking-restructure-folders) | GUI Restructure button always errors | 🛠️ Fixed |
 | P1 | [4.1](#41-combobookpy-leaf_dirs-treats-disc-subfolders-as-separate-audiobooks) / [4.4](#44-flatten_discspy-folders-starting-with-disc-prefix-collide-under-empty-string-) | Multi-disc books lose discs; unrelated books merged together | 🛠️ Fixed |
 | P1 | [1.3](#13-mcp_serverserverpy-standard-output-banners-violate-mcp-json-rpc-protocol) | MCP server unusable by any stdio client | 🛠️ Fixed |
-| P2 | [5.x](#5-metadata-providers--tagging-logic-errors) | Metadata corruption and crashes on specific inputs | 🛠️ Fixed (5.1-5.12) |
+| P2 | [5.x](#5-metadata-providers--tagging-logic-errors) | Metadata corruption and crashes on specific inputs | 🛠️ Fixed (5.1-5.14) |
 | P3 | [7.x](#7-edge-cases-type-errors--performance-issues) | Latent / narrow edge cases | Mostly closed — [7.3](#73-combobookpy-unsafe-index-access-in-tags_from_track) open |
 | — | [8](#8-mcp-tool-runtime-verification) | MCP tools executed for real: 3 working, 2 blocked by the remote host | Verified |
 
@@ -467,6 +467,20 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 - **File**: [`ablib/providers/mcp.py:25-26`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/providers/mcp.py#L25-L26)
 - **Error**: `mcp_full_web_search` wrote every result into a module-level dict that nothing ever cleared.
 - **Impact**: a long run over a large library retained every search result for the life of the process. Verified: 1200 cached results now settle at 200 live entries under the cap instead of growing unbounded. Dropping a stale id costs at most one re-fetch.
+
+### 5.13 `ablib/metadata/utils.py`: Cosmetic Validation Issues Refuse the Whole Book
+- **Status**: 🛠️ **FIXED (2026-09-05)** — only missing title/author are fatal now. *(Second follow-up pass over `ablib/`.)*
+- **Files**: [`ablib/metadata/utils.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/metadata/utils.py), [`ablib/cli/main.py:249`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/cli/main.py#L249)
+- **Error**: `validate_metadata_fields` returned `(len(issues) == 0, issues)`, so *any* finding marked the metadata invalid — and `process_leaf` treats invalid metadata as fatal: it logs `REVIEW`, writes the review log and returns **without tagging**.
+- **Impact**: a book with a perfect title and author was refused because its description ran to seven characters. Same for an empty narrator string, a `series_index` with no series name, or a malformed year. It also triggered a pointless MCP refinement attempt for those cosmetic cases.
+- **Fix applied**: `FATAL_VALIDATION_ISSUES = {"missing_title", "missing_author"}`; `usable` reflects only those, while `issues` still reports everything. `process_leaf` prints the advisory ones as `metadata notes:` and proceeds. Verified: short description / empty narrator / stray series_index / odd year are all now usable, while missing title, missing author, and both together remain fatal.
+
+### 5.14 `ablib/providers/http.py`: Enrichment Queried Every Provider Hunting a Nonexistent Series
+- **Status**: 🛠️ **FIXED (2026-09-05)** — loop termination now keyed on author/year only. *(Second follow-up pass.)*
+- **File**: [`ablib/providers/http.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/providers/http.py) — `enrich_metadata_with_providers`
+- **Error**: `needed` included `series`, and the loop only stopped once `needed` was empty. Most books are standalone and have no series, so `needed` could never empty — every such book ran Audible, Open Library **and** Google Books serially at a 10s timeout each, purely to look for a series that does not exist.
+- **Impact**: up to 30s of avoidable lookups per book, on top of `best_match`, for the common case of a book that already had author and year.
+- **Fix applied**: termination is decided by author/year alone; `series` is still filled opportunistically from whatever a provider happens to return. Verified: a book with author and year known now makes **zero** provider calls (was three), a book missing both still enriches and stops at the first provider that answers, and series is still picked up when offered.
 
 ## 6. GUI & CLI Synchronization Issues
 

@@ -221,27 +221,32 @@ def enrich_metadata_with_providers(
     if not title:
         return meta
 
-    needed = {key for key in ("author", "year", "series") if not (meta.get(key) or "")}
-    if not needed:
+    # Only author and year decide whether another lookup is worth making.
+    # `series` used to count too, but most books simply have no series, so it
+    # could never be satisfied -- every standalone book therefore ran all three
+    # providers serially at 10s each, hunting a series that does not exist.
+    # It is still filled opportunistically from whatever a provider returns.
+    def missing_essential() -> set[str]:
+        return {key for key in ("author", "year") if not (meta.get(key) or "")}
+
+    if not missing_essential():
         return meta
 
     author = meta.get("author")
-    providers = (audible, openlib, gbooks)
-    for provider in providers:
+    for provider in (audible, openlib, gbooks):
         info = provider(author, title)
         if not info:
             continue
-        if "author" in needed:
+        if not (meta.get("author") or ""):
             authors = info.get("authors")
             if authors:
                 meta["author"] = ", ".join(value for value in authors if value)
-        if "year" in needed and info.get("year"):
+        if not (meta.get("year") or "") and info.get("year"):
             meta["year"] = info["year"]
-        if "series" in needed and info.get("series"):
+        if not (meta.get("series") or "") and info.get("series"):
             meta["series"] = info["series"]
 
-        needed = {key for key in ("author", "year", "series") if not (meta.get(key) or "")}
-        if not needed:
+        if not missing_essential():
             break
         author = meta.get("author")
 

@@ -247,6 +247,10 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
                 return
 
     valid, validation_issues = validate_metadata_fields(meta)
+    if valid and validation_issues:
+        # Advisory only -- worth showing, but not a reason to refuse a book
+        # whose title and author are sound.
+        rprint(f"  [yellow]- metadata notes: {', '.join(validation_issues)}[/]")
     if not valid:
         issues_text = ", ".join(validation_issues)
         rprint(f"  [yellow]- metadata validation failed: {issues_text}")

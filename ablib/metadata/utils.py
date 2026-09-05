@@ -220,8 +220,21 @@ def format_metadata_summary(meta: dict[str, Any]) -> str:
     return summary
 
 
+# Only these make metadata unusable. Everything else this function reports is
+# advisory: a short description or an empty narrator says nothing about whether
+# the book can be filed correctly. Treating every issue as fatal meant
+# process_leaf refused to tag a book with a perfect title and author because
+# its description ran to seven characters.
+FATAL_VALIDATION_ISSUES = frozenset({"missing_title", "missing_author"})
+
+
 def validate_metadata_fields(meta: dict[str, Any]) -> tuple[bool, list[str]]:
-    """Run lightweight validation over metadata dicts."""
+    """Run lightweight validation over metadata dicts.
+
+    Returns ``(usable, issues)``. ``usable`` is False only for the issues in
+    :data:`FATAL_VALIDATION_ISSUES`; ``issues`` still lists everything found so
+    callers can report the advisory ones.
+    """
 
     issues: list[str] = []
 
@@ -264,4 +277,4 @@ def validate_metadata_fields(meta: dict[str, Any]) -> tuple[bool, list[str]]:
         if description_text and len(description_text) < 15:
             issues.append("short_description")
 
-    return (len(issues) == 0), issues
+    return not (set(issues) & FATAL_VALIDATION_ISSUES), issues
