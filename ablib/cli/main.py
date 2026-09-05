@@ -337,7 +337,7 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Tag or strip audiobook files.",
         epilog=textwrap.dedent(
-            """\
+            f"""\
             flags
             -----
               --recurse     walk sub-folders that hold audio
@@ -345,8 +345,8 @@ def build_parser() -> argparse.ArgumentParser:
               --yes         auto-accept matches (tag mode)
               --no          auto-decline matches (tag mode)
               --striptags   delete *all* tags instead of adding
-              --llm-endpoint URL   OpenAI-compatible endpoint (default: http://127.0.0.1:1234/v1/chat/completions)
-              --llm-model NAME     model to request from the endpoint (default: mistral-7b-instruct-q4)
+              --llm-endpoint URL   OpenAI-compatible endpoint (default: {constants.DEFAULT_LLM_ENDPOINT})
+              --llm-model NAME     model to request from the endpoint (default: {constants.DEFAULT_LLM_MODEL_NAME})
               --llm-threshold SCORE  confidence score before using the LLM (default: 85)
               --tavily-key KEY     Tavily Search API key for supplemental research
             """
@@ -363,12 +363,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--striptags", action="store_true")
     parser.add_argument(
         "--llm-endpoint",
-        default="http://127.0.0.1:8888/v1/chat/completions",
+        default=constants.DEFAULT_LLM_ENDPOINT,
         help="OpenAI-compatible completion endpoint (use 'none' to disable; default: %(default)s)",
     )
     parser.add_argument(
         "--llm-model",
-        default="mistral-7b-instruct-q4",
+        default=constants.DEFAULT_LLM_MODEL_NAME,
         help="Model name to request from the LM Studio endpoint (default: %(default)s)",
     )
     parser.add_argument(

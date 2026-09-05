@@ -1,6 +1,6 @@
 # Proposal: Dynamic LLM Model Configuration
 
-**Status:** draft, awaiting decision
+**Status:** Phase 1 done; scope fixed to **local providers only** (decided 2026-09-05)
 **Date:** 2026-09-05
 **Scope:** `AbtoolsGui.py`, `ablib/core/config.py`, `ablib/metadata/llm.py`, `mcp_server/`
 **Goal:** remove the hardcoded `MODEL_CHOICES` list and make endpoint/model configuration discoverable, persistent and consistent across the GUI, CLI and MCP server.
@@ -17,7 +17,7 @@ The core idea — query the server's `/v1/models` endpoint instead of shipping a
 |---|---|---|
 | 1. Live auto-discovery via `/v1/models` | **Adopt** | Needs thread-marshalling and robust URL derivation (§3.1, §3.3) |
 | 3. Persistent settings + MRU model list | **Adopt, with #1** | Must extend the existing settings file, not add a second (§3.4) |
-| 2. Provider presets | Optional, cheap | Drop the "Remote" preset until auth exists (§3.2) |
+| 2. Provider presets | Optional, cheap | Local runners only — remote is out of scope (§3.2) |
 | 4. Config cascade (env vars) | Defer to last | Largest blast radius; real payoff is the MCP server, not the GUI (§4.4) |
 
 **Recommended order:** fix the open P2 correctness bugs first (§5), then ship options 1 + 3 as a single change, then reassess 2 and 4.
@@ -99,9 +99,11 @@ The sketch says to make the HTTP call in the background "so it never freezes the
 
 The probe must post its result to `output_queue` and let `poll_queue()` apply it on the UI thread. `poll_queue` already has a message-type switch (`stdout` / `progress` / `prompt` / `status`); this adds one more case.
 
-### 3.2 The "Remote" preset is blocked
+### 3.2 Remote providers are out of scope
 
-Given §2.2, a Provider dropdown offering "Custom / Remote" would advertise something that cannot work. Ship presets for local runners only (LM Studio / Ollama / vLLM), or implement auth first.
+**Decided 2026-09-05: local providers only.** §2.2 showed `_call_llm` sends no headers, so hosted providers cannot work without new auth plumbing — and that plumbing is now explicitly not wanted. Ship presets for local runners only (LM Studio / Ollama / vLLM), and offer no "Custom / Remote" entry.
+
+This also removes the auth prerequisite from Phase 3 and drops decision 1 in §6.
 
 ### 3.3 Use `urlsplit`, not string manipulation
 
@@ -131,10 +133,11 @@ The sketch lists `OPENAI_BASE_URL` / `OPENAI_MODEL_NAME` as fallbacks. Silently 
 
 ## 4. Plan
 
-### Phase 1 — cleanup (small, do first)
+### Phase 1 — cleanup ✅ **done 2026-09-05**
 
-- Delete the no-op `tagger_mod.CONFIG` block in `apply_llm_settings` (§2.1).
-- Add a comment in `ablib/cli/__init__.py` recording the shadowing trap (§2.3).
+- ~~Delete the no-op `tagger_mod.CONFIG` block in `apply_llm_settings` (§2.1).~~ Removed; a comment records why no propagation is needed. Verified the GUI still drives both `combobook.tagger.CONFIG` and `ablib.cli.main.CONFIG`, since all three are one object.
+- ~~Add a comment in `ablib/cli/__init__.py` recording the shadowing trap (§2.3).~~ Added to the module docstring.
+- **Also fixed, found during this cleanup:** the CLI and GUI defaulted to *different models*. `constants.py` gave `ibm/granite-4-h-tiny` while the CLI's `--llm-model` default was the literal `mistral-7b-instruct-q4`, and argparse always supplies its default — so every CLI run silently overrode the constant. The CLI's own `--help` epilog also still advertised port 1234 against a real default of 8888. Both argparse defaults now reference `constants`, and the epilog is an f-string interpolating them, so the three can no longer drift.
 
 ### Phase 2 — auto-discovery + persistence (the main change)
 
@@ -225,6 +228,6 @@ All three are small. Recommendation: land those first, then Phase 1 + 2 together
 
 ## 6. Decisions needed
 
-1. **Auth:** is remote/hosted provider support wanted? If yes it is a prerequisite for Phase 3's "Remote" preset and needs `api_key` on `RuntimeConfig` plus header support in `_call_llm`.
+1. ~~**Auth:** is remote/hosted provider support wanted?~~ **Resolved 2026-09-05: no — local only.** No `api_key` on `RuntimeConfig`, no headers in `_call_llm`, no "Remote" preset.
 2. **Probe on startup:** should the GUI probe the saved endpoint automatically at launch, or only on demand? Automatic is more convenient; on-demand avoids firing a request at whatever address happens to be saved.
 3. **Phase 4 scope:** GUI + CLI only, or extend to the MCP server at the same time?

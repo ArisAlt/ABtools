@@ -780,10 +780,10 @@ def apply_llm_settings(settings: dict[str, object]) -> None:
     else:
         CONFIG.llm_model_name = DEFAULT_LLM_MODEL
 
-    tagger_mod = getattr(combobook, "tagger", None)
-    if tagger_mod is not None and hasattr(tagger_mod, "CONFIG"):
-        tagger_mod.CONFIG.llm_endpoint = CONFIG.llm_endpoint
-        tagger_mod.CONFIG.llm_model_name = CONFIG.llm_model_name
+    # No propagation needed: ablib.core.config.config is a module-level
+    # singleton, so CONFIG here, combobook.tagger.CONFIG and ablib.cli.main
+    # .CONFIG are all the same object (id-verified). The block that used to
+    # copy values across was assigning the object's attributes to themselves.
 
 
 def _normalise_output_text(text: str) -> str:
