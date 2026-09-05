@@ -419,3 +419,83 @@ def test_only_src_log_limits_the_cli_scan(tmp_path):
     )
     paths = find_duplicates._read_paths_from_log(tmp_path / "duplicate_log.txt")
     assert kept in paths
+
+
+# ── network shares and mount-shadowed paths (GUI folder picker) ─────────────
+
+def _gui_helpers():
+    """Load the picker's path helpers without starting Tk."""
+    import ast
+    import types
+
+    source = (Path(__file__).resolve().parents[1] / "AbtoolsGui.py").read_text(encoding="utf-8")
+    module = types.ModuleType("gui_helpers")
+    exec("import os\nfrom pathlib import Path\nfrom typing import Optional\n",
+         module.__dict__)
+    wanted = {"_mount_table", "remote_to_mount_point", "mounted_twin", "local_path"}
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.FunctionDef) and node.name in wanted:
+            exec(compile(ast.Module([node], []), "<gui>", "exec"), module.__dict__)
+    return module
+
+
+def test_remote_location_maps_to_its_mount_point(monkeypatch, tmp_path):
+    """A folder browser cannot list "user@host:/path"; the mount point is in
+    /proc/mounts, so translate rather than showing an empty box."""
+    gui = _gui_helpers()
+    share = tmp_path / "pi_share"
+    (share / "audiobooks").mkdir(parents=True)
+    monkeypatch.setattr(
+        gui, "_mount_table",
+        lambda: [("me@10.0.0.1:/home/me/bshelf", share), ("/dev/sda1", Path("/"))],
+    )
+
+    assert gui.remote_to_mount_point("me@10.0.0.1:/home/me/bshelf") == share
+    # a subdirectory of the share resolves through the mount too
+    assert gui.remote_to_mount_point(
+        "me@10.0.0.1:/home/me/bshelf/audiobooks") == share / "audiobooks"
+    assert gui.remote_to_mount_point("sftp://me@10.0.0.1:/home/me/bshelf") == share
+    # ordinary local paths are left alone
+    assert gui.remote_to_mount_point(str(share)) is None
+    assert gui.remote_to_mount_point("/home/me/books") is None
+
+
+def test_local_path_accepts_a_remote_location(monkeypatch, tmp_path):
+    gui = _gui_helpers()
+    share = tmp_path / "pi_share"
+    share.mkdir()
+    monkeypatch.setattr(gui, "_mount_table",
+                        lambda: [("me@10.0.0.1:/home/me/bshelf", share)])
+
+    assert gui.local_path("me@10.0.0.1:/home/me/bshelf") == share
+    assert gui.local_path("~").is_absolute()
+
+
+def test_mount_shadowed_path_finds_its_mounted_twin(monkeypatch, tmp_path):
+    """On a btrfs @-subvolume layout /@home/<user>/<share> and
+    /home/<user>/<share> are the same directory, but only the latter carries
+    the mount, so the former lists as empty with no explanation.
+
+    A mount is the only thing that produces "same parent, different child", and
+    a test cannot mount anything -- so the parent identity check is stubbed and
+    the traversal is what is under test. Verified against a real sshfs mount on
+    a btrfs @-subvolume host: mounted_twin("/@home/me/pi_share") returned
+    "/home/me/pi_share", where the former listed 0 entries and the latter 23.
+    """
+    gui = _gui_helpers()
+
+    shadow = tmp_path / "@home" / "me" / "share"      # the bare mount point
+    shadow.mkdir(parents=True)
+    mounted = tmp_path / "home" / "me" / "share"      # what the mount shows
+    (mounted / "audiobooks").mkdir(parents=True)
+    monkeypatch.setattr(gui, "_mount_table", lambda: [("host:/x", mounted)])
+
+    def same_parent(a, b):
+        # "/@home/me" and "/home/me" are one directory on disk
+        return Path(a).name == Path(b).name
+
+    monkeypatch.setattr(gui.os.path, "samefile", same_parent)
+
+    assert gui.mounted_twin(shadow) == mounted
+    # the mounted path itself reports no twin
+    assert gui.mounted_twin(mounted) is None

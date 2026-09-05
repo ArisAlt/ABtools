@@ -153,3 +153,35 @@ Test suite is 38 tests, on `main`.
   keys off the `authors` array so re-runs skip what is already done.
 
 bug.md now has no open entries. 43 tests, pyflakes clean, all on `main`.
+
+## 2026-09-05 — 6.4: the folder browser was empty on a network share
+
+Reported as "network mounted folder returns no folders". Three faults, all
+presenting as an empty browser:
+
+1. `citizenzero@10.10.10.10:/home/citizenzero/bshelf` is an sshfs *source
+   string*, not a path. `Path()` reads it as relative, `is_dir()` is False, and
+   `choose_directory`'s parent-walk silently landed on `.` -- the working
+   directory -- with no message.
+2. **The real trap on this machine:** btrfs `@`-subvolume layout. `/home` is
+   subvolid 259 (`subvol=/@home`) mounted at `/home`; `/@home` is the same
+   subvolume from the root subvolume. Same directory, but only `/home` carries
+   mounts -- `/home/citizenzero/pi_share` had 23 entries,
+   `/@home/citizenzero/pi_share` had 0. `~/.abtools_gui.json` had
+   `"dest": "/@home/..."` saved, and `/` lists `@home` right beside `home`.
+3. `populate()` never distinguished empty / files-only / shadowed, and built the
+   listing inside one try, so one entry raising OSError (routine on a flaky
+   share) discarded everything.
+
+Fixes: `remote_to_mount_point()` (reads /proc/mounts, decodes octal escapes,
+matches source exactly or as a parent), `local_path()` as the single place
+user text becomes a Path -- so the remote form works in the Source/Destination
+fields too, not just the browser -- and `mounted_twin()` comparing parents with
+`os.path.samefile` so it does not care what the subvolume is called.
+
+Testing note worth keeping: a symlink CANNOT model a mount. My first attempt
+made `/@home/...` a symlink, so both paths were the same inode, `samefile` was
+True and the code correctly returned None. Only a mount produces "same parent,
+different child", and tests cannot mount -- so that test stubs the parent
+identity check and the traversal is what is under test, with the real-system
+result recorded in the docstring.

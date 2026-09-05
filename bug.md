@@ -36,6 +36,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 | **P1** | [4.13](#413-restructure_for_audiobookshelfpy-books-at-the-source-root-are-skipped-silently) | restructure silently skips books at the source root; reports success having done nothing | 🛠️ **Fixed (2026-09-05)** |
 | P2 | [4.14](#414-restructure_for_audiobookshelfpy-no-leave-in-place-for-books-it-cannot-identify) | restructure still sweeps unidentified books into `Unknown Author/` | 🛠️ **Fixed (2026-09-05)** |
 | P2 | [4.15](#415-booknfo-and-metadatajson-described-the-same-book-differently) | The two sidecars for one book disagreed | 🛠️ **Fixed (2026-09-05)** |
+| **P1** | [6.4](#64-abtoolsguipy-the-folder-browser-shows-nothing-for-a-network-share) | Folder browser empty for a network share or a mount-shadowed path | 🛠️ **Fixed (2026-09-05)** |
 | **P1** | [4.16](#416-the-schema-fix-never-reached-libraries-already-on-disk) | 4.9 fixed the writer; books already tagged kept the old schema | 🛠️ **Fixed (2026-09-05)** |
 | P2 | [4.9](#49-metadatajson-does-not-match-audiobookshelfs-schema) | Sidecar schema likely ignored by Audiobookshelf | 🛠️ **Fixed (2026-09-05)** |
 | — | [8](#8-mcp-tool-runtime-verification) | MCP tools executed for real: 3 working, 2 blocked by the remote host | Verified |
@@ -767,6 +768,40 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 - **Fix applied**: termination is decided by author/year alone; `series` is still filled opportunistically from whatever a provider happens to return. Verified: a book with author and year known now makes **zero** provider calls (was three), a book missing both still enriches and stops at the first provider that answers, and series is still picked up when offered.
 
 ## 6. GUI & CLI Synchronization Issues
+
+### 6.4 `AbtoolsGui.py`: The Folder Browser Shows Nothing for a Network Share
+- **Status**: 🛠️ **FIXED (2026-09-05)** — reported from the field: *"when the folder is network mounted like `citizenzero@10.10.10.10:/home/citizenzero/bshelf` the browser is returning no folders, empty."*
+- **File**: [`AbtoolsGui.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/AbtoolsGui.py) — `choose_directory`, and the new `local_path` / `remote_to_mount_point` / `mounted_twin`
+- **Error**: three separate faults, all of which present identically as an empty browser.
+  1. **A remote location is not a path.** `citizenzero@10.10.10.10:/home/citizenzero/bshelf` is an sshfs source string. `Path()` parses it as a *relative* path whose first component is `citizenzero@10.10.10.10:`, so it is never a directory:
+     ```
+     Path parts : ('citizenzero@10.10.10.10:', 'home', 'citizenzero', 'bshelf')
+     is_dir     : False
+     parent walk: [... , 'citizenzero@10.10.10.10:', '.']
+     landed on  : '.'  ->  /home/citizenzero/Documents/Key/Abtools/ABtools
+     ```
+     `choose_directory` walked up until something was listable, silently landed on the **working directory**, and said nothing.
+  2. **Mount-shadowed paths.** This host is a btrfs `@`-subvolume layout: `/home` is subvolid 259 (`subvol=/@home`) mounted at `/home`, and `/@home` is the same subvolume reached from the root subvolume. They are the same directory on disk, but **only `/home` carries the mounts**:
+     ```
+     /home/citizenzero/pi_share   ->  23 entries   (the sshfs mount)
+     /@home/citizenzero/pi_share  ->   0 entries   (the bare mount point underneath)
+     ```
+     The GUI had `"dest": "/@home/citizenzero/Documents/temp_audiobooks"` saved in `~/.abtools_gui.json`, and `/` lists `@home` right next to `home`, so this is easy to reach by accident and impossible to diagnose from the UI.
+  3. **An empty box was never explained.** `populate()` printed only `..` whether the folder was empty, held files but no sub-folders, or was a shadowed mount point. It also built the listing with `sorted(c for c in path.iterdir() if c.is_dir())` inside one `try`, so a single entry raising `OSError` — routine on a flaky network share — discarded the whole listing.
+- **Fix applied**:
+  - `remote_to_mount_point()` reads `/proc/mounts` (decoding its octal escapes) and maps a remote location to where it is actually mounted, matching the source exactly or as a parent with the remainder appended. Handles sshfs `user@host:/path`, `//host/share`, and the `sftp://` / `ssh://` / `smb://` / `cifs://` / `nfs://` prefixes.
+  - `local_path()` wraps it and is now the single place the GUI turns user-typed text into a `Path` — so the remote form works in the Source and Destination fields, not just the browser.
+  - `mounted_twin()` finds the mounted equivalent of a shadowed path by comparing parents with `os.path.samefile`, so it does not care what the subvolume is called. The browser offers it as a double-clickable row.
+  - `choose_directory` now reports when it could not reach the requested location instead of silently relocating, `go_typed` says *"… is not a folder on this machine"* rather than doing nothing, per-entry `OSError` skips one entry instead of the listing, and an empty result always states *why* — empty, files-only, or shadowed.
+- **Verification** against the live mount on the reporting machine:
+  ```
+  local_path("citizenzero@10.10.10.10:/home/citizenzero/bshelf")
+    -> /home/citizenzero/pi_share    listable: True   entries: 24
+
+  mounted_twin("/@home/citizenzero/pi_share")   (0 entries)
+    -> /home/citizenzero/pi_share                     (24 entries)
+  ```
+  Covered by `test_remote_location_maps_to_its_mount_point`, `test_local_path_accepts_a_remote_location` and `test_mount_shadowed_path_finds_its_mounted_twin`.
 
 ### 6.1 `find_duplicates.py`: `--only-src-log` Is Dead Code in CLI
 - **Status**: 🛠️ **FIXED (2026-09-05)** — the CLI now reads `root/duplicate_log.txt` via `_read_paths_from_log()` and passes the result as `limit_paths` / `limit_src`. Both scan functions had always accepted it and the GUI already wired it; only the CLI dropped the flag on the floor. It now also exits with a clear message when the log is missing or lists nothing usable.

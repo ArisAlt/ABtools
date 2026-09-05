@@ -214,6 +214,8 @@ The source path is now passed explicitly, avoiding `NameError: SRC is not define
 
 
 
+The Source and Destination fields accept a network share written the way it is mounted — `user@host:/path` for sshfs, `//host/share` for SMB, or an `sftp://` / `smb://` / `nfs://` URL — and substitute the local mount point from `/proc/mounts`. The folder browser does the same, and warns when a path bypasses the mount namespace: on a btrfs `@`-subvolume layout `/@home/you/share` and `/home/you/share` are the same directory, but only the latter carries mounts, so the former appears empty. The browser offers the mounted copy instead.
+
 For a simple graphical front-end, use `AbtoolsGui.py`, which provides text fields for source and destination folders, checkboxes for `--commit`, `--copy` and `--yes` options, a live output pane, and a progress bar with estimated time. It includes a "Restructure" button for reorganizing folders, a "Tag Only" button that runs `search_and_tag.py` without moving files, and a "Find Duplicates" button.
 
 

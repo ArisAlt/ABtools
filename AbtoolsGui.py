@@ -9,7 +9,7 @@ import re
 from urllib.parse import urlsplit, urlunsplit
 
 import requests
-import sys, threading, queue, time
+import os, sys, threading, queue, time
 from collections import defaultdict
 from contextlib import redirect_stdout, redirect_stderr
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -17,7 +17,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk, font as tkfont
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Callable
+from typing import Callable, Optional
 import importlib
 import combobook, find_duplicates, restructure_for_audiobookshelf
 import flatten_discs, repair_m4b, ab_encode
@@ -562,6 +562,124 @@ main.rowconfigure(4, weight=1, minsize=150)   # the log takes the slack,
 source_var = tk.StringVar()
 dest_var = tk.StringVar()
 
+# ── network shares and mount-shadowed paths ─────────────────────────────────
+# Two distinct traps, both of which show up as "the browser is empty":
+#
+#   1. A remote location typed the way it is mounted -- sshfs's
+#      "user@host:/path", or an SMB "//host/share". These are not filesystem
+#      paths; nothing can list them. But the local mount point for them is
+#      right there in /proc/mounts, so we can translate instead of failing.
+#
+#   2. A path that bypasses the mount namespace. On a btrfs @-subvolume layout
+#      (CachyOS, Garuda, openSUSE, Ubuntu's @/@home), /home and /@home are the
+#      same subvolume, but only /home is where mounts are attached. Browsing to
+#      /@home/<user>/<share> shows the bare, empty directory *underneath* the
+#      mount, with no hint that anything is wrong.
+
+def _mount_table() -> list[tuple[str, Path]]:
+    """[(source, mount point)] from /proc/mounts, with octal escapes decoded."""
+    def unescape(field: str) -> str:
+        for code, char in (("\\040", " "), ("\\011", "\t"),
+                           ("\\012", "\n"), ("\\134", "\\")):
+            field = field.replace(code, char)
+        return field
+
+    entries: list[tuple[str, Path]] = []
+    try:
+        with open("/proc/mounts", "r", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                parts = line.split()
+                if len(parts) >= 2:
+                    entries.append((unescape(parts[0]), Path(unescape(parts[1]))))
+    except OSError:
+        pass
+    return entries
+
+
+def remote_to_mount_point(text: str) -> Optional[Path]:
+    """Local mount point for a remote location, or None.
+
+    Accepts what the user would naturally paste: "user@host:/path" (sshfs),
+    "//host/share" or "smb://host/share" (cifs), "host:/export" (nfs). Matches
+    the mount source exactly first, then as a parent with the remainder
+    appended, so a subdirectory of a mounted share also resolves.
+    """
+    candidate = (text or "").strip()
+    if not candidate:
+        return None
+    for scheme in ("sftp://", "ssh://", "smb://", "cifs://", "nfs://"):
+        if candidate.lower().startswith(scheme):
+            candidate = candidate[len(scheme):]
+            if scheme in ("smb://", "cifs://"):
+                candidate = "//" + candidate
+            break
+    # A plain local path is not our business.
+    if candidate.startswith("/") and not candidate.startswith("//"):
+        return None
+    if ":" not in candidate and not candidate.startswith("//"):
+        return None
+
+    for source, mount_point in _mount_table():
+        if source == candidate:
+            return mount_point
+        prefix = source.rstrip("/") + "/"
+        if candidate.startswith(prefix):
+            deeper = mount_point / candidate[len(prefix):]
+            if deeper.is_dir():
+                return deeper
+            return mount_point
+    return None
+
+
+def mounted_twin(path: Path) -> Optional[Path]:
+    """The mounted path for a directory reached by a mount-shadowed name.
+
+    /@home/me/share and /home/me/share are the same directory on disk, but only
+    the latter carries the mount. Compares by inode (`samefile`), so it does not
+    care what the subvolume happens to be called.
+    """
+    try:
+        if not path.is_dir():
+            return None
+    except OSError:
+        return None
+
+    mount_points = [m for _, m in _mount_table()]
+    ancestors = [path, *path.parents]
+    for depth, ancestor in enumerate(ancestors):
+        for mount_point in mount_points:
+            if mount_point == ancestor or mount_point.name != ancestor.name:
+                continue
+            try:
+                if not os.path.samefile(mount_point.parent, ancestor.parent):
+                    continue
+            except OSError:
+                continue
+            remainder = path.relative_to(ancestor) if depth else Path()
+            twin = mount_point / remainder
+            try:
+                if twin.is_dir() and not twin.samefile(path):
+                    return twin
+            except OSError:
+                continue
+    return None
+
+
+def local_path(text: str) -> Path:
+    """Turn whatever the user typed into a local Path.
+
+    Expands ``~`` and, when the text is a remote location rather than a
+    filesystem path, substitutes the local mount point for it. Everything
+    downstream -- combobook, restructure, the duplicate scanner -- works on
+    ordinary paths, so this is the one place that has to understand
+    "user@host:/path".
+    """
+    mounted = remote_to_mount_point(text)
+    if mounted is not None:
+        return mounted
+    return Path(text).expanduser()
+
+
 def choose_directory(title: str, initial: str = "") -> str:
     """A themed replacement for filedialog.askdirectory().
 
@@ -570,11 +688,22 @@ def choose_directory(title: str, initial: str = "") -> str:
     one is an ordinary Toplevel and therefore follows the active theme.
     Returns "" if cancelled.
     """
-    start = Path(initial).expanduser() if initial else Path.home()
-    while not start.is_dir() and start != start.parent:
-        start = start.parent
+    note = ""
+    requested = (initial or "").strip()
+    start = local_path(requested) if requested else Path.home()
+    if requested and remote_to_mount_point(requested) is not None:
+        note = f"{requested}  is mounted at  {start}"
+
+    # Walking up to find *something* listable used to happen silently, so an
+    # unreachable location landed the browser on the working directory with no
+    # explanation. Say what happened instead.
     if not start.is_dir():
-        start = Path.home()
+        unreachable = start
+        while not start.is_dir() and start != start.parent:
+            start = start.parent
+        if not start.is_dir():
+            start = Path.home()
+        note = f"{unreachable} is not reachable - showing {start}"
 
     chosen = {"path": ""}
     current = {"path": start}
@@ -611,37 +740,79 @@ def choose_directory(title: str, initial: str = "") -> str:
     bar2.grid(row=0, column=1, sticky="ns")
     tree.configure(yscrollcommand=bar2.set)
 
-    def populate(path: Path) -> None:
+    def populate(path: Path, message: str = "") -> None:
         current["path"] = path
         path_var.set(str(path))
         tree.delete(*tree.get_children())
+
         try:
-            entries = sorted(
-                (c for c in path.iterdir() if c.is_dir()),
-                key=lambda c: c.name.lower(),
-            )
+            children = list(path.iterdir())
         except (PermissionError, OSError) as exc:
-            tree.insert("", "end", text=f"  cannot open: {exc}", tags=("err",))
+            tree.insert("", "end", text=f"  cannot open: {exc}")
             return
+
+        entries = []
+        for child in children:
+            try:
+                if child.is_dir():
+                    entries.append(child)
+            except OSError:
+                # A single unreadable entry -- a stale handle or a timeout on a
+                # network share -- must not blank out the whole listing.
+                continue
+        entries.sort(key=lambda c: c.name.lower())
+
         if path.parent != path:
             tree.insert("", "end", iid="..", text="  \u2191  ..")
+
+        shown = 0
         for child in entries:
             if not show_hidden.get() and child.name.startswith("."):
                 continue
             tree.insert("", "end", iid=str(child), text=f"  \U0001F4C1  {child.name}")
+            shown += 1
+
+        if message:
+            tree.insert("", "end", text=f"  \u2139  {message}")
+        if shown:
+            return
+
+        # An empty box is the one thing a folder browser must never leave
+        # unexplained. The usual cause is a mount-shadowed path: /@home/... and
+        # /home/... are the same directory, but only the latter carries mounts.
+        twin = mounted_twin(path)
+        if twin is not None:
+            tree.insert("", "end", iid=f"__twin__{twin}",
+                        text=f"  \u21b3  empty here - the mounted copy is {twin}"
+                             f"  (double-click to go there)")
+        elif any(True for _ in [c for c in children if c.name]):
+            tree.insert("", "end", text="  (no sub-folders here, only files)")
+        else:
+            tree.insert("", "end", text="  (this folder is empty)")
 
     def descend(_event: object = None) -> None:
         sel = tree.focus()
         if not sel:
+            return
+        if sel.startswith("__twin__"):
+            populate(Path(sel[len("__twin__"):]))
             return
         target = current["path"].parent if sel == ".." else Path(sel)
         if target.is_dir():
             populate(target)
 
     def go_typed(_event: object = None) -> None:
-        candidate = Path(path_var.get()).expanduser()
+        text = path_var.get().strip()
+        candidate = local_path(text)
         if candidate.is_dir():
-            populate(candidate)
+            hint = ""
+            if remote_to_mount_point(text) is not None:
+                hint = f"{text}  is mounted at  {candidate}"
+            populate(candidate, hint)
+            return
+        # Silently doing nothing left the entry showing a path the listing was
+        # not actually at, which is indistinguishable from a broken browser.
+        populate(current["path"], f"{text} is not a folder on this machine")
 
     def accept(_event: object = None) -> None:
         chosen["path"] = str(current["path"])
@@ -670,7 +841,7 @@ def choose_directory(title: str, initial: str = "") -> str:
     ttk.Button(foot, text="Select folder", style="Primary.TButton", cursor="hand2",
                command=accept).grid(row=0, column=2, padx=(PAD_X, 0))
 
-    populate(start)
+    populate(start, note)
     win.update_idletasks()
     win.geometry(f"+{root.winfo_rootx() + 60}+{root.winfo_rooty() + 60}")
     path_entry.focus_set()
@@ -1586,14 +1757,14 @@ def _run_combobook(mode: str) -> None:
     if not src_str:
         messagebox.showerror("Error", "Source path is required")
         return
-    src = Path(src_str).expanduser()
+    src = local_path(src_str)
     if not src.exists():
         messagebox.showerror("Error", "Source path does not exist")
         return
     if not dst_str:
         messagebox.showerror("Error", "Destination path is required")
         return
-    dst = Path(dst_str).expanduser()
+    dst = local_path(dst_str)
     dst.mkdir(parents=True, exist_ok=True)
 
     combobook.AUTO_YES = yes_var.get()
@@ -1732,14 +1903,14 @@ def restructure() -> None:
     if not src_str:
         messagebox.showerror("Error", "Source path is required")
         return
-    src = Path(src_str).expanduser()
+    src = local_path(src_str)
     if not src.exists():
         messagebox.showerror("Error", "Source path does not exist")
         return
     if not dst_str:
         messagebox.showerror("Error", "Destination path is required")
         return
-    dst = Path(dst_str).expanduser()
+    dst = local_path(dst_str)
     dst.mkdir(parents=True, exist_ok=True)
 
     # Snapshot on the UI thread -- see the note in find_dupes().
@@ -1787,7 +1958,7 @@ def refresh_sidecars_run() -> None:
     if not src_str:
         messagebox.showerror("Error", "Source path is required")
         return
-    src = Path(src_str).expanduser()
+    src = local_path(src_str)
     if not src.exists():
         messagebox.showerror("Error", "Source path does not exist")
         return
@@ -1827,7 +1998,7 @@ def tag_only() -> None:
     if not src_str:
         messagebox.showerror("Error", "Source path is required")
         return
-    src = Path(src_str).expanduser()
+    src = local_path(src_str)
     if not src.exists():
         messagebox.showerror("Error", "Source path does not exist")
         return
@@ -1929,11 +2100,11 @@ def find_dupes() -> None:
     if not src_str:
         messagebox.showerror("Error", "Source path is required")
         return
-    src = Path(src_str).expanduser()
+    src = local_path(src_str)
     if not src.exists():
         messagebox.showerror("Error", "Source path does not exist")
         return
-    dst = Path(dst_str).expanduser() if dst_str else None
+    dst = local_path(dst_str) if dst_str else None
     if dst is not None:
         dst.mkdir(parents=True, exist_ok=True)
 
