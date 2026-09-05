@@ -82,6 +82,14 @@ This repository contains small utilities for preparing audiobook folders for [Au
 
 - Whisper transcription settings have been retired from the GUI and CLI; tagging now relies solely on metadata lookups and LM Studio research.
 
+- GUI ships seven dark themes (Neutral Slate, Tokyo Night, Catppuccin Mocha, Nord, Gruvbox Dark, Bchips Violet, Color-Meanings), switchable live from the Theme dropdown and remembered between launches in `~/.abtools_gui.json`. Every theme is contrast-checked to WCAG AA for UI text.
+
+- GUI shows hover help on every button, field and checkbox, explaining what each option actually does - including the non-obvious ones (Timeout only applies with Network Mode on; Destination is optional for Find Duplicates; Find Duplicates never deletes anything).
+
+- Multi-disc books (`Book/Disc 1`, `Book/Disc 2`) are treated as one book and merged on move, rather than each disc being moved separately
+
+- Pointing any tool directly at a single book folder works, not just at a library root
+
 - Duplicate catalog prevents importing the same book twice
 
 
@@ -90,7 +98,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 
 
 
-- Python 3.11 (tested with the Windows Store build; create the dedicated virtual environment below)
+- Python 3.11 or newer (tested on the Windows Store 3.11 build and on Linux with 3.14; create the dedicated virtual environment below)
 
 - Dependencies (installed via `pip install -r requirements.txt`):
 
@@ -106,7 +114,13 @@ This repository contains small utilities for preparing audiobook folders for [Au
 
   - `tqdm` (optional, for progress display in `find_duplicates.py`)
 
-  - An OpenAI-compatible endpoint (LM Studio 0.2+ exposes one locally; start Llama 3.2 8B Instruct on port 1234 for best results)
+  - `duckduckgo-search` (optional web snippets for the LLM fallback)
+
+  - `mcp<2` (only needed to run `mcp_server/`; pinned because mcp 2.x renamed `FastMCP` to `MCPServer`)
+
+  - `tkinter` (ships with Python on Windows/macOS; on Linux install your distro's `python-tk` / `python3-tk` package for `AbtoolsGui.py`)
+
+  - An OpenAI-compatible endpoint (LM Studio 0.2+ exposes one locally; point ABtools at it with --llm-endpoint; the default is port 8888)
 
 
 
@@ -136,15 +150,15 @@ pip install -r requirements.txt
 
 
 
-1. Download and install [LM Studio](https://lmstudio.ai/). Open the **Llama 3.2 8B Instruct** model (or your preferred chat model) and start the local server on port `1234` so it exposes an OpenAI-compatible `/v1/chat/completions` endpoint.
+1. Download and install [LM Studio](https://lmstudio.ai/). Open the **Llama 3.2 8B Instruct** model (or your preferred chat model) and start the local server on port `8888` so it exposes an OpenAI-compatible `/v1/chat/completions` endpoint.
 
-2. Enable LM Studio's MCP server (Tools -> MCP) and enable the provider tools (`search_audible_tool`, `search_openlibrary_tool`, `search_google_books_tool`, `search_goodreads_tool`) plus the generic `search` and `fetch_content` helpers. The CLI targets `http://127.0.0.1:1234/v1/chat/completions` by default.
+2. Enable LM Studio's MCP server (Tools -> MCP) and enable the provider tools (`search_audible_tool`, `search_openlibrary_tool`, `search_google_books_tool`, `search_goodreads_tool`) plus the generic `search` and `fetch_content` helpers. The CLI targets `http://127.0.0.1:8888/v1/chat/completions` by default.
 
 3. Run `search_and_tag.py` or `combobook.py` with the defaults or override them explicitly:
 
    ```bash
 
-   python search_and_tag.py "E:/Audio Books" --commit --llm-endpoint http://127.0.0.1:1234/v1/chat/completions --llm-model llama-3.2-8b-instruct
+   python search_and_tag.py "E:/Audio Books" --commit --llm-endpoint http://127.0.0.1:8888/v1/chat/completions --llm-model llama-3.2-8b-instruct
 
    ```
 
@@ -164,20 +178,17 @@ pip install -r requirements.txt
 
 
 
-| `combobook.py` | v1.18 | `ablib/combobook.py` (Wrapper) |
-
-| `AbtoolsGui.py` | v0.17 | `ablib/AbtoolsGui.py` (Wrapper) |
-
-| `flatten_discs.py` | v1.4 | `flatten_discs.py` |
-
+| `combobook.py` | v1.18 | `combobook.py` |
+| `AbtoolsGui.py` | v0.17 | `AbtoolsGui.py` |
+| `flatten_discs.py` | v1.5 | `flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.4 | `restructure_for_audiobookshelf.py` |
-
-| `repair_m4b.py` | v1.0 | `repair_m4b.py` |
+| `repair_m4b.py` | v1.1 | `repair_m4b.py` |
 | `search_and_tag.py` | v2.30 | `search_and_tag.py` |
-| `ab_encode.py` | v1.0 | `ab_encode.py` |
+| `ab_encode.py` | v1.3 | `ab_encode.py` |
 | `find_duplicates.py` | v0.5 | `find_duplicates.py` |
 | `abclient.py` | v0.2 | `abclient.py` |
-| `catalog.py` | v0.1 | `ABtools/catalog.py` |
+| `catalog.py` | v0.1 | `catalog.py` |
+| `mcp_server/server.py` | v1.1.0 | `mcp_server/server.py` |
 
 
 
@@ -297,6 +308,12 @@ Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when 
 
 `AbtoolsGui.py` offers a Tkinter interface for `combobook.py` and related workflows. The layout now uses titled `ttk.LabelFrame` sections that stack vertically: File Paths (source, destination, Plan JSON pickers), Operation Settings (commit/copy/yes toggles, timeout, threads, compare-by, recurse, network and "only src log" switches), Model Configuration (LLM controls with an enable toggle), Actions, and a Log panel with a `tk.Text` widget + scrollbar. Inputs expand with `grid()` weights, and padding is consistent across sections. Numeric inputs use `ttk.Spinbox`, model selectors are `ttk.Combobox`, and the primary "Move and Tag" action uses a bold ttk style for emphasis. The log pane shares space with the progress bar, and the ETA label sits at the bottom-right.
 
+The action row is Tag / Move / Restructure / Find Duplicates / Stop, all one height, with the primary and destructive actions distinguished by colour rather than size.
+
+**Theming.** A Theme dropdown in the bottom status row switches between seven dark palettes live, without restarting; the choice is saved to `~/.abtools_gui.json`. Palettes are plain data in the `THEMES` dict at the top of `AbtoolsGui.py`, so adding one is a single entry - `apply_theme()` restyles every widget, including already-printed log output. Fonts are resolved against the families actually installed rather than hardcoded, so the UI does not fall back to something arbitrary on Linux or macOS.
+
+**Hover help.** Every button, entry, spinbox, combobox and checkbox carries a tooltip describing what it actually does. Tooltips are clamped to the screen so the bottom-row buttons do not push them off the edge.
+
 Debug output is written to `AudioBooks_tools/AbtoolsGui.debug.log` so you can inspect the underlying CLI runs when troubleshooting.
 
 
@@ -339,7 +356,7 @@ details.
 
 
 
-For stubborn matches, keep the default --llm-endpoint http://127.0.0.1:1234/v1/chat/completions or set it explicitly alongside --llm-model llama-3.2-8b-instruct to consult LM Studio. The fallback now runs a four-stage pipeline:
+For stubborn matches, keep the default --llm-endpoint http://127.0.0.1:8888/v1/chat/completions or set it explicitly alongside --llm-model llama-3.2-8b-instruct to consult LM Studio. The fallback now runs a four-stage pipeline:
 
 
 
@@ -355,7 +372,9 @@ For stubborn matches, keep the default --llm-endpoint http://127.0.0.1:1234/v1/c
 
 Supplying a DuckDuckGo key ((no key required) or DUCKDUCKGO_MCP) lets the Metadata Refiner and SequentialThinking stages pull live web snippets before resolving missing fields.
 
-Successful LLM suggestions still skip the review log and are written to tags, metadata.json, and book.nfo like any other metadata. The old `--llm-threshold` flag is accepted for compatibility but the pipeline always uses the 90-point trigger above.
+Successful LLM suggestions still skip the review log and are written to tags, metadata.json, and book.nfo like any other metadata.
+
+`--llm-threshold` is live, not legacy: a provider match scoring below it triggers the LLM fallback (default 85, clamped to 80-100). The separate 90-point trigger above governs only whether the MCP refinement stage is attempted. Note that the confirmation prompt for a low-confidence match is currently hardcoded to fire below 70 rather than below `--llm-threshold` - see [`bug.md`](./bug.md) 2.4.
 
 
 
@@ -463,5 +482,11 @@ Edit this file to enable or disable experimental features.
 
 ## Known Issues & Bug Tracker
 
-A comprehensive codebase audit report documenting all known logic errors, fatal startup bugs, dry-run caveats, and provider issues is available in [`bug.md`](./bug.md).
+A comprehensive codebase audit report documenting all known logic errors, fatal startup bugs, dry-run caveats, and provider issues is available in [`bug.md`](./bug.md). Every entry carries a status marker, and three claims from an earlier audit pass are marked **REFUTED** with evidence - read those before "fixing" them, because the current code is correct.
+
+All P0 and P1 entries are fixed. The remaining open items are the P2 metadata-correctness group in section 5, of which 5.2 (a regex that silently corrupts author/title for hyphenated names) is the highest impact.
+
+## Design Proposals
+
+[`proposal.md`](./proposal.md) covers making the LLM model configuration dynamic - discovering models from the server's `/v1/models` endpoint instead of the hardcoded list, persisting recently used models, and a configuration cascade for the CLI, GUI and MCP server.
 

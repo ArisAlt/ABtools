@@ -25,6 +25,7 @@ AudioBooks_tools/
 |-- README.md
 |-- scaffold.md
 |-- bug.md                         # Logic error & bug audit report
+|-- proposal.md                    # Design proposal: dynamic LLM model configuration
 |-- requirements.txt
 |-- mcp_server/                   # FastMCP server exposing search_* and tag_books tools
 |-- output/                       # Optional runtime artifacts (empty by default)

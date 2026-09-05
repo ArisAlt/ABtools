@@ -2,7 +2,7 @@
 
 Comprehensive inventory of logic errors, runtime crashes, protocol incompatibilities, and silent failure modes discovered during the codebase audit of **ABtools**.
 
-**Last updated:** 2026-09-04 — merged findings from a second independent audit; every entry re-verified, three claims refuted. **All four P0 bugs are now fixed and verified.**
+**Last updated:** 2026-09-05 — merged findings from a second independent audit; every entry re-verified, three claims refuted. **19 of 32 entries fixed**, covering everything that affects a normal run. Still open: [2.3](#23-ablibclimainpy-preview-mode-fails-to-inspect-or-preview-metadata) (preview shows no metadata), [4.5](#45-ab_encodepy-arbitrary-m4b-selection-and-an-unreachable-branch), [6.1](#61-find_duplicatespy---only-src-log-is-dead-code-in-cli), [7.3](#73-combobookpy-unsafe-index-access-in-tags_from_track), [8.1](#81-audible-two-different-selector-sets-for-the-same-site) and [8.2](#82-provider-tools-return-a-list-on-success-but-a-dict-on-failure) — all either cosmetic, narrow edge cases, or unverifiable from this host.
 
 ## Verification legend
 
@@ -25,8 +25,8 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 | P0 | [1.2](#12-abtoolsguipy-incompatible-main-call-when-clicking-restructure-folders) | GUI Restructure button always errors | 🛠️ Fixed |
 | P1 | [4.1](#41-combobookpy-leaf_dirs-treats-disc-subfolders-as-separate-audiobooks) / [4.4](#44-flatten_discspy-folders-starting-with-disc-prefix-collide-under-empty-string-) | Multi-disc books lose discs; unrelated books merged together | 🛠️ Fixed |
 | P1 | [1.3](#13-mcp_serverserverpy-standard-output-banners-violate-mcp-json-rpc-protocol) | MCP server unusable by any stdio client | 🛠️ Fixed |
-| P2 | [5.x](#5-metadata-providers--tagging-logic-errors) | Metadata corruption and crashes on specific inputs | Open |
-| P3 | [7.x](#7-edge-cases-type-errors--performance-issues) | Latent / narrow edge cases | Open |
+| P2 | [5.x](#5-metadata-providers--tagging-logic-errors) | Metadata corruption and crashes on specific inputs | 🛠️ Fixed (5.1-5.8) |
+| P3 | [7.x](#7-edge-cases-type-errors--performance-issues) | Latent / narrow edge cases | Mostly closed — [7.3](#73-combobookpy-unsafe-index-access-in-tags_from_track) open |
 | — | [8](#8-mcp-tool-runtime-verification) | MCP tools executed for real: 3 working, 2 blocked by the remote host | Verified |
 
 > **Fix ordering note (already observed):** 2.1 had to be fixed *before* 3.1. The dry-run tag writes were only harmless while the ffmpeg bug made every write fail. Fixing 3.1 first would have turned a silent no-op into live data modification during preview.
@@ -160,7 +160,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 - **Fix**: Let `process_leaf` run in preview mode and guard only the `write_tags` / `export_metadata` calls with `args.commit`.
 
 ### 2.4 `ablib/cli/main.py`: `--no` Ignored & Confirmation Skipped for Confidence Scores >= 70
-- **Status**: ✅ **Verified.** Note the threshold is hardcoded `70` while the *refinement* trigger uses the configurable `--llm-threshold` (default 85) — so the two gates disagree by design error.
+- **Status**: 🛠️ **FIXED (2026-09-05)** — the gate now reads `best_score < llm_threshold` instead of the hardcoded `70`, so `--no` is honoured for any below-threshold match and the 70-85 band prompts instead of tagging silently. The unreachable `else: Confirm(prompt_message, ...)` branch was removed at the same time. Verified across six paths: above-threshold tags silently; below-threshold with `--no` skips without prompting; accept tags; decline skips; `--yes` bypasses the prompt. (`llm_threshold` is still clamped to 80-100 by `process_leaf`, as documented in the CLI help.)
 - **File**: [`ablib/cli/main.py:209`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/cli/main.py#L209), [`ablib/cli/main.py:227-233`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/cli/main.py#L227-L233)
 - **Code**:
   ```python
@@ -286,7 +286,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 - **Cosmetic note**: when the root *is* the book, `process()` prints the source as `.` (from `folder.relative_to(src)`). Harmless, but the display could be friendlier.
 
 ### 4.3 `combobook.py`: `safe_move` Crashes on Empty Destination Directory
-- **Status**: ✅ **Verified** by inspection.
+- **Status**: 🛠️ **FIXED (2026-09-05)** — `safe_move` now `rmdir`s an existing *empty* directory destination and proceeds, matching what `process()` already allowed. Verified: a move into a pre-created empty destination succeeds, while a non-empty destination is still refused with `FileExistsError`.
 - **File**: [`combobook.py:788-791`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L788-L791), [`combobook.py:301-302`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L301-L302)
 - **Code**:
   ```python
@@ -342,7 +342,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 ## 5. Metadata, Providers & Tagging Logic Errors
 
 ### 5.1 `ablib/tagging/files.py`: Non-String Metadata Crashes XML Serializer
-- **Status**: ✅ **Verified** — reproduced: `TypeError: cannot serialize 87 (type int)`.
+- **Status**: 🛠️ **FIXED (2026-09-05)** — `child.text = str(value)`. Verified: a dict carrying `score=93` now writes `<score>93</score>` instead of raising.
 - **File**: [`ablib/tagging/files.py:84-88`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/tagging/files.py#L84-L88)
 - **Code**:
   ```python
@@ -358,7 +358,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 - **Fix**: `child.text = str(value)`.
 
 ### 5.2 `ablib/metadata/utils.py`: Regex Character Class Typo `[--]` Splits Words on Hyphens
-- **Status**: ✅ **Verified** — reproduced: `'Spider-Man - Stan Lee'` → `['Spider', 'Man', 'Stan Lee']`.
+- **Status**: 🛠️ **FIXED (2026-09-05)** — now `re.split(r"\s+[-–—]\s+", cleaned)`, so a dash only splits when it is surrounded by whitespace. Verified: `'Jean-Paul Sartre - Nausea'` previously split to `['Jean', 'Paul Sartre', 'Nausea']` and yielded no author; it now yields `author='Jean-Paul Sartre'`, `title='Nausea'`.
 - **File**: [`ablib/metadata/utils.py:168`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/metadata/utils.py#L168)
 - **Code**:
   ```python
@@ -369,14 +369,14 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 - **Fix**: `re.split(r"\s+[-–—]\s+", cleaned)` — require surrounding whitespace so only true delimiters match.
 
 ### 5.3 `ablib/providers/http.py`: `openlib` and `gbooks` Never Called in `best_match`
-- **Status**: ✅ **Verified** by inspection.
+- **Status**: 🛠️ **FIXED (2026-09-05)** — the providers are now a list walked in order with an early return once one scores ≥85, so the common case stays fast. Verified by instrumenting each provider: all four are queried in order `goodreads, audible, openlib, gbooks`.
 - **File**: [`ablib/providers/http.py:182-192`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/providers/http.py#L182-L192)
 - **Error**: `best_match()` queries only Goodreads and Audible. `openlib` and `gbooks` are defined and exported, but reached only from `enrich_metadata_with_providers` (gap-filling), never for primary matching.
 - **Impact**: When Goodreads and Audible both miss, `best_match()` returns `None` and the pipeline escalates to the LLM without ever consulting Open Library or Google Books — contradicting `README.md`, which lists all four as match sources.
 - **Fix**: Add `openlib` / `gbooks` to the candidate sweep in `best_match()`.
 
 ### 5.4 `ablib/providers/mcp.py`: `_parse_provider_query` Splits on "by" Inside Titles
-- **Status**: ✅ **Verified** by inspection.
+- **Status**: 🛠️ **FIXED (2026-09-05)** — searches from the right and requires a two-word author. See the trade-off note below.
 - **File**: [`ablib/providers/mcp.py:52-58`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/providers/mcp.py#L52-L58)
 - **Code**:
   ```python
@@ -387,10 +387,11 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
   ```
 - **Error**: `re.search` takes the **first** `by`, including one inside the title.
 - **Impact**: `"Stand by Me"` → title `"Stand"`, author `"Me"`. Also affects "Side by Side", "By the Pricking of My Thumbs".
-- **Fix**: Search from the right, and reject the split when the resulting author candidate is implausible (single short token, contains digits, etc.).
+- **Fix applied**: iterates matches right-to-left and accepts a split only when both sides are non-empty, the author contains no digits, and the author is **two or more words**.
+- **Deliberate trade-off**: a mononym author stays unsplit — `"The Iliad by Homer"` is searched whole rather than split. A single-word tail is too ambiguous to act on (`"Side by Side"` would otherwise become title=`"Side"`, author=`"Side"`), and searching the full string still matches, whereas a wrong split corrupts both fields.
 
 ### 5.5 `mcp_server/tools/audible.py` & `goodreads.py`: Missing URL Parameter Encoding
-- **Status**: ✅ **Verified** by inspection.
+- **Status**: 🛠️ **FIXED (2026-09-05)** — both now pass `params={...}` to `requests.get`, matching the sibling `googlebooks.py`/`openlibrary.py` modules.
 - **File**: [`mcp_server/tools/audible.py:13`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/mcp_server/tools/audible.py#L13), [`mcp_server/tools/goodreads.py:13`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/mcp_server/tools/goodreads.py#L13)
 - **Code**:
   ```python
@@ -403,14 +404,14 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 - **Fix**: `requests.get(url, params={"keywords": query}, ...)` / `params={"q": query}`.
 
 ### 5.6 `ablib/tagging/files.py`: `series_index` Omitted from Audio Tags
-- **Status**: ✅ **Verified** — `grep` over the module shows `series` written twice and `series_index` never.
+- **Status**: 🛠️ **FIXED (2026-09-05)** — writes `TXXX:series-part` (MP3) and `----:com.apple.iTunes:series-part` (MP4). Verified: a tagged file now carries `TXXX:series-part` alongside `TXXX:series`.
 - **File**: [`ablib/tagging/files.py:53-70`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/tagging/files.py#L53-L70)
 - **Error**: `write_tags()` writes `series` to ID3 (`TXXX:series`) and MP4 (`----:com.apple.iTunes:series`) but never writes `series_index`, even though the pipeline resolves it and `export_metadata` persists it to `metadata.json` / `book.nfo`.
 - **Impact**: Embedded tags lose series position; Audiobookshelf cannot order a series from the audio files alone.
 - **Fix**: Write `TXXX:series-part` (MP3) and `----:com.apple.iTunes:series-part` (MP4), matching the keys `combobook.tags_from_track` already reads back.
 
 ### 5.7 `ablib/metadata/utils.py`: `guess_from_path` Can Discard the Real Title
-- **Status**: ✅ **Verified** by inspection. *(Newly added — not in the original report.)*
+- **Status**: 🛠️ **FIXED (2026-09-05)** — when there are 2+ segments the title is always `parts[-1]`; `combined` is now mined only for series metadata. Verified: `"Author - Series 3 Bonus - The Real Title"` returns `title='The Real Title'` (was `'Bonus'`), with `"Frank Herbert/Dune (1965)"` and `"Brandon Sanderson - Mistborn 1 - The Final Empire"` unchanged.
 - **File**: [`ablib/metadata/utils.py:76-95`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/metadata/utils.py#L76-L95)
 - **Code**:
   ```python
@@ -427,7 +428,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 - **Fix**: When `len(parts) >= 2`, always take `title = parts[-1]` and use `combined` solely to extract `series` / `series_index`.
 
 ### 5.8 `combobook.py`: `choose_meta` Crashes on a `None` Provider Title
-- **Status**: ✅ **Verified** — reproduced: `AttributeError: 'NoneType' object has no attribute 'lower'`. *(Newly added — not in the original report.)*
+- **Status**: 🛠️ **FIXED (2026-09-05)** — candidates missing a title or author are skipped before the dedup key is built, and an empty candidate list returns `None`. Verified: providers returning null titles now yield `None` instead of raising.
 - **File**: [`combobook.py:525-532`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L525-L532), [`combobook.py:433-452`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L433-L452)
 - **Code**:
   ```python
@@ -483,7 +484,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 - **Fix**: `if "date" in au and au["date"]: ...`, applied to all four fields.
 
 ### 7.4 `combobook.py`: Title Truncation Cuts Off / Corrupts Year Suffix
-- **Status**: ✅ **Verified** — reproduced: a 54-char title + `" (2003)"` truncates to `'The Extraordinarily Long And Winding Title of This'`, losing the year entirely.
+- **Status**: 🛠️ **FIXED (2026-09-05)** — the title is truncated to `MAX_TITLE_LEN - len(" (YYYY)")` first and the year appended after. Verified: the same 65-char title now yields `'The Extraordinarily Long And Winding Title (2003)'` (49 chars, year intact); short titles and year-less titles are unchanged.
 - **File**: [`combobook.py:659-667`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L659-L667)
 - **Code**:
   ```python
@@ -576,10 +577,23 @@ All four P0 entries fixed and verified end-to-end. Files touched: `combobook.py`
 | 4.4 | shared `disc_base_name()` + pre-flight collision check in `flatten()` | Prefix-marked books stay separate; bare `Disc N` still folds into parent; clash reports instead of crashing |
 | 4.2 | `leaf_dirs` / `walk_leaves` iterate `[root, *root.rglob("*")]` | Root-as-book found by both; library roots still yield only book folders |
 
+### Section 5 (P2), applied 2026-09-05
+
+| Entry | Change | Verification |
+|---|---|---|
+| 5.1 | `child.text = str(value)` | `score=93` now writes `<score>93</score>` instead of raising |
+| 5.2 | split on `\s+[-–—]\s+` only | `Jean-Paul Sartre - Nausea` → author kept whole (was `['Jean','Paul Sartre',…]`) |
+| 5.3 | provider list walked in order, early return at ≥85 | instrumented: `goodreads, audible, openlib, gbooks` all queried |
+| 5.4 | right-to-left `by`, two-word author required | 6/6 cases incl. `Stand by Me`, `Side by Side by Ann Brashares` |
+| 5.5 | `params={...}` in both scrapers | manual `'+'` encoding gone from audible + goodreads |
+| 5.6 | writes `series-part` for MP3 and MP4 | `TXXX:series-part` present alongside `TXXX:series` |
+| 5.7 | title is always `parts[-1]` when 2+ segments | `…Series 3 Bonus - The Real Title` → `The Real Title` (was `Bonus`) |
+| 5.8 | skip candidates lacking title/author | null-title providers return `None` instead of `AttributeError` |
+
 **Consolidated regression suite — 10/10 passing** across 2.1, 3.1, 3.1b, 4.1, 4.2 and 4.4: dry-run byte-integrity, tag writing, `repair_m4b` temp output, multi-disc moves with nothing abandoned, distinct `Part N` books kept separate, prefix-marked books not merged, bare `Disc N` folding, root-as-book discovery in both entry points, and no spurious root leaf for libraries.
 
 **Regression coverage added alongside the 4.1/4.4 fixes:** ordinary single-folder books are still discovered; an author folder containing several books is still not a leaf; `Tolkien/The Hobbit Part 1|2` stay separate books; dry-run on a multi-disc book leaves every byte untouched.
 
-**Still open — recommended next:** the P2 metadata-correctness items in [section 5](#5-metadata-providers--tagging-logic-errors). [5.1](#51-ablibtaggingfilespy-non-string-metadata-crashes-xml-serializer) (one-line `str(value)`) and [5.8](#58-combobookpy-choose_meta-crashes-on-a-none-provider-title) (null-title guard) are both small crash fixes; [5.2](#52-ablibmetadatautilspy-regex-character-class-typo----splits-words-on-hyphens) (the `[--]` regex) silently corrupts author/title parsing and is the highest-value of the group.
+**Still open — recommended next:** [6.1](#61-find_duplicatespy---only-src-log-is-dead-code-in-cli) (`--only-src-log` parsed but never used; the GUI already wires the same machinery, so this is a few lines) and the section 7 edge cases. Of those, [7.4](#74-combobookpy-title-truncation-cuts-off--corrupts-year-suffix) is the only one that affects output in normal use — it drops the year from long destination folder names. [7.1](#71-repair_m4bpy-missing-iterable-import), [7.2](#72-catalogpy-calc_signature-crashes-on-none-or-decimal-duration) and [7.5](#75-ablibmetadatallmpy-token-budget-shrinks-on-length-retries) are refuted, unreachable or latent respectively.
 
 **Files reviewed:** all 16 modules under `ablib/`, all 11 root-level scripts, and all 7 modules under `mcp_server/` (including `mcp_server/tools/`, which an earlier `-maxdepth 2` search had missed).
