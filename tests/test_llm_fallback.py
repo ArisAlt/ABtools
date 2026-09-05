@@ -25,15 +25,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ablib.core.config import config  # noqa: E402
 from ablib.metadata import llm  # noqa: E402
 
-RIGHT = {"title": "Homeward Bound", "author": "Harry Turtledove",
-         "series": "Worldwar", "series_index": "8", "year": "2004",
+RIGHT = {"title": "The Long Return", "author": "Nora Ashcroft",
+         "series": "Ashfall", "series_index": "8", "year": "2004",
          "narrator": "Todd McLaren", "language": "en",
-         "description": "The final Worldwar novel.", "publisher": "Del Rey"}
+         "description": "The final Ashfall novel.", "publisher": "Example Press"}
 WRONG = {"title": "The Hobbit", "author": "J. R. R. Tolkien", "series": None,
          "series_index": None, "year": "1937", "narrator": None,
          "language": None, "description": None, "publisher": None}
-GUESS = {"title": "Homeward Bound", "author": None, "year": None,
-         "series": "Worldwar - Colonization", "series_index": None}
+GUESS = {"title": "The Long Return", "author": None, "year": None,
+         "series": "Ashfall - Reckoning", "series_index": None}
 
 
 class _Endpoint:
@@ -75,7 +75,7 @@ class _Endpoint:
 
 @pytest.fixture
 def book(tmp_path):
-    folder = tmp_path / "Worldwar - Colonization" / "Homeward Bound"
+    folder = tmp_path / "Ashfall - Reckoning" / "The Long Return"
     folder.mkdir(parents=True)
     track = folder / "01.mp3"
     track.touch()
@@ -105,8 +105,8 @@ def test_quota_error_falls_back_to_the_local_model(monkeypatch, book):
     try:
         result = _run(monkeypatch, book, hosted, local)
         assert result is not None
-        assert result["title"] == "Homeward Bound"
-        assert result["author"] == "Harry Turtledove"
+        assert result["title"] == "The Long Return"
+        assert result["author"] == "Nora Ashcroft"
         assert hosted.calls == 1 and local.calls == 1
     finally:
         hosted.close(); local.close()
@@ -166,7 +166,7 @@ def test_fallback_is_skipped_when_it_is_the_failing_endpoint(monkeypatch, book):
 @pytest.mark.parametrize(
     "meta, guess, expected_min",
     [
-        ({"title": "Homeward Bound", "author": "Harry Turtledove"}, GUESS, 85),
+        ({"title": "The Long Return", "author": "Nora Ashcroft"}, GUESS, 85),
         ({"title": "The Hobbit", "author": "J. R. R. Tolkien"}, GUESS, 0),
     ],
 )

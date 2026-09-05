@@ -8,6 +8,18 @@ This repository contains small utilities for preparing audiobook folders for [Au
 
 
 
+## Disclaimer
+
+These tools organise, tag and re-encode audiobook files **you already own the right to hold**: your own purchases from Audible, Libro.fm, Downpour or any other retailer, your own CD rips, library loans you are licensed to keep offline, and public-domain recordings from sources such as LibriVox.
+
+They are not intended for, and must not be used with, material obtained unlawfully. Stripping DRM, redistributing copyrighted recordings, or sourcing files from pirate trackers may be illegal where you live, and none of that is supported here — nothing in this project circumvents DRM or any other technical protection measure.
+
+Metadata is fetched from public catalogues (Audible, Goodreads, OpenLibrary, Google Books) for descriptive purposes only. Those catalogues have their own terms of use; you are responsible for staying within them, and for the rate at which you query them.
+
+You are responsible for what you point these tools at. The authors accept no liability for misuse, nor for data loss — see the note on `--cleanup` under [`ab_encode.py`](#ab_encodepy) before deleting anything.
+
+
+
 
 
 ## Features
@@ -159,7 +171,7 @@ pip install -r requirements.txt
 
    ```bash
 
-   python search_and_tag.py "E:/Audio Books" --commit --llm-endpoint http://127.0.0.1:8888/v1/chat/completions --llm-model llama-3.2-8b-instruct
+   python search_and_tag.py "<source>" --commit --llm-endpoint http://127.0.0.1:8888/v1/chat/completions --llm-model llama-3.2-8b-instruct
 
    ```
 
@@ -170,6 +182,9 @@ pip install -r requirements.txt
 
 
 ## Scripts
+
+> Command examples below use `<source>`, `<destination>` and `<library>` as placeholders. Substitute your own paths — a folder of unsorted books, the Audiobookshelf library you are filing them into, and an existing library respectively. Quote them; audiobook folders are full of spaces.
+
 
 
 
@@ -182,9 +197,9 @@ pip install -r requirements.txt
 | `combobook.py` | v1.20 | `combobook.py` |
 | `AbtoolsGui.py` | v0.18 | `AbtoolsGui.py` |
 | `flatten_discs.py` | v1.5 | `flatten_discs.py` |
-| `restructure_for_audiobookshelf.py` | v5.5 | `restructure_for_audiobookshelf.py` |
+| `restructure_for_audiobookshelf.py` | v5.8 | `restructure_for_audiobookshelf.py` |
 | `repair_m4b.py` | v1.1 | `repair_m4b.py` |
-| `search_and_tag.py` | v2.30 | `search_and_tag.py` |
+| `search_and_tag.py` | legacy shim | `search_and_tag.py` |
 | `ab_encode.py` | v2.0 | `ab_encode.py` |
 | `find_duplicates.py` | v0.5 | `find_duplicates.py` |
 | `abclient.py` | v0.2 | `abclient.py` |
@@ -193,7 +208,7 @@ pip install -r requirements.txt
 
 
 
-Run any script with `--version` to print its version and file location.
+Run any script with `--version` to print its version and file location. The exceptions are `search_and_tag.py`, which is a thin forwarder to the `ablib` CLI and carries no version of its own, and `abclient.py` / `catalog.py`, whose versions live only in their module docstrings.
 
 
 
@@ -255,19 +270,19 @@ examples
 
 # preview everything
 
-python search_and_tag.py "E:\\Audio Books" --recurse
+python search_and_tag.py "<source>" --recurse
 
 
 
 # tag automatically
 
-python search_and_tag.py "E:\\Audio Books" --recurse --commit --yes
+python search_and_tag.py "<source>" --recurse --commit --yes
 
 
 
 # strip all tags
 
-python search_and_tag.py "E:\\Audio Books" --recurse --striptags --commit
+python search_and_tag.py "<source>" --recurse --striptags --commit
 
 """
 
@@ -275,31 +290,31 @@ python search_and_tag.py "E:\\Audio Books" --recurse --striptags --commit
 
 # Preview only (no changes made)
 
-python combobook.py "source_folder" "library_folder"
+python combobook.py "<source>" "<destination>"
 
 
 
 # Tag + move with manual confirmation
 
-python combobook.py "source_folder" "library_folder" --commit
+python combobook.py "<source>" "<destination>" --commit
 
 
 
 # Tag + move and auto-confirm all matches
 
-python combobook.py "source_folder" "library_folder" --commit --yes
+python combobook.py "<source>" "<destination>" --commit --yes
 
 
 
 # Tag + copy instead of move
 
-python combobook.py "source_folder" "library_folder" --commit --copy
+python combobook.py "<source>" "<destination>" --commit --copy
 ```
 
 Collect the books nothing could identify into `<library>/_unmatched/` rather than leaving them in the source tree:
 
 ```bash
-python combobook.py "source_folder" "library_folder" --commit --move-unmatched
+python combobook.py "<source>" "<destination>" --commit --move-unmatched
 
 ```
 
@@ -317,12 +332,12 @@ wrong book entirely.
 
 What the lookup does before giving up:
 
-- reads the **series level** of the tree correctly, so `Harry Turtledove/Worldwar - Colonization (1994-2004)/8 - Homeward Bound (2004)` yields author, series,
-  index, title and year rather than querying `Worldwar - Colonization` as an author
+- reads the **series level** of the tree correctly, so `Author Name/Series Name (1994-2004)/8 - Book Title (2004)` yields author, series,
+  index, title and year rather than querying `Series Name` as an author
 - strips rip debris from the query - `(Unabridged)`, `[Audiobook]`, `128kbps`, `01 of 14`, disc markers, a bare `(2004)`, and unclosed parentheticals
 - runs a short **ladder**: as guessed, then without the guessed author (a directory name is a guess; the title rarely is), then with the series appended - each
   rung only if the one before found nothing confident
-- lifts the series out of catalogue titles: `Silverthorn (The Riftwar Saga, #3)`, `(Colonization, Book 2)`, `(Worldwar Series, Volume 2)`
+- lifts the series out of catalogue titles: `Book Title (The Series Name, #3)`, `(Series Name, Book 2)`, `(Series Name, Volume 2)`
 - caches per query, and stops asking Goodreads once it starts throttling
 
 ### The confidence threshold
@@ -336,11 +351,14 @@ One number, `DEFAULT_MATCH_THRESHOLD = 83`, governs every "is this the right boo
 |---|---|
 | 100 | correct - exact title, superset title, surname-only folder, missing middle initial |
 | 97 | correct, with a one-character typo in the title |
-| **81** | **right title, wrong author** - the failure mode that matters |
+| **79-82** | **right title, wrong author** - the failure mode that matters |
 | 78-80 | different book with overlapping words |
 | 53-65 | wrong book, or the query title is only a subset |
 
-The gap is 81 to 97, so 83 sits above every wrong answer observed and below every correct one. **70-80 is the wrong-answer band** - lowering the threshold into
+The gap is 82 to 97, so 83 sits above every wrong answer observed and below every correct one. **70-80 is the wrong-answer band** - lowering the threshold into
+
+
+The wrong-author band is where the margin actually lives, and it is narrower than one number suggests: how close a wrong author scores depends on how similar the two names happen to be. Across the cases on record it ran **79-82**, so 83 clears the highest of them by one point. That is the figure to watch if matches ever start going wrong.
 it admits books by the wrong author that happen to share a title.
 
 One caveat: when no author can be determined, the score saturates at 100 whether the match is right or wrong, because there is nothing left to disagree about.
@@ -354,7 +372,7 @@ abandoned with "no metadata found". When the main endpoint cannot answer — a q
 question is retried against a local model:
 
 ```bash
-python combobook.py "source" "library" --commit \
+python combobook.py "<source>" "<destination>" --commit \
   --llm-endpoint https://openrouter.ai/api/v1/chat/completions \
   --llm-fallback-endpoint http://127.0.0.1:8888/v1/chat/completions \
   --llm-fallback-model ibm/granite-4-h-tiny
@@ -369,7 +387,7 @@ from an unverified guess. The GUI exposes all of this as **Local fallback**, **F
 Sidecars are only written when a book is tagged, and the organisers move them rather than rewriting them — so a library tagged before the Audiobookshelf schema fix keeps the old flat `metadata.json`. Bring one up to date without moving anything:
 
 ```bash
-python restructure_for_audiobookshelf.py "library_folder" --refresh-sidecars --commit
+python restructure_for_audiobookshelf.py "<library>" --refresh-sidecars --commit
 ```
 
 Omit `--commit` to preview. Folders already on the current schema are skipped, so it is safe to re-run. The GUI exposes the same thing as **Refresh Sidecars** on the Organise tab.
@@ -480,13 +498,13 @@ Examples:
 
 # preview
 
-python restructure_for_audiobookshelf.py "Downloads" "Audiobooks"
+python restructure_for_audiobookshelf.py "<source>" "<destination>"
 
 
 
 # move folders
 
-python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --commit
+python restructure_for_audiobookshelf.py "<source>" "<destination>" --commit
 
 
 
@@ -543,7 +561,7 @@ Names are chosen to be useful rather than merely present:
 
 
 - title tags are used **only when every one of them is distinct** -- a real two-part book carried the same tag in both halves, which would have produced a chapter list of two identical entries;
-- otherwise filenames, with the boilerplate every name in the folder repeats trimmed off at a word boundary, so a 76-part Audible rip reads `01 - Opening Credits` rather than `Not Till We Are Lost: Bobiverse, Book 5 [B0CW23CC7L] - 01 - Opening Credits`;
+- otherwise filenames, with the boilerplate every name in the folder repeats trimmed off at a word boundary, so a 76-part retail rip reads `01 - Opening Credits` rather than `Book Title: Series Name, Book 5 [ASIN] - 01 - Opening Credits`;
 - trimming is abandoned when it would leave too little to read, so a two-part book keeps its full names rather than becoming `1.2` and `2.2`.
 
 
@@ -589,13 +607,13 @@ A folder containing a file ffmpeg cannot decode is **refused outright** rather t
 
 ```bash
 # The default: one .m4b per folder, chapters, sources kept
-python ab_encode.py ~/Audiobooks
+python ab_encode.py "<source>"
 
 # Smallest files for an Android phone
-python ab_encode.py ~/Audiobooks -p android-opus -b 32k
+python ab_encode.py "<source>" -p android-opus -b 32k
 
 # Reclaim the space, but only where the result is provably intact
-python ab_encode.py ~/Audiobooks --cleanup
+python ab_encode.py "<source>" --cleanup
 ```
 
 
@@ -628,17 +646,17 @@ Examples:
 
 # Within a single folder (4 threads)
 
-python find_duplicates.py "E:\\Audio" --by hash --threads 4
+python find_duplicates.py "<source>" --by hash --threads 4
 
-python find_duplicates.py "E:\\Audio" --by name --threads 4
+python find_duplicates.py "<source>" --by name --threads 4
 
 
 
 # Cross-compare two folders with timeout for network shares
 
-python find_duplicates.py "E:\\Downloads" "E:\\Audiobooks" --by hash --threads 4
+python find_duplicates.py "<source>" "<destination>" --by hash --threads 4
 
-python find_duplicates.py "E:\\Downloads" "E:\\Audiobooks" --by name --hash-timeout 60 --threads 4
+python find_duplicates.py "<source>" "<destination>" --by name --hash-timeout 60 --threads 4
 
 ```
 

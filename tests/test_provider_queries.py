@@ -1,6 +1,6 @@
 """Provider query quality -- the layer that decides how often the LLM is needed.
 
-Measured against a real library (Harry Turtledove, 15 books laid out as
+Measured against a real library (Nora Ashcroft, 15 books laid out as
 <Author>/<Series (years)>/<N - Title (Year)>): before these changes 14 of 15
 books scored below the 85 threshold and went to the LLM, and three of those
 picked the *wrong* book. After, all 15 score 100 from the providers alone.
@@ -34,10 +34,10 @@ def _clear():
 @pytest.mark.parametrize(
     "raw, expected",
     [
-        ("Daughter of the Empire 128kbps", "Daughter of the Empire"),   # matched nothing before
-        ("Magicians End (Unabridged)", "Magicians End"),                # scored 45 before
-        ("The Final Empire [Audiobook]", "The Final Empire"),
-        ("Rage of a Demon King - 01 of 14", "Rage of a Demon King"),
+        ("Daughter of the Dominion 128kbps", "Daughter of the Dominion"),   # matched nothing before
+        ("Sorcerers End (Unabridged)", "Sorcerers End"),                # scored 45 before
+        ("The Last Dominion [Audiobook]", "The Last Dominion"),
+        ("Rage of a Fallen King - 01 of 14", "Rage of a Fallen King"),
         ("The Big Switch (2011)", "The Big Switch"),
         ("West and East (20109", "West and East"),                      # real folder, real typo
         ("A Tale of Two Cities", "A Tale of Two Cities"),
@@ -53,10 +53,10 @@ def test_query_titles_are_cleaned(raw, expected):
 @pytest.mark.parametrize(
     "raw, title, series, index",
     [
-        ("Silverthorn (The Riftwar Saga, #3)", "Silverthorn", "The Riftwar Saga", "3"),
+        ("Nightthorn (The Ember Saga, #3)", "Nightthorn", "The Ember Saga", "3"),
         ("Down to Earth (Colonization, Book 2)", "Down to Earth", "Colonization", "2"),
-        ("Tilting the Balance (Worldwar Series, Volume 2)",
-         "Tilting the Balance", "Worldwar", "2"),
+        ("Tipping the Brink (Ashfall Series, Volume 2)",
+         "Tipping the Brink", "Ashfall", "2"),
         ("Hitler's War (the War That Came Early, Book One)",
          "Hitler's War", "the War That Came Early", "1"),
     ],
@@ -66,7 +66,7 @@ def test_inline_series_is_lifted_out_of_the_title(raw, title, series, index):
 
 
 @pytest.mark.parametrize(
-    "raw", ["The Hitchhikers Guide (Radio Play)", "Something (A Novel)", "Faerie Tale"]
+    "raw", ["The Hitchhikers Guide (Radio Play)", "Something (A Novel)", "Winter Tale"]
 )
 def test_a_plain_parenthetical_is_not_a_series(raw):
     assert P.split_series_suffix(raw) == (raw, None, None)
@@ -74,9 +74,9 @@ def test_a_plain_parenthetical_is_not_a_series(raw):
 
 def test_edition_tail_is_stripped_only_when_it_names_the_author():
     assert P.strip_edition_tail(
-        "Worldwar: Striking the Balance by Harry Turtledove (1996-12-05)",
-        ["Harry Turtledove"],
-    ) == "Worldwar: Striking the Balance"
+        "Ashfall: Breaking the Brink by Nora Ashcroft (1996-12-05)",
+        ["Nora Ashcroft"],
+    ) == "Ashfall: Breaking the Brink"
     # a title that genuinely contains "by" survives
     assert P.strip_edition_tail("Death by Black Hole", ["Neil deGrasse Tyson"]) \
         == "Death by Black Hole"
@@ -87,55 +87,55 @@ def test_edition_tail_is_stripped_only_when_it_names_the_author():
 def test_a_perfect_title_scores_full_marks_without_a_known_author():
     """The regression that drove everything to the LLM: fixed weights meant a
     perfect title with no author scored 100*0.7 = 70, under the 85 threshold."""
-    hit = {"title": "Rage of a Demon King", "authors": ["Raymond E. Feist"]}
-    assert P.score_candidate(hit, "Rage of a Demon King", None) == 100
-    assert P.score_candidate(hit, "Rage of a Demon King", "Raymond E. Feist") == 100
+    hit = {"title": "Rage of a Fallen King", "authors": ["Alex E. Rivers"]}
+    assert P.score_candidate(hit, "Rage of a Fallen King", None) == 100
+    assert P.score_candidate(hit, "Rage of a Fallen King", "Alex E. Rivers") == 100
 
 
 def test_a_wrong_author_still_costs_the_candidate():
-    hit = {"title": "Homeward Bound", "authors": ["Elaine Tyler May"]}
-    right = {"title": "Homeward Bound", "authors": ["Harry Turtledove"]}
-    assert P.score_candidate(hit, "Homeward Bound", "Harry Turtledove") \
-        < P.score_candidate(right, "Homeward Bound", "Harry Turtledove")
+    hit = {"title": "The Long Return", "authors": ["Dana Whitlock"]}
+    right = {"title": "The Long Return", "authors": ["Nora Ashcroft"]}
+    assert P.score_candidate(hit, "The Long Return", "Nora Ashcroft") \
+        < P.score_candidate(right, "The Long Return", "Nora Ashcroft")
 
 
 def test_series_agreement_lifts_a_candidate():
-    with_series = {"title": "Silverthorn", "authors": ["Feist"], "series": "Riftwar Saga"}
-    without = {"title": "Silverthorn", "authors": ["Feist"], "series": "Something Else"}
-    assert P.score_candidate(with_series, "Silverthorn", "Feist", "Riftwar Saga") \
-        > P.score_candidate(without, "Silverthorn", "Feist", "Riftwar Saga")
+    with_series = {"title": "Nightthorn", "authors": ["Rivers"], "series": "Ember Saga"}
+    without = {"title": "Nightthorn", "authors": ["Rivers"], "series": "Something Else"}
+    assert P.score_candidate(with_series, "Nightthorn", "Rivers", "Ember Saga") \
+        > P.score_candidate(without, "Nightthorn", "Rivers", "Ember Saga")
 
 
 # ── the folder tree the query is built from ─────────────────────────────────
 
 def test_series_folder_is_not_mistaken_for_the_author(tmp_path):
     """<Author>/<Series (years)>/<N - Title (Year)> -- the immediate-parent rule
-    sent "Worldwar - Colonization" to the catalogues as an author, which
+    sent "Ashfall - Reckoning" to the catalogues as an author, which
     suppressed every correct hit and let unrelated books outrank them."""
-    book = tmp_path / "Harry Turtledove" / "Worldwar - Colonization (1994-2004)" / "8 - Homeward Bound (2004)"
+    book = tmp_path / "Nora Ashcroft" / "Ashfall - Reckoning (1994-2004)" / "8 - The Long Return (2004)"
     book.mkdir(parents=True)
     author, title, year, series, index = guess_from_path(book)
-    assert author == "Harry Turtledove"
-    assert title == "Homeward Bound"
+    assert author == "Nora Ashcroft"
+    assert title == "The Long Return"
     assert year == "2004"
-    assert series == "Worldwar - Colonization"
+    assert series == "Ashfall - Reckoning"
     assert index == "8"
 
 
 def test_author_folder_without_a_series_level(tmp_path):
-    book = tmp_path / "Harry Turtledove" / "Through Darkest Europe (2018)"
+    book = tmp_path / "Nora Ashcroft" / "Through Darkest Winter (2018)"
     book.mkdir(parents=True)
     author, title, year, series, _ = guess_from_path(book)
-    assert (author, title, year, series) == ("Harry Turtledove", "Through Darkest Europe", "2018", None)
+    assert (author, title, year, series) == ("Nora Ashcroft", "Through Darkest Winter", "2018", None)
 
 
 @pytest.mark.parametrize(
     "name, expected",
     [
-        ("Worldwar - Colonization (1994-2004)", "Worldwar - Colonization"),
+        ("Ashfall - Reckoning (1994-2004)", "Ashfall - Reckoning"),
         ("The War That Came Early (2009-2014)", "The War That Came Early"),
-        ("Mistborn (2006)", "Mistborn"),
-        ("Harry Turtledove", None),
+        ("Emberborn (2006)", "Emberborn"),
+        ("Nora Ashcroft", None),
         ("Some Folder", None),
     ],
 )
@@ -167,7 +167,7 @@ def test_a_confident_first_hit_costs_one_request(monkeypatch):
     for name in ("audible", "openlib", "gbooks"):
         monkeypatch.setattr(P, name, other(name))
 
-    best, _ = P.best_match("Harry Turtledove", "Homeward Bound", client=_Client())
+    best, _ = P.best_match("Nora Ashcroft", "The Long Return", client=_Client())
     assert best and best[0] >= P.ACCEPT_SCORE
     assert calls == ["goodreads"]
 
@@ -180,16 +180,16 @@ def test_the_ladder_retries_without_the_guessed_author(monkeypatch):
         seen.append((author, title))
         if author:                       # the guessed author suppresses the book
             return None
-        return {"title": title, "authors": ["Harry Turtledove"], "series": None}
+        return {"title": title, "authors": ["Nora Ashcroft"], "series": None}
 
     monkeypatch.setattr(P, "goodreads", gr)
     for name in ("audible", "openlib", "gbooks"):
         monkeypatch.setattr(P, name, lambda a, t: None)
 
-    best, _ = P.best_match("Wrong Series Name", "Homeward Bound", client=_Client())
+    best, _ = P.best_match("Wrong Series Name", "The Long Return", client=_Client())
     assert best is not None
-    assert best[1]["authors"] == ["Harry Turtledove"]
-    assert (None, "Homeward Bound") in seen
+    assert best[1]["authors"] == ["Nora Ashcroft"]
+    assert (None, "The Long Return") in seen
 
 
 def test_goodreads_soft_block_stops_being_retried(monkeypatch):
@@ -202,7 +202,7 @@ def test_goodreads_soft_block_stops_being_retried(monkeypatch):
 
     called: list[int] = []
     monkeypatch.setattr(P.SESSION, "get", lambda *a, **k: called.append(1))
-    assert P.goodreads("Harry Turtledove", "Homeward Bound") is None
+    assert P.goodreads("Nora Ashcroft", "The Long Return") is None
     assert called == []                  # not even attempted
 
     P.clear_cache()
@@ -217,8 +217,8 @@ def test_results_are_cached_per_query(monkeypatch):
         raise RuntimeError("network disabled in tests")
 
     monkeypatch.setattr(P.SESSION, "get", fake_get)
-    P.openlib("Harry Turtledove", "Homeward Bound")
-    P.openlib("Harry Turtledove", "Homeward Bound")
+    P.openlib("Nora Ashcroft", "The Long Return")
+    P.openlib("Nora Ashcroft", "The Long Return")
     assert len(calls) == 1
 
 
@@ -265,20 +265,20 @@ def test_the_threshold_sits_between_the_measured_bands():
     from ablib.core.constants import DEFAULT_MATCH_THRESHOLD as T
 
     correct = [
-        ({"title": "Homeward Bound", "authors": ["Harry Turtledove"]},
-         "Homeward Bound", "Harry Turtledove"),
-        ({"title": "Worldwar: In the Balance", "authors": ["Harry Turtledove"]},
-         "In The Balance", "Harry Turtledove"),
-        ({"title": "Homeward Bound", "authors": ["Harry Turtledove"]},
-         "Homeward Bound", "Turtledove"),          # surname only on disk
+        ({"title": "The Long Return", "authors": ["Nora Ashcroft"]},
+         "The Long Return", "Nora Ashcroft"),
+        ({"title": "Ashfall: On the Brink", "authors": ["Nora Ashcroft"]},
+         "On The Brink", "Nora Ashcroft"),
+        ({"title": "The Long Return", "authors": ["Nora Ashcroft"]},
+         "The Long Return", "Ashcroft"),          # surname only on disk
     ]
     wrong = [
-        ({"title": "Homeward Bound", "authors": ["Elaine Tyler May"]},
-         "Homeward Bound", "Harry Turtledove"),
-        ({"title": "Aftershocks", "authors": ["Catherine Coulter"]},
-         "Aftershocks", "Harry Turtledove"),
-        ({"title": "Guns of the South", "authors": ["Harry Turtledove"]},
-         "Homeward Bound", "Harry Turtledove"),
+        ({"title": "The Long Return", "authors": ["Dana Whitlock"]},
+         "The Long Return", "Nora Ashcroft"),
+        ({"title": "Afterlight", "authors": ["Petra Nilsen"]},
+         "Afterlight", "Nora Ashcroft"),
+        ({"title": "Bells of the South", "authors": ["Nora Ashcroft"]},
+         "The Long Return", "Nora Ashcroft"),
     ]
     for hit, title, author in correct:
         assert P.score_candidate(hit, title, author) >= T, (hit, title)
@@ -289,9 +289,9 @@ def test_the_threshold_sits_between_the_measured_bands():
 def test_combobook_grades_on_the_same_scale():
     import combobook
 
-    guess = combobook.Meta(author="Harry Turtledove", title="Homeward Bound")
-    right = combobook.Meta(author="Harry Turtledove", title="Homeward Bound")
-    wrong = combobook.Meta(author="Elaine Tyler May", title="Homeward Bound")
+    guess = combobook.Meta(author="Nora Ashcroft", title="The Long Return")
+    right = combobook.Meta(author="Nora Ashcroft", title="The Long Return")
+    wrong = combobook.Meta(author="Dana Whitlock", title="The Long Return")
 
     assert combobook._similarity(guess, right) >= combobook.MIN_AUTO_SCORE
     # this one used to score 0.79 against a 0.75 floor -- and be accepted

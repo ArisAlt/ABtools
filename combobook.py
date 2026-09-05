@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
 """
-ABtools/combobook.py  ·  v1.18  ·  2025-09-08
+ABtools/combobook.py
 
 USAGE
 -----
-##
 # dry-run (preview only)
-python combo_abooks.py  "E:\\Audio Books"  "G:\\AudiobookShelf"
+python combobook.py  "<source>"  "<destination>"
 
 # tag + move, ask Y/N for each metadata hit
-python combo_abooks.py  "E:\\Audio Books"  "G:\\AudiobookShelf"  --commit
+python combobook.py  "<source>"  "<destination>"  --commit
 
 # tag + copy instead of move
-python combo_abooks.py  "E:\\Audio Books"  "G:\\AudiobookShelf"  --commit  --copy
+python combobook.py  "<source>"  "<destination>"  --commit  --copy
 
 # tag + move, auto-accept every hit
-python combo_abooks.py  "E:\\Audio Books"  "G:\\AudiobookShelf"  --commit  --yes
+python combobook.py  "<source>"  "<destination>"  --commit  --yes
 
 # show version and file location
-python combo_abooks.py --version
+python combobook.py --version
 
 """
 
@@ -462,8 +461,8 @@ def clean_tail(s:str)->str:
 def parse_leaf_name(name: str) -> Meta:
     """Wrap the shared folder-name parser in combobook's Meta record.
 
-    A leaf folder is very often self-describing ("Feist - Riftwar Saga - Book 4
-    - A Darkness at Sethanon"). guess_from_folder() used to look for the author
+    A leaf folder is very often self-describing ("Author - Series Name - Book 4
+    - A Shadow at Kelmoor"). guess_from_folder() used to look for the author
     in the *parent* directory only, so in a flat source tree it returned
     author="Unknown Author" and the whole 54-character string as the title.
     Nothing could match that and the book was written off. See bug.md 4.12.
@@ -543,7 +542,7 @@ def guess_from_folder(leaf: Path) -> Meta:
         break
 
     # The name may still carry a series even when it named no author
-    # ("Riftwar saga 03 - Silverthorn" under an author folder).
+    # ("Series name 03 - Book Title" under an author folder).
     if not series and from_name.series:
         series = from_name.series
         seq = seq or from_name.seq
@@ -720,7 +719,7 @@ def choose_meta(guess: Meta) -> Optional[Meta]:
     candidates.sort(key=lambda m: _similarity(guess, m), reverse=True)
 
     # With no author in the guess, the title alone decides, and two different
-    # books can share a title exactly ("Silverthorn" by Feist and by Tubbs both
+    # books can share a title exactly (two unrelated writers can both have
     # score 1.00). Taking the first is a coin flip, so under --yes refuse to
     # pick between them and let the folder fall through untouched rather than
     # write a confidently wrong author into the library.

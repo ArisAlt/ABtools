@@ -30,15 +30,19 @@ DEFAULT_LLM_MODEL_NAME = "ibm/granite-4-h-tiny"
 # Everything that decides whether to trust a match reads it, so the tools
 # cannot drift apart.
 #
-# Measured against a real library (Harry Turtledove, 15 books) with
-# ablib.providers.http.score_candidate:
+# Measured against a real 15-book library with
+# ablib.providers.http.score_candidate. Titles below are placeholders; the
+# shape of each case, and every score, is what was actually observed:
 #
-#     100   correct - exact title, superset title ("In The Balance" ->
-#           "Worldwar: In the Balance"), surname-only folder, missing initial
+#     100   correct - exact title, superset title ("On The Brink" ->
+#           "Ashfall: On the Brink"), surname-only folder, missing initial
 #      97   correct, one-character typo in the title
 #   -- the gap --
-#      81   right title, WRONG author (Homeward Bound / Elaine Tyler May,
-#           Aftershocks / Catherine Coulter, Second Contact / Craig A. Falconer)
+#   79-82   right title, WRONG author - three separate catalogue hits that
+#           matched the title exactly but named a different writer. This is
+#           where the margin lives, and it is thin: how close a wrong author
+#           scores depends on how unlike the two names happen to be, so 83
+#           clears the worst of them by one point, not by a comfortable gap.
 #      78   words reordered, different book
 #      65   query title is a subset of the hit
 #      53   right author, wrong book

@@ -6,7 +6,7 @@ The two behaviours under test are the ones that cost real data:
     ffmpeg returned 0, the old verify_audio saw a positive duration, the run
     reported success, and --cleanup then deleted the originals -- leaving a
     book quietly missing whichever chapters were unreadable. Reproduced on a
-    real library (Harry Turtledove) where 8 of 353 MP3s and 2 of 3 M4Bs are
+    real library (Nora Ashcroft) where 8 of 353 MP3s and 2 of 3 M4Bs are
     NUL-padded part-downloads.
 *   Folders holding .m4b or .m4a parts never entered the task list at all,
     because those suffixes were missing from EXTENSIONS. A two-part book was
@@ -522,10 +522,10 @@ def test_chapter_names_come_from_tags_only_when_they_distinguish_the_files():
     """Identical tags are worse than no names: the list becomes unusable.
 
     Taken from a real two-part book whose halves both carried the tag "The Eye
-    of the World (The Wheel of Time Book 1)" -- on a copy of The Shadow Rising,
+    of the World (The Long Cycle Book 1)" -- on a copy of The Rising Storm,
     at that. Naming both chapters the same helps nobody.
     """
-    same = "The Eye of the World (The Wheel of Time Book 1)"
+    same = "Book One of the Cycle (The Long Cycle Book 1)"
     probes = [
         E.Probe("/x/p1.2.m4b", 100.0, "aac", 22050, 2, same),
         E.Probe("/x/p2.2.m4b", 100.0, "aac", 22050, 2, same),
@@ -542,11 +542,11 @@ def test_chapter_names_come_from_tags_only_when_they_distinguish_the_files():
 def test_chapter_names_drop_the_boilerplate_every_filename_repeats():
     """From a real 76-part Audible rip: every name opens the same way.
 
-    A chapter list where all 76 entries begin "Not Till We Are Lost:
-    Bobiverse, Book 5 [B0CW23CC7L] - " is unreadable on a phone, and the part
+    A chapter list where all 76 entries begin "Until We Are Lost:
+    Wayfarer, Book 5 [ASIN00000] - " is unreadable on a phone, and the part
     that varies is the only part worth showing.
     """
-    stems = [f"Not Till We Are Lost: Bobiverse, Book 5 [B0CW23CC7L] - {n} - {t}"
+    stems = [f"Until We Are Lost: Wayfarer, Book 5 [ASIN00000] - {n} - {t}"
              for n, t in [("01", "Opening Credits"), ("02", "Dedication"),
                           ("03", "Epigraph"),
                           ("04", "1. Destination Galactic Center")]]
@@ -559,7 +559,7 @@ def test_chapter_names_drop_the_boilerplate_every_filename_repeats():
 def test_trimming_stops_when_it_would_leave_nothing_worth_reading():
     """Two real books, opposite answers, same rule."""
     # Trimming here leaves "1.2"/"2.2" -- less use than the title it cost.
-    wot = ["WoT 04 - The Shadow Rising p1.2", "WoT 04 - The Shadow Rising p2.2"]
+    wot = ["TLC 04 - The Rising Storm p1.2", "TLC 04 - The Rising Storm p2.2"]
     assert E._trim_shared_prefix(wot) == wot
 
     # Nothing shared worth removing.
@@ -616,8 +616,8 @@ def test_the_output_is_never_treated_as_one_of_its_own_sources(tmp_path):
 @needs_ffmpeg
 def test_a_lone_file_already_in_the_target_format_is_left_alone(tmp_path):
     """Finished work, whatever it happens to be called."""
-    book = tmp_path / "Through Darkest Europe (2018)"
-    make_tone(book / "Through Darkest Europe.m4b", seconds=3, codec="aac")
+    book = tmp_path / "Through Darkest Winter (2018)"
+    make_tone(book / "Through Darkest Winter.m4b", seconds=3, codec="aac")
     result = E.process_folder(str(book), bitrate="64k", channels="1")
     assert "Skipped" in result["status"]
 

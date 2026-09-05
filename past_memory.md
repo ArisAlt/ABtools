@@ -1,5 +1,13 @@
 # Past Memory
 
+> **On the examples in this report.** Author names, book titles and series in
+> every reproduction transcript below are placeholders. The structure that made
+> each case a bug — the spelling variants, the title-matches-but-author-does-not
+> pairs, the folder shapes — is preserved exactly; only the identities are
+> invented. Library paths appear as `<library A>`, `<library B>` and
+> `<test library>`. All measurements are real.
+
+
 - [2025-01-20] Initial setup of GEMINI.md and past_memory.md.
 - [2025-01-20] Fixed version inconsistencies in `combobook.py`, `AbtoolsGui.py`, and `restructure_for_audiobookshelf.py`.
 - [2025-01-20] Updated `README.md` and `scaffold.md` to match codebase state.
@@ -39,18 +47,18 @@
 - [2026-09-05] GUI usability pass, built around fixing bug.md 2.3 (preview mode inspected nothing). Both main() and the GUI's tag_only() used to short-circuit with `if not commit: print folder name; continue`, so process_leaf never ran and preview showed only paths - no lookups, no proposed tags, no scores. process_leaf now reads `commit` once at the top (defaulting True so callers omitting the flag are unaffected) and withholds ONLY the mutations: write_tags, export_metadata, strip_tags, and the tag_log/review_log writes. Logs record actions taken, so a preview deliberately adds nothing to them. Verified a preview prints guess + per-provider scores + match + 'would tag N file(s): <full metadata summary>' + 'would write metadata.json + book.nfo', while writing no tags, no nfo/json and no log; --commit still writes all three; --striptags previews as 'would strip tags from N file(s)'. Also added session persistence to the existing ~/.abtools_gui.json: source/dest paths (Browse now also opens at the current path), copy/yes/recurse/network/only_src_log/use_llm toggles, timeout/threads/compare_by, endpoint/model, and window geometry, saved via a WM_DELETE_WINDOW handler and restored at startup. DELIBERATE EXCEPTION: `commit` is never persisted - writing to a library must be an explicit choice each run, not something a previous session leaves switched on. Regression green, pyflakes clean.
 - [2026-09-05] Shipped proposal.md Phase 4, the configuration cascade: explicit CLI flag / GUI selection > saved GUI settings > ABTOOLS_* environment > constants.py defaults. RuntimeConfig fields now resolve through _env_str/_env_int/_env_bool honouring ABTOOLS_LLM_ENDPOINT, ABTOOLS_LLM_MODEL, ABTOOLS_LLM_TIMEOUT, ABTOOLS_LLM_MAX_TOKENS, ABTOOLS_LLM_API_KEY and ABTOOLS_DEBUG. CRITICAL DETAIL: the CLI's argparse defaults had to move from constants.DEFAULT_* to config.config.*, otherwise argparse would always supply the constant and silently override the environment on every CLI run - the same class of bug as the earlier CLI/GUI default-model mismatch. Verified env alone yields 'from-env' while env plus an explicit flag yields 'from-flag'. Added --show-config, which prints each setting with its source and exits; the API key shows as set/unset and is never printed. Malformed values are reported rather than swallowed (ABTOOLS_LLM_TIMEOUT='abc' is not a whole number; using 90) because a silent fallback leaves the user wondering why a setting had no effect. OPENAI_BASE_URL/OPENAI_MODEL_NAME stay deliberately ignored per proposal §3.5. THE PAYOFF WAS AS PREDICTED: mcp_server/tools/tagger.py already read core_config.config, so it inherited the cascade with zero changes - the MCP server went from having NO configuration path whatsoever (no flags, no env, just whatever constants.py hardcoded) to honouring the environment. Also had to make the CLI's `root` argument optional (nargs='?') so --show-config can run without a path, with an explicit parser.error if root is missing on a normal run.
 - [2026-09-05] Two fixes after the user reported an empty GUI log while testing OpenRouter. (1) THE LOG WAS NEVER EMPTY - it was OFF-SCREEN. _fit_notebook sizes the notebook to the visible tab, and Tag & Move needs ~492px against Organise's ~188, so in a fixed-height window the log pane was pushed past the bottom and Tk never mapped it (winfo_ismapped()==0 on Tag & Move, 1 on every other tab) - which is exactly why the user found it 'works if you change tab'. The notebook fit now grows the window when a taller tab needs it, and main row 4 has minsize=150 so the log can never collapse. (2) Chasing that surfaced a second bug: a hardcoded `CONFIG.debug = False` inside tag_only's worker, running AFTER apply_llm_settings had honoured the Debug checkbox, so the checkbox never worked for Tag. Every LLM diagnostic in ablib/metadata/llm.py is gated on CONFIG.debug, so a failing endpoint reported only 'no metadata found'; with it removed an unauthenticated OpenRouter call now prints 'LM Studio returned HTTP 401: No auth credentials found'. Also: added an opt-in 'Remember key' checkbox that stores llm_api_key in ~/.abtools_gui.json (plain text, file chmod 0600, unticking actively DELETES the stored key rather than just stopping writes, and an environment variable still wins over a stored one); and switched duckduckgo_search to ddgs, which had been emitting a RuntimeWarning on every search since the package was renamed - verified the DDGS class and result keys (title/href/body) are identical so the mapping code is unchanged, with a fallback import for installs still on the old package.
-- [2026-09-05] Checked whether the Organise operations actually produce the layout Audiobookshelf needs; they do not. Written up as bug.md 4.6-4.9, NOT yet fixed - changing move/rename behaviour on a real library needs the user's go-ahead and a decision on which layout is canonical. 4.6: restructure_for_audiobookshelf.py imports only argparse/shutil/sys/pathlib/typing/re - NO mutagen and NO json - so it physically cannot read embedded tags or metadata.json/book.nfo, and derives everything from the folder name. README claims it 'reads tags from the audio files first, then metadata.json or book.nfo, and finally falls back to folder names'; only the last happens. Reproduced: a book with date=2006 in its tags AND year=2006 in metadata.json came out as 'Unknown - The Final Empire'. 4.7: target_for returns dest_root/author/f'{year} - {title}' with NO series directory, so Author/Series/Book is unreachable; README also claims fuzzy series detection and an --interactive prompt that do not exist (the parser has only --copy/--commit/--version). 4.8: the two organisers emit incompatible conventions for the same book - restructure gives 'Author/Unknown - The Final Empire' while combobook.dest_path gives 'Author/Mistborn/The Final Empire (2006)' - differing in series level, year placement and sort order, so using both leaves a library in two conventions. Recommended fix is one shared destination helper with combobook's layout as canonical. 4.9: export_metadata writes title/author/year/series/series_index while Audiobookshelf's metadata.json uses authors[]/publishedYear/narrators - only title and series overlap, so ABS probably ignores the file and falls back to tags plus folder parsing, which compounds 4.6. NOTE the ABS key names in 4.9 are from recollection, flagged in bug.md as needing confirmation against current ABS docs before writing to that schema.
+- [2026-09-05] Checked whether the Organise operations actually produce the layout Audiobookshelf needs; they do not. Written up as bug.md 4.6-4.9, NOT yet fixed - changing move/rename behaviour on a real library needs the user's go-ahead and a decision on which layout is canonical. 4.6: restructure_for_audiobookshelf.py imports only argparse/shutil/sys/pathlib/typing/re - NO mutagen and NO json - so it physically cannot read embedded tags or metadata.json/book.nfo, and derives everything from the folder name. README claims it 'reads tags from the audio files first, then metadata.json or book.nfo, and finally falls back to folder names'; only the last happens. Reproduced: a book with date=2006 in its tags AND year=2006 in metadata.json came out as 'Unknown - The Last Dominion'. 4.7: target_for returns dest_root/author/f'{year} - {title}' with NO series directory, so Author/Series/Book is unreachable; README also claims fuzzy series detection and an --interactive prompt that do not exist (the parser has only --copy/--commit/--version). 4.8: the two organisers emit incompatible conventions for the same book - restructure gives 'Author/Unknown - The Last Dominion' while combobook.dest_path gives 'Author/Emberborn/The Last Dominion (2006)' - differing in series level, year placement and sort order, so using both leaves a library in two conventions. Recommended fix is one shared destination helper with combobook's layout as canonical. 4.9: export_metadata writes title/author/year/series/series_index while Audiobookshelf's metadata.json uses authors[]/publishedYear/narrators - only title and series overlap, so ABS probably ignores the file and falls back to tags plus folder parsing, which compounds 4.6. NOTE the ABS key names in 4.9 are from recollection, flagged in bug.md as needing confirmation against current ABS docs before writing to that schema.
 - [2026-09-05] Modernized GUI visual design, look-and-feel, and color schemes in `AbtoolsGui.py` with ZERO functional modifications (thread handling, CLI args, queues, provider calls, settings persistence strictly preserved). (1) `THEMES`: fixed 5-char hex typo in Gruvbox Dark (`"danger_hover": "#cc241"` -> `"#cc241d"`); re-tuned contrast and elevation hierarchy across all 7 dark palettes; replaced clashing `Color-Meanings` with authentic `Dracula` (`#282a36`, `#bd93f9`) while retaining `THEMES["Color-Meanings"] = THEMES["Dracula"]` alias for backward-compatibility with saved configs; added `GitHub Light` (`#f6f8fa`, `#ffffff`, `#0969da`) for a crisp light mode option. (2) Card framing: added 1px solid hairline border to `Card.TFrame` (`bordercolor=BORDER, relief="solid", borderwidth=1`) to prevent card surfaces melting into window bg; created `CardBody.TFrame` with `borderwidth=0` for inner frames in `card()` to prevent concentric borders; added 1px border to `Badge.TLabel`. (3) Inputs: unified `TCombobox` arrow button background to `FIELD` (eliminating split two-tone background artifact); added accent focus rings to `TEntry`, `TSpinbox`, `TCombobox` with unified `(9, 6)` padding and 1px border. (4) Buttons: standardized padding `(14, 8)` with 1px border across all buttons; `Primary.TButton` given solid `ACCENT` fill with `ON_ACCENT` text; `Danger.TButton` styled as red hairline outline filling red on hover with dynamic `on_danger` contrast. (5) Checkbuttons: added `checkcolor=ON_ACCENT` to `TCheckbutton` and `Bg.TCheckbutton` so checkmarks are razor sharp across all dark/light themes. (6) Tabs, progress bar & logs: active `TNotebook.Tab` elevated with hairline outline; slim `Horizontal.TProgressbar` (`thickness=6`); minimal 10px `Vertical.TScrollbar` with accent hover; `output_text` highlight border set to `ACCENT` and select foreground to `ON_ACCENT`. Verified syntax with `py_compile`. Updated `README.md` and `scaffold.md`.
 - [2026-09-05] Fixed glaring white line around tab container reported by user. Empirical analysis of user screenshot (`media_1788603584095.png`) revealed horizontal/vertical line runs at y=36, y=514, x=24, x=693 drawn in `#EEEBE7` (clam theme's built-in default `lightcolor`). Root cause: `style.configure(".")` omitted `bordercolor/lightcolor/darkcolor`, and `TNotebook`'s `Notebook.client` element in clam draws a bevelled client border defaulting to `#EEEBE7`. Fixed in `AbtoolsGui.py` by: (1) configuring `.` with `bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER` preventing clam `#eeebe7`/`#cfcdc8` fallbacks anywhere; (2) configuring `TNotebook` with `bordercolor=BG, lightcolor=BG, darkcolor=BG, borderwidth=0, tabmargins=(0,0,0,0)` and `TNotebook.Tab` borderless `flat` so active tab seamlessly connects directly into the panel body; (3) verified across all 7 dark themes (max bright run dropped from 670px to <21px). Syntax verified with `py_compile`.
 - [2026-09-05] Reviewed a proposed standalone-distribution plan (Linux AppImage + Windows portable zip, PyInstaller, bundled FFmpeg) and wrote the assessment to packaging-proposal.md. Architecture is sound; adopt with corrections. BLOCKING ISSUE the plan missed: its core 'zero code duplication' premise says the audio tools just keep calling shutil.which('ffmpeg') and a launcher prepends the bundled bin/ to PATH. True for repair_m4b.py:41 and ab_encode.py:51 (both call it INSIDE a function) but NOT combobook.py:117, which resolves FFMPEG at MODULE level and latches WRITE_TAGS=False permanently when ffmpeg is absent. AbtoolsGui.py:22 imports combobook at module level, so any project import before PATH injection silently disables all tag writing - reproduced: after a late PATH injection shutil.which finds ffmpeg but combobook.FFMPEG stays None and WRITE_TAGS stays False. Same silent-failure class as bug.md 3.1. Fix both ways: defer all project imports in abtools_entry.py until after injection, AND make combobook resolve ffmpeg lazily per call. Other corrections: hidden-import list omits bs4, requests, abclient and the duckduckgo_search fallback (a miss there fails at runtime on the user's machine, not at build time); plan says '8 themes' but there are 9; GitHub retired the ubuntu-20.04 hosted runner so Job 1 will not schedule (run on ubuntu-latest and keep the ubuntu:20.04 CONTAINER, which is what actually pins glibc 2.31); the apprun.sh TCL_LIBRARY/TK_LIBRARY paths (usr/share/tcltk/...) are guessed and not where PyInstaller puts Tcl/Tk - a wrong override can break an otherwise working bundle since PyInstaller's tkinter hook normally handles it; AbtoolsGui SETTINGS_PATH is computed at import from Path.home() so portable-mode redirection needs it made lazy first. UNADDRESSED: no LICENSE file in the repo while bundling GPL static FFmpeg builds - fine privately, blocking for the automated GitHub Release the plan's Stage 5 creates; artifact size ~120-180MB each, and the MCP server drags in starlette/uvicorn/anyio/pydantic/cryptography for a feature most users never start. Also flagged that portable mode would put the settings file - which can now hold an API key when 'Remember key' is ticked - on a USB stick.
-- [2026-09-05] FIXED bug.md 4.6, 4.7, and 4.8 (Audiobookshelf canonical output layout and organiser parity). (1) In ablib/core/constants.py, reordered SERIES_PATTERNS so specific indicators (Book <N>, #<N>, Vol <N>) precede generic whitespace-number patterns; previously 'Mistborn Book 1 - ...' matched pattern 1 and swallowed 'Book' into the series name ('Mistborn Book'). (2) In ablib/metadata/utils.py, updated extract_series_and_title to strip delimiter characters (' -_:.,\t') from titles and series names, eliminating dangling separator dashes. Added slug(), truncate_component(), and format_canonical_dest() enforcing Audiobookshelf canonical hierarchy '<dest_root>/<Author>/[Series]/<Title (Year)>' with per-component 50-char truncation, omitting the year suffix when missing/unknown. (3) In ablib/tagging/files.py, added read_tags() (reading ID3/MP4/easy tags incl. TXXX:series and iTunes series) and read_sidecar_metadata() (reading metadata.json supporting both generic and ABS schema keys, plus book.nfo). (4) In combobook.py, refactored dest_path() to delegate to format_canonical_dest(), retaining _truncate() delegating to truncate_component() for backward compatibility. (5) In restructure_for_audiobookshelf.py, updated VERSION to 5.5, parse_book_folder() to return (year, series, title), discover_books() to detect books under nested Author/Series/Book hierarchies as well as flat Author/Book layouts and bare disc subfolders (disc_children/has_audio), and target_for() to resolve metadata in documented priority order (embedded audio tags -> sidecars -> folder/hierarchy heuristics) before calling format_canonical_dest(). Verified with 7-part parity test between combobook.dest_path and restructure.target_for (standalone book with year, series book in folder name, book without year, series in directory hierarchy, tagged MP3, metadata.json sidecar, long title truncation preserving year suffix), plus live dry-run/copy/move/skip integration tests. 100% path parity achieved.
+- [2026-09-05] FIXED bug.md 4.6, 4.7, and 4.8 (Audiobookshelf canonical output layout and organiser parity). (1) In ablib/core/constants.py, reordered SERIES_PATTERNS so specific indicators (Book <N>, #<N>, Vol <N>) precede generic whitespace-number patterns; previously 'Emberborn Book 1 - ...' matched pattern 1 and swallowed 'Book' into the series name ('Emberborn Book'). (2) In ablib/metadata/utils.py, updated extract_series_and_title to strip delimiter characters (' -_:.,\t') from titles and series names, eliminating dangling separator dashes. Added slug(), truncate_component(), and format_canonical_dest() enforcing Audiobookshelf canonical hierarchy '<dest_root>/<Author>/[Series]/<Title (Year)>' with per-component 50-char truncation, omitting the year suffix when missing/unknown. (3) In ablib/tagging/files.py, added read_tags() (reading ID3/MP4/easy tags incl. TXXX:series and iTunes series) and read_sidecar_metadata() (reading metadata.json supporting both generic and ABS schema keys, plus book.nfo). (4) In combobook.py, refactored dest_path() to delegate to format_canonical_dest(), retaining _truncate() delegating to truncate_component() for backward compatibility. (5) In restructure_for_audiobookshelf.py, updated VERSION to 5.5, parse_book_folder() to return (year, series, title), discover_books() to detect books under nested Author/Series/Book hierarchies as well as flat Author/Book layouts and bare disc subfolders (disc_children/has_audio), and target_for() to resolve metadata in documented priority order (embedded audio tags -> sidecars -> folder/hierarchy heuristics) before calling format_canonical_dest(). Verified with 7-part parity test between combobook.dest_path and restructure.target_for (standalone book with year, series book in folder name, book without year, series in directory hierarchy, tagged MP3, metadata.json sidecar, long title truncation preserving year suffix), plus live dry-run/copy/move/skip integration tests. 100% path parity achieved.
 - [2026-09-05] FIXED bug.md 4.9 (metadata.json now conforms to Audiobookshelf's official sidecar schema). In ablib/tagging/files.py, implemented format_abs_metadata() which formats metadata dictionaries into Audiobookshelf's BookMetadata schema: authors[] (array), narrators[] (array), series[] (array of {"name": str, "sequence": Optional[str]}), genres[] (array), publishedYear (4-digit string), publishedDate, publisher, description, isbn, asin, language, and explicit (bool), while retaining top-level convenience keys (author, year, narrator) for backward compatibility with non-ABS tools. Updated export_metadata() to write this Audiobookshelf-compliant payload to metadata.json, while preserving book.nfo XML generation for Kodi/Emby readers. Verified end-to-end: exported metadata.json carries valid arrays and publishedYear, read_sidecar_metadata() round-trips cleanly, and restructure_for_audiobookshelf.target_for() resolves title, author, year, and series directly from the exported sidecar.
 - [2026-09-05] Added explicit verification & test procedure notes to bug.md for entries 4.6, 4.7, 4.8, and 4.9, documenting step-by-step reproduction and verification steps (audio tag and sidecar priority resolution, nested series discovery, combobook/restructure path parity test suite, and Audiobookshelf official BookMetadata schema export/roundtrip verification).
 - [2026-09-05] Removed outer bounding box lines from card panels in AbtoolsGui.py per user request (media_1788607378105.png red arrows -> media_1788607484838.png green arrow). Configured Card.TFrame and CardBody.TFrame with borderwidth=0, relief="flat", bordercolor=SURFACE, lightcolor=SURFACE, darkcolor=SURFACE so Status strip, File Paths card, and Log card sit seamlessly on the background without enclosing border outlines, matching the flat borderless framing of the notebook tabs. Verified across all 9 themes.
 
 ## 2026-09-05 — combobook is the organiser that actually ran; unmatched now stays put
 
-Investigated `/home/citizenzero/Documents/temp_audiobooks/` after a report that
+Investigated `<test library>/` after a report that
 bugs 4.6-4.9 were not fixed. They were fixed — in
 `restructure_for_audiobookshelf.py`. The library was built by **`combobook.py`**
 (identified by the `_unmatched/` literal, which exists only at `combobook.py:51`),
@@ -159,15 +167,15 @@ bug.md now has no open entries. 43 tests, pyflakes clean, all on `main`.
 Reported as "network mounted folder returns no folders". Three faults, all
 presenting as an empty browser:
 
-1. `citizenzero@10.10.10.10:/home/citizenzero/bshelf` is an sshfs *source
+1. `user@host:/srv/audiobooks` is an sshfs *source
    string*, not a path. `Path()` reads it as relative, `is_dir()` is False, and
    `choose_directory`'s parent-walk silently landed on `.` -- the working
    directory -- with no message.
 2. **The real trap on this machine:** btrfs `@`-subvolume layout. `/home` is
    subvolid 259 (`subvol=/@home`) mounted at `/home`; `/@home` is the same
    subvolume from the root subvolume. Same directory, but only `/home` carries
-   mounts -- `/home/citizenzero/pi_share` had 23 entries,
-   `/@home/citizenzero/pi_share` had 0. `~/.abtools_gui.json` had
+   mounts -- `/home/user/mnt` had 23 entries,
+   `/@home/user/mnt` had 0. `~/.abtools_gui.json` had
    `"dest": "/@home/..."` saved, and `/` lists `@home` right beside `home`.
 3. `populate()` never distinguished empty / files-only / shadowed, and built the
    listing inside one try, so one entry raising OSError (routine on a flaky
@@ -221,16 +229,16 @@ Also widened the --show-config columns, which wrapped once the longer
 ## 2026-09-05 — 4.18: providers now answer what the LLM was doing
 
 Goal: better initial queries, less LLM. Measured on the user's real
-/home/citizenzero/Downloads/Harry Turtledove (15 books):
+<library A> (15 books):
 **14/15 -> 0/15 handed to the LLM**, 3 wrong books -> 0, 91s -> 36s.
 
 Five compounding faults, the first two being the big ones:
 
 1. `guess_from_path` took the **immediate parent as the author**, so
-   `Harry Turtledove/Worldwar - Colonization (1994-2004)/8 - Homeward Bound
-   (2004)` queried "Worldwar - Colonization" as an author and dropped the year
+   `Nora Ashcroft/Ashfall - Reckoning (1994-2004)/8 - The Long Return
+   (2004)` queried "Ashfall - Reckoning" as an author and dropped the year
    and index. That both suppressed correct hits and let unrelated real authors
-   win (Homeward Bound by Elaine Tyler May, Aftershocks by Catherine Coulter).
+   win (The Long Return by Dana Whitlock, Afterlight by Petra Nilsen).
    `combobook.guess_from_folder` had it right via PARENT_RANGE_RX all along --
    the CLI path never did.
 2. **Goodreads had never once worked.** The shared SESSION sent
@@ -239,7 +247,7 @@ Five compounding faults, the first two being the big ones:
 3. Fixed scoring weights: a perfect title with no author scored 70, under both
    ACCEPT_SCORE and --llm-threshold (both 85). Same class of bug I had already
    fixed in combobook's `_similarity` but not here.
-4. Rip debris went into the query ("Daughter of the Empire 128kbps" -> nothing).
+4. Rip debris went into the query ("Daughter of the Dominion 128kbps" -> nothing).
 5. One query form, one chance.
 
 Operational note worth keeping: **Goodreads throttles with HTTP 202 and an
@@ -259,11 +267,11 @@ library and `score_candidate` (0-100):
 
     100  correct - exact, superset title, surname-only folder, missing initial
      97  correct, one-character title typo
-     81  RIGHT TITLE, WRONG AUTHOR  (Elaine Tyler May / Catherine Coulter / ...)
+  79-82  RIGHT TITLE, WRONG AUTHOR  (three hits naming a different writer)
      78-80  different book, overlapping words
      53-65  wrong book, or query title is a subset of the hit
 
-So **70-80 is exactly the wrong-answer band**; the gap is 81 -> 97 and 83 sits
+So **70-80 is exactly the wrong-answer band**; the gap is 82 -> 97 and 83 sits
 in it. Set `constants.DEFAULT_MATCH_THRESHOLD = 83` and pointed every decision
 at it: ACCEPT_SCORE, --llm-threshold, --auto-accept-score,
 llm_fallback_min_score, both GUI spinboxes.
@@ -298,13 +306,13 @@ corrupted". The last clause turned out to be the real work.
 `EXTENSIONS` had no `.m4b`/`.m4a`, and `main()` only queues a folder when
 something in it matches, so a folder of `.m4b` parts produced no task, no
 status line, nothing. In the user's own library that hid a two-part book
-(`West and East`, `1.m4b` + `2.m4b`) that had never been joined. Not skipped --
+(`North and South`, `1.m4b` + `2.m4b`) that had never been joined. Not skipped --
 invisible. Bug 4.5 had noticed the missing extension in 2026-09-05's audit but
 described it as a listing-order problem; the invisibility was the bigger half.
 
 **The data-loss path, reproduced end to end.** `--cleanup` deleted sources on
 the strength of `ffprobe format=duration > 0`. Ran the old code over a real
-book (`The Big Switch`, 26 MP3s, 4 of them NUL-padded part-downloads):
+book (`The Turning`, 26 MP3s, 4 of them NUL-padded part-downloads):
 ffmpeg exit 0, verify_audio True, status "Success". With cleanup on, all 26
 originals gone and four chapters unrecoverable. Three separate things had to
 be true at once for that: `-fflags +discardcorrupt` told ffmpeg to drop bad
@@ -351,11 +359,11 @@ count, not just AAC everywhere: the concat demuxer does not renegotiate
 between files, so a rate change plays the remainder at the wrong speed at the
 *correct* duration -- invisible to any length check.
 
-**A second library the user pointed me at (`~/pi_share/audiobooks`, 1294 audio
+**A second library the user pointed me at (`<library B>`, 1294 audio
 files over sshfs) made the scale plain.** The old encoder saw **11 of 704**
 folders; 693 were invisible, and 43 of those hold books split across several
-files that had never been joined -- Wheel of Time volumes in two parts, a
-Bobiverse book in 76 chapter m4bs, Hamilton in five. It was effectively doing
+files that had never been joined -- a long fantasy series volumes in two parts, a
+a serialised novel book in 76 chapter m4bs, Hamilton in five. It was effectively doing
 nothing on 98% of that collection.
 
 Also validated the damage detector there: over a 200-file random sample, **zero
@@ -369,14 +377,14 @@ is now joining files that are *already encoded*:
 - **`--channels source`** (was mono). 930 of 1294 files are .m4b, a mix of mono
   and stereo AAC. Forcing mono would re-encode a finished audiobook and discard
   a channel; with --cleanup the original is gone. Proof it matters: the
-  two-part 41-hour Shadow Rising now **stream-copies** -- 1178 MB in, 1175 MB
+  two-part 41-hour The Rising Storm now **stream-copies** -- 1178 MB in, 1175 MB
   out, duration exact to the second, deep-verified, **58.6 s total**. Under the
   old default it would have been hours of lossy re-encoding, and under the old
   EXTENSIONS it was invisible.
 - **Chapter naming.** That same book exposed two problems in one go. Both
-  halves carry the *identical* title tag ("The Eye of the World (The Wheel of
-  Time Book 1)" -- on a copy of The Shadow Rising), so tags are now used only
-  when all of them are distinct. And the Bobiverse rip has no tags at all, with
+  halves carry the *identical* title tag ("Book One of the Cycle (The Wheel of
+  Time Book 1)" -- on a copy of The Rising Storm), so tags are now used only
+  when all of them are distinct. And the a serialised novel rip has no tags at all, with
   76 filenames that each open with the same 55 characters, so the shared prefix
   is trimmed at a word boundary. Watch the boundary: the raw commonprefix stops
   mid-token (four files numbered 01-04 share the leading "0", turning "01 - "

@@ -602,12 +602,11 @@ def chapter_labels(probes: Sequence[Probe]) -> list[str]:
     """One name per source file, chosen so the names actually distinguish them.
 
     Title tags are the nicer source but cannot be trusted to differ. A real
-    two-part book carried the *same* tag in both halves ("The Eye of the World
-    (The Wheel of Time Book 1)", on a copy of The Shadow Rising no less), which
-    would have produced a chapter list of two identical entries -- worse than
-    no names at all. So the tags are used only when every one of them is
-    distinct; otherwise filenames, which are unique within a folder by
-    definition, and finally a plain index.
+    two-part book carried the *same* tag in both halves -- and the tag named a
+    different book in the series at that -- which would have produced a chapter
+    list of two identical entries, worse than no names at all. So the tags are
+    used only when every one of them is distinct; otherwise filenames, which are
+    unique within a folder by definition, and finally a plain index.
     """
     tags = [p.title.strip() for p in probes]
     if all(tags) and len(set(tags)) == len(tags):
@@ -630,9 +629,9 @@ _MIN_SHARED_PREFIX = 8
 def _trim_shared_prefix(stems: Sequence[str]) -> list[str]:
     """Drop the boilerplate every filename in the folder repeats.
 
-    A chapter list where all 76 entries begin "Not Till We Are Lost: Bobiverse,
-    Book 5 [B0CW23CC7L] - " is unreadable on a phone, and the part that varies
-    is the only part worth showing.
+    A chapter list where all 76 entries begin with the same 55 characters of
+    title, series and catalogue id is unreadable on a phone, and the part that
+    varies is the only part worth showing.
     """
     if len(stems) < 2:
         return list(stems)

@@ -4,6 +4,13 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 **Last updated:** 2026-09-06 — added [section 9](#9-encoder-output-formats--deletion-safety) from the encoder work: output profiles, and the deletion-safety path. [9.2](#92-ab_encodepy-verify_audio-was-far-too-weak-to-authorise-deleting-anything) is the significant one — `--cleanup` deleted sources on the strength of a positive duration, and was reproduced deleting a book's only copy of four damaged chapters. [4.5](#45-ab_encodepy-arbitrary-m4b-selection-and-an-unreachable-branch) closed with it. Still open and deliberately so: [7.3](#73-combobookpy-unsafe-index-access-in-tags_from_track) and [8.2](#82-provider-tools-return-a-list-on-success-but-a-dict-on-failure) (low severity), [7.2](#72-catalogpy-calc_signature-crashes-on-none-or-decimal-duration) (unreachable module), and [8.1](#81-audible-two-different-selector-sets-for-the-same-site) (cannot be validated from this host — Audible returns 503).
 
+> **On the examples in this report.** Author names, book titles and series in
+> every reproduction transcript below are placeholders. The structure that made
+> each case a bug — the spelling variants, the title-matches-but-author-does-not
+> pairs, the folder shapes — is preserved exactly; only the identities are
+> invented. Library paths appear as `<library A>`, `<library B>` and
+> `<test library>`. All measurements are real.
+
 ## Verification legend
 
 | Mark | Meaning |
@@ -48,7 +55,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 >
 > **Verification & Testing Note (Bugs 4.6, 4.7, 4.8, 4.9):** The Audiobookshelf compliance and parity fixes are applied and ready for audit testing:
 > - **4.6 (Tags/Sidecars)**: Verified that un-dated source folders containing ID3/MP4 tags or sidecars (`metadata.json`, `book.nfo`) resolve metadata accurately in priority order.
-> - **4.7 (Series Level)**: Verified in `restructure_for_audiobookshelf.py`. `extract_series_and_title("Serpentwar Saga 03 - Rage of a Demon King (1998)")` returns `('Serpentwar Saga', '03', 'Rage of a Demon King (1998)')`.
+> - **4.7 (Series Level)**: Verified in `restructure_for_audiobookshelf.py`. `extract_series_and_title("Tidewar Saga 03 - Rage of a Fallen King (1998)")` returns `('Tidewar Saga', '03', 'Rage of a Fallen King (1998)')`.
 > - **4.8 (Parity)**: ⚠️ **The earlier parity claim was scoped too narrowly.** It compared `combobook.dest_path()` with `restructure.target_for()` — but `dest_path()` is only a *formatter*; it receives an already-resolved `Meta`. combobook's *resolver* (`process()` → `tags_from_track()`) never runs series extraction at all, so identical formatters still produce divergent trees. See [4.10](#410-combobookpy-first-track-tags-short-circuit-the-entire-metadata-pipeline).
 > - **4.9 (ABS Schema)**: Verified `export_metadata()` writes official Audiobookshelf `BookMetadata` schema (`authors[]`, `series[{"name", "sequence"}]`, `publishedYear`), valid XML `book.nfo`, and confirmed round-trip deserialization via `read_sidecar_metadata()`. Detailed reproduction and test steps are documented under each entry below.
 
@@ -70,7 +77,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 1.1 `restructure_for_audiobookshelf.py`: Missing Argument Flag Name Crashes Parser
 - **Status**: 🛠️ **FIXED (2026-09-04)** — `"--commit"` added to the `add_argument` call. Verified: `python3 restructure_for_audiobookshelf.py --help` now prints usage showing `[--copy] [--commit] [--version]`.
-- **File**: [`restructure_for_audiobookshelf.py:145-148`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/restructure_for_audiobookshelf.py#L145-L148)
+- **File**: [`restructure_for_audiobookshelf.py:145-148`](restructure_for_audiobookshelf.py#L145-L148)
 - **Code**:
   ```python
   parser.add_argument(
@@ -93,7 +100,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 1.2 `AbtoolsGui.py`: Incompatible `main()` Call When Clicking "Restructure Folders"
 - **Status**: 🛠️ **FIXED (2026-09-04)** — the GUI now calls `restructure_library(src, dst, dry=not commit, copy=copy)` and prints a summary line. Verified the call binds cleanly against the real signature. **Known limitation:** `restructure_library` has no cancellation hook, so **Stop** only takes effect once the restructure returns.
-- **File**: [`AbtoolsGui.py:642-649`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/AbtoolsGui.py#L642-L649)
+- **File**: [`AbtoolsGui.py:642-649`](AbtoolsGui.py#L642-L649)
 - **Code**:
   ```python
   restructure_for_audiobookshelf.main(
@@ -112,7 +119,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 1.3 `mcp_server/server.py`: Standard Output Banners Violate MCP JSON-RPC Protocol
 - **Status**: 🛠️ **FIXED (2026-09-04)** — all banner/diagnostic writes moved to `sys.stderr`. Verified with a real stdio handshake (`initialize` → `notifications/initialized` → `tools/list`): every stdout line parses as JSON-RPC, the banner appears only on stderr, and all five tools are advertised. This was the first end-to-end test of the server, since `mcp` had been missing from `requirements.txt`.
-- **File**: [`mcp_server/server.py:53-59`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/mcp_server/server.py#L53-L59)
+- **File**: [`mcp_server/server.py:53-59`](mcp_server/server.py#L53-L59)
 - **Code**:
   ```python
   sys.stdout.write(f"[mcp] starting {MCP_SERVER_NAME} ({MCP_SERVER_VERSION})\n")
@@ -131,7 +138,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 2.1 `combobook.py`: `write_tags` Executed During Dry-Run / Preview
 - **Status**: 🛠️ **FIXED (2026-09-04)** — the `write_tags` loop is now wrapped in `if not dry:`. Verified end-to-end: after a dry run the audio file is **byte-identical** and carries no artist tag, the source folder stays in place, and a control run with `dry=False` still tags correctly (so the guard is not over-broad).
-- **File**: [`combobook.py:761-764`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L761-L764)
+- **File**: [`combobook.py:761-764`](combobook.py#L761-L764)
 - **Code**:
   ```python
   for idx, t in enumerate(audio_files, 1):
@@ -153,7 +160,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 2.2 `combobook.py`: `rename_tracks` Has No Dry-Run Guard
 - **Status**: 🛠️ **FIXED (2026-09-05)** — `rename_tracks(folder, dry=False)`; the two call sites inside `if dry:` branches now pass `dry=True` and report `would rename X -> Y` instead of renaming. Previously latent only because `RENAME_TRACKS = False`; it was a live data-loss bug the moment that constant was flipped.
-- **File**: [`combobook.py:784-785`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L784-L785), [`combobook.py:620-626`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L620-L626)
+- **File**: [`combobook.py:784-785`](combobook.py#L784-L785), [`combobook.py:620-626`](combobook.py#L620-L626)
 - **Code**:
   ```python
   if dry:
@@ -168,7 +175,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 2.3 `ablib/cli/main.py`: Preview Mode Fails to Inspect or Preview Metadata
 - **Status**: 🛠️ **FIXED (2026-09-05)** — `process_leaf` now runs in preview mode and withholds only the writes. Verified: a preview prints the folder guess, per-provider scores, the chosen match and a `would tag …` line carrying the full metadata summary, while writing **no** tags, **no** `metadata.json`/`book.nfo` and **no** log entries; `--commit` still writes all three. `--striptags` previews as `would strip tags from N file(s)`.
-- **File**: [`ablib/cli/main.py:395-397`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/cli/main.py#L395-L397), [`AbtoolsGui.py:738-740`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/AbtoolsGui.py#L738-L740)
+- **File**: [`ablib/cli/main.py:395-397`](ablib/cli/main.py#L395-L397), [`AbtoolsGui.py:738-740`](AbtoolsGui.py#L738-L740)
 - **Code**:
   ```python
   if not args.commit:
@@ -182,7 +189,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 2.4 `ablib/cli/main.py`: `--no` Ignored & Confirmation Skipped for Confidence Scores >= 70
 - **Status**: 🛠️ **FIXED (2026-09-05)** — the gate now reads `best_score < llm_threshold` instead of the hardcoded `70`, so `--no` is honoured for any below-threshold match and the 70-85 band prompts instead of tagging silently. The unreachable `else: Confirm(prompt_message, ...)` branch was removed at the same time. Verified across six paths: above-threshold tags silently; below-threshold with `--no` skips without prompting; accept tags; decline skips; `--yes` bypasses the prompt. (`llm_threshold` is still clamped to 80-100 by `process_leaf`, as documented in the CLI help.)
-- **File**: [`ablib/cli/main.py:209`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/cli/main.py#L209), [`ablib/cli/main.py:227-233`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/cli/main.py#L227-L233)
+- **File**: [`ablib/cli/main.py:209`](ablib/cli/main.py#L209), [`ablib/cli/main.py:227-233`](ablib/cli/main.py#L227-L233)
 - **Code**:
   ```python
   if not llm_used and best_score is not None and best_score < 70 and not args.yes:
@@ -202,7 +209,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 3.1 `repair_m4b.py` & `combobook.py`: FFmpeg `.tmp` Output Format Failure (Code 234)
 - **Status**: 🛠️ **FIXED (2026-09-04)** — both call sites repaired. `combobook.write_tags` now writes to `track.abtmp.mp3` (real extension preserved) and captures/reports stderr; `repair_m4b.run_ffmpeg` now passes an explicit `-f mp4`. Verified: tags actually land (`artist=['Frank Herbert']`, no leftover temp files), and `repair_m4b` writes its `.m4b.tmp` output with rc=0. Originally reproduced at **rc=234**, `Unable to choose an output format for '...tmp'`. The `combobook` impact was *worse* than first described — see below.
-- **File**: [`repair_m4b.py:40-53`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/repair_m4b.py#L40-L53), [`repair_m4b.py:75`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/repair_m4b.py#L75); [`combobook.py:552-569`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L552-L569)
+- **File**: [`repair_m4b.py:40-53`](repair_m4b.py#L40-L53), [`repair_m4b.py:75`](repair_m4b.py#L75); [`combobook.py:552-569`](combobook.py#L552-L569)
 - **Code**:
   ```python
   # repair_m4b.py:
@@ -249,7 +256,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 3.2 `ab_encode.py`: Shell Escaping Breaks Concat Demuxer Single Quotes
 - **Status**: ❌ **REFUTED — the current code is correct. Do not change it.**
-- **File**: [`ab_encode.py:147`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ab_encode.py#L147)
+- **File**: [`ab_encode.py:147`](ab_encode.py#L147)
 - **Original claim**: `safe_path = abs_path.replace("'", "'\\''")` supposedly breaks ffmpeg's concat demuxer, which allegedly only accepts `\'` inside single quotes.
 - **Why it is wrong**: ffmpeg's concat demuxer tokenizer (`av_get_token`) *does* follow POSIX-style quoting: a single-quoted run ends at the next `'`, and a backslash escape is honoured **outside** quotes. The sequence `'\''` therefore closes the quote, supplies a literal `'`, and reopens — exactly the intended result.
 - **Evidence** (executed):
@@ -263,7 +270,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 3.3 `ab_encode.py`: Windows Backslashes in Concat List Unescaped
 - **Status**: ❌ **REFUTED — unsubstantiated.**
-- **File**: [`ab_encode.py:145-148`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ab_encode.py#L145-L148)
+- **File**: [`ab_encode.py:145-148`](ab_encode.py#L145-L148)
 - **Original claim**: Windows backslashes in `abs_path` are treated as escape characters by the concat demuxer.
 - **Why it is wrong**: the path is written **wrapped in single quotes** (`file '{safe_path}'`). Inside a single-quoted run, ffmpeg's tokenizer treats every character literally until the closing quote — which is precisely why the unescaped-apostrophe control in 3.2 terminated the string early. Backslashes inside the quotes are therefore literal, and Windows paths pass through intact.
 - **Corroboration**: `past_memory.md` documents extensive real-world `ab_encode.py` runs on this project without any such failure.
@@ -275,7 +282,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 4.1 `combobook.py`: `leaf_dirs` Treats Disc Subfolders as Separate Audiobooks
 - **Status**: 🛠️ **FIXED (2026-09-04)** — `leaf_dirs` now folds bare disc sub-folders into their parent, and `process()` collects tracks from those sub-folders. Verified end-to-end: a two-disc book yields **one** leaf, both discs move, both are flattened and tagged, and nothing is left in the source. See the design constraint below.
-- **File**: [`combobook.py:137-142`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L137-L142)
+- **File**: [`combobook.py:137-142`](combobook.py#L137-L142)
 - **Code**:
   ```python
   def leaf_dirs(root:Path)->List[Path]:
@@ -299,7 +306,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 4.2 `combobook.py` & `ablib/cli/main.py`: Root Folder Ignored When Pointing Directly to a Book
 - **Status**: 🛠️ **FIXED (2026-09-04)** — both `combobook.leaf_dirs` and `ablib.cli.main.walk_leaves` now evaluate `root` itself as a candidate. Verified: pointing either straight at a book folder finds it (including a multi-disc one), while library roots still yield only their book folders — no spurious root entry.
-- **File**: [`combobook.py:137-142`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L137-L142), [`ablib/cli/main.py:307-312`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/cli/main.py#L307-L312)
+- **File**: [`combobook.py:137-142`](combobook.py#L137-L142), [`ablib/cli/main.py:307-312`](ablib/cli/main.py#L307-L312)
 - **Error**: `root.rglob("*")` only yields descendants of `root`, never `root` itself.
 - **Impact**: `python combobook.py "/books/Dune" "/dest"` finds 0 books and exits silently having done nothing.
 - **Scope note**: in `ablib/cli/main.py` this only bites with `--recurse`; without it, `main()` uses `[args.root]` directly and works.
@@ -308,7 +315,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 4.3 `combobook.py`: `safe_move` Crashes on Empty Destination Directory
 - **Status**: 🛠️ **FIXED (2026-09-05)** — `safe_move` now `rmdir`s an existing *empty* directory destination and proceeds, matching what `process()` already allowed. Verified: a move into a pre-created empty destination succeeds, while a non-empty destination is still refused with `FileExistsError`.
-- **File**: [`combobook.py:788-791`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L788-L791), [`combobook.py:301-302`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L301-L302)
+- **File**: [`combobook.py:788-791`](combobook.py#L788-L791), [`combobook.py:301-302`](combobook.py#L301-L302)
 - **Code**:
   ```python
   # process():
@@ -325,7 +332,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 4.4 `flatten_discs.py`: Folders Starting with Disc Prefix Collide Under Empty String `""`
 - **Status**: 🛠️ **FIXED (2026-09-04)** — new shared `disc_base_name()` falls back to the text *after* the marker when the text before it is empty. Verified: `[Disc 1] Book A` / `[Disc 1] Book B` now group as `Book A` / `Book B` and flatten into separate folders; bare `Disc 1` / `Disc 2` still correctly flatten into the parent.
-- **File**: [`flatten_discs.py:60`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/flatten_discs.py#L60)
+- **File**: [`flatten_discs.py:60`](flatten_discs.py#L60)
 - **Code**:
   ```python
   base = DISC_RX.split(p.name)[0].strip().rstrip(" -_")
@@ -339,7 +346,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 4.5 `ab_encode.py`: Arbitrary `.m4b` Selection and an Unreachable Branch
 - **Status**: 🛠️ **FIXED (2026-09-06)** — the whole `existing_m4b` scan is gone. Source selection is now `every audio file except the one we are about to write`, so `.m4b` parts are ordinary sources and the canonical `<folder><ext>` output can never be one of its own inputs. The dead `elif` went with it. A lone file already in the target codec *and* container is skipped whatever it is called, which preserves the old "AAC M4B exists" behaviour without depending on `os.listdir` order. See [9.1](#91-ab_encodepy-folders-of-m4b-parts-were-invisible-not-skipped).
-- **File**: [`ab_encode.py:110-132`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ab_encode.py#L110-L132), [`ab_encode.py:40`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ab_encode.py#L40)
+- **File**: [`ab_encode.py:110-132`](ab_encode.py#L110-L132), [`ab_encode.py:40`](ab_encode.py#L40)
 - **Code**:
   ```python
   EXTENSIONS = (".mp3", ".wav", ".flac", ".m4a", ".ogg")   # note: no ".m4b"
@@ -362,42 +369,42 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 4.6 `restructure_for_audiobookshelf.py`: Ignores Tags and Sidecars Entirely
 - **Status**: 🛠️ **FIXED (2026-09-05)** — `restructure_for_audiobookshelf.py` now resolves metadata in priority order: embedded audio tags (`read_tags` via mutagen), sidecars (`read_sidecar_metadata` for `metadata.json` and `book.nfo`), and folder name / hierarchy heuristics. Verified: tagged books without year in the folder name now file under their correct `Title (Year)` leaf and optional `Series` directory.
-- **File**: [`restructure_for_audiobookshelf.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/restructure_for_audiobookshelf.py) — `target_for` / `parse_book_folder`
+- **File**: [`restructure_for_audiobookshelf.py`](restructure_for_audiobookshelf.py) — `target_for` / `parse_book_folder`
 - **Error**: the module imported only `argparse, shutil, sys, pathlib, typing, re`. There was **no `mutagen` and no `json`**, so it had no mechanism to read either embedded tags or `metadata.json` / `book.nfo`. Every value was derived from the folder name by `parse_book_folder()`.
 - **Contradicts the docs**: `README.md` states *"It reads tags from the audio files first, then `metadata.json` or `book.nfo`, and finally falls back to folder names."*
-- **Impact**: previously reproduced against a book whose tags carried `date=2006` and whose `metadata.json` carried `year=2006`, `series=Mistborn`:
+- **Impact**: previously reproduced against a book whose tags carried `date=2006` and whose `metadata.json` carried `year=2006`, `series=Emberborn`:
   ```
-  input   Brandon Sanderson/The Final Empire   (tagged, both sidecars present)
-  output  Brandon Sanderson/Unknown - The Final Empire
+  input   Iris Calder/The Last Dominion   (tagged, both sidecars present)
+  output  Iris Calder/Unknown - The Last Dominion
   ```
 - **Fix applied**: added `read_tags()` and `read_sidecar_metadata()` in `ablib/tagging/files.py`. `target_for` queries tags, then sidecars, then folder heuristics before passing resolved fields to `format_canonical_dest()`.
 - **Verification & Test Note**: To verify/test:
-  1. Create a test directory structure `src/Brandon Sanderson/The Final Empire/` containing an audio file (`track.mp3`).
-  2. Embed tags with mutagen: ID3 `TDRC`="2006", `TALB`="The Final Empire", `TXXX:series`="Mistborn", or place a `metadata.json` with `{"series": [{"name": "Mistborn"}], "publishedYear": "2006"}`.
+  1. Create a test directory structure `src/Iris Calder/The Last Dominion/` containing an audio file (`track.mp3`).
+  2. Embed tags with mutagen: ID3 `TDRC`="2006", `TALB`="The Last Dominion", `TXXX:series`="Emberborn", or place a `metadata.json` with `{"series": [{"name": "Emberborn"}], "publishedYear": "2006"}`.
   3. Execute `python3 restructure_for_audiobookshelf.py src dst` (dry-run or commit).
-  4. Assert destination resolves to `dst/Brandon Sanderson/Mistborn/The Final Empire (2006)` rather than `dst/Brandon Sanderson/Unknown - The Final Empire`.
+  4. Assert destination resolves to `dst/Iris Calder/Emberborn/The Last Dominion (2006)` rather than `dst/Iris Calder/Unknown - The Last Dominion`.
 
 ### 4.7 `restructure_for_audiobookshelf.py`: No Series Level in the Output Layout
 - **Status**: 🛠️ **FIXED (2026-09-05)** — series level is now created whenever series metadata is present.
-- **File**: [`restructure_for_audiobookshelf.py:102-106`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/restructure_for_audiobookshelf.py#L102-L106)
+- **File**: [`restructure_for_audiobookshelf.py:102-106`](restructure_for_audiobookshelf.py#L102-L106)
 - **Error**: previously there was no series directory in the path (`dest_root / author_slug / book_slug`), so the `Author/Series/Book` arrangement Audiobookshelf documents for series could not be produced.
-- **Fix applied**: `parse_book_folder()` now returns `(year, series, title)` using reordered `SERIES_PATTERNS`. `discover_books()` supports discovering books in nested `Author/Series/Book` layouts as well as flat `Author/Book` layouts. `target_for()` creates the series directory level whenever series is present (from tags, sidecars, folder name patterns like `Mistborn Book 1 - The Final Empire (2006)`, or directory hierarchy).
+- **Fix applied**: `parse_book_folder()` now returns `(year, series, title)` using reordered `SERIES_PATTERNS`. `discover_books()` supports discovering books in nested `Author/Series/Book` layouts as well as flat `Author/Book` layouts. `target_for()` creates the series directory level whenever series is present (from tags, sidecars, folder name patterns like `Emberborn Book 1 - The Last Dominion (2006)`, or directory hierarchy).
 - **Verification & Test Note**: To verify/test:
   1. Create source folders representing series structures:
-     - Folders matching series regex: `Author/Mistborn Book 1 - The Final Empire (2006)`
-     - Existing nested series trees: `Author/Mistborn/The Final Empire (2006)`
+     - Folders matching series regex: `Author/Emberborn Book 1 - The Last Dominion (2006)`
+     - Existing nested series trees: `Author/Emberborn/The Last Dominion (2006)`
   2. Run `python3 restructure_for_audiobookshelf.py src dst --commit`.
-  3. Confirm `dst/Author/Mistborn/The Final Empire (2006)` is produced, verifying that the intermediate series directory level is created and nested crawlers discover books within series subfolders.
+  3. Confirm `dst/Author/Emberborn/The Last Dominion (2006)` is produced, verifying that the intermediate series directory level is created and nested crawlers discover books within series subfolders.
 
 ### 4.8 The Two Organisers Produce Incompatible Layouts
-- **Status**: 🛠️ **FIXED (2026-09-05)** — both tools now share the *resolvers* (`parse_book_folder_name`, `is_plausible_author`, `primary_author`, `normalise_author`) as well as the formatter, and the regression suite starts from files on disk rather than a pre-built `Meta`. Previously, sharing `format_canonical_dest` fixed *path formatting* parity only. The two organisers still resolve metadata by completely different rules, so they still emit different trees for the same input. Reproduced against a real 572-entry run into `/home/citizenzero/Documents/temp_audiobooks/` (see [4.10](#410-combobookpy-first-track-tags-short-circuit-the-entire-metadata-pipeline)).
+- **Status**: 🛠️ **FIXED (2026-09-05)** — both tools now share the *resolvers* (`parse_book_folder_name`, `is_plausible_author`, `primary_author`, `normalise_author`) as well as the formatter, and the regression suite starts from files on disk rather than a pre-built `Meta`. Previously, sharing `format_canonical_dest` fixed *path formatting* parity only. The two organisers still resolve metadata by completely different rules, so they still emit different trees for the same input. Reproduced against a real 572-entry run into `<test library>/` (see [4.10](#410-combobookpy-first-track-tags-short-circuit-the-entire-metadata-pipeline)).
 - **Why the earlier verification passed**: the parity test called `combobook.dest_path(dest, meta)` and `restructure.target_for(author, folder, dest)` with a *pre-built* `Meta`. That exercises the formatter both tools share; it never exercises how each tool *arrives* at that `Meta`. `restructure.target_for()` resolves tags → sidecars → folder heuristics and calls `extract_series_and_title()`; `combobook.process()` does none of this when the first track carries `artist` + `album`.
-- **Files**: [`restructure_for_audiobookshelf.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/restructure_for_audiobookshelf.py) vs [`combobook.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py)
+- **Files**: [`restructure_for_audiobookshelf.py`](restructure_for_audiobookshelf.py) vs [`combobook.py`](combobook.py)
 - **Error**: previously the two organisers produced incompatible conventions for the same book:
   | Tool | Result (Old) | Result (Fixed) |
   |---|---|---|
-  | `restructure_for_audiobookshelf.py` | `Brandon Sanderson/Unknown - The Final Empire` | `Brandon Sanderson/Mistborn/The Final Empire (2006)` |
-  | `combobook.py` (`dest_path`) | `Brandon Sanderson/Mistborn/The Final Empire (2006)` | `Brandon Sanderson/Mistborn/The Final Empire (2006)` |
+  | `restructure_for_audiobookshelf.py` | `Iris Calder/Unknown - The Last Dominion` | `Iris Calder/Emberborn/The Last Dominion (2006)` |
+  | `combobook.py` (`dest_path`) | `Iris Calder/Emberborn/The Last Dominion (2006)` | `Iris Calder/Emberborn/The Last Dominion (2006)` |
 - **Fix applied**: extracted destination building into `format_canonical_dest()` in `ablib/metadata/utils.py`. Both `combobook.dest_path()` and `restructure.target_for()` delegate to it, guaranteeing 100% path parity across standalone books, series books, books without years, and multi-disc albums.
 - **Verification & Test Note**: To verify/test:
   1. Execute the parity test suite asserting `combobook.dest_path(dest, meta)` == `restructure_for_audiobookshelf.target_for(author, book_folder, dest)`.
@@ -410,8 +417,8 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 4.9 `metadata.json` Does Not Match Audiobookshelf's Schema
 - **Status**: 🛠️ **FIXED (2026-09-05)** — `export_metadata()` now converts metadata into Audiobookshelf's official sidecar schema via `format_abs_metadata()`, writing `authors` (array), `narrators` (array), `series` (array of `{"name": ..., "sequence": ...}`), `publishedYear` (4-digit string), `genres` (array), `title`, `subtitle`, `publisher`, `description`, `isbn`, `asin`, `language`, and `explicit`. Convenience fallback keys (`author`, `year`, `narrator`) are preserved for legacy consumers. `read_sidecar_metadata()` verified round-tripping seamlessly.
-- **File**: [`ablib/tagging/files.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/tagging/files.py) — `export_metadata`, `format_abs_metadata`
-- **Re-verified 2026-09-05**: `format_abs_metadata()` confirmed to emit `authors: [...]`, `series: [{"name", "sequence"}]`, `publishedYear`, `genres: []`, `explicit`. **Caveat:** sidecars already on disk under `/home/citizenzero/Documents/temp_audiobooks/` are still the old flat schema (`author`, `year`, `series_index`) — they were written at `13:02`, before this fix landed at `14:16`, and were then *moved* by the organiser rather than rewritten. Existing libraries need a re-tag pass; the fix does not retroactively upgrade sidecars.
+- **File**: [`ablib/tagging/files.py`](ablib/tagging/files.py) — `export_metadata`, `format_abs_metadata`
+- **Re-verified 2026-09-05**: `format_abs_metadata()` confirmed to emit `authors: [...]`, `series: [{"name", "sequence"}]`, `publishedYear`, `genres: []`, `explicit`. **Caveat:** sidecars already on disk under `<test library>/` are still the old flat schema (`author`, `year`, `series_index`) — they were written at `13:02`, before this fix landed at `14:16`, and were then *moved* by the organiser rather than rewritten. Existing libraries need a re-tag pass; the fix does not retroactively upgrade sidecars.
 - **Known gap**: `book.nfo` is still generated from the raw `meta.items()` loop, so the XML keeps `<author>` / `<series_index>` while the JSON uses `authors` / `sequence`. Harmless for Audiobookshelf (it reads the JSON) but the two sidecars now disagree.
 - **Error**: `export_metadata` previously dumped a flat dictionary with `title`, `author`, `year`, `series`, `series_index`. Audiobookshelf's server scanner expects `authors` (an array), `publishedYear`, `narrators` (an array), and a `series` array of objects — so Audiobookshelf ignored the file or failed to parse series/authors.
 - **Fix applied**: implemented `format_abs_metadata()` in `ablib/tagging/files.py` to structure metadata precisely into Audiobookshelf's sidecar format, while writing `book.nfo` with XML tags for Kodi/Emby/Jellyfin scrapers. Both formats verified via automated unit and integration tests.
@@ -423,7 +430,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 4.10 `combobook.py`: First-Track Tags Short-Circuit the Entire Metadata Pipeline
 - **Status**: 🛠️ **FIXED (2026-09-05)** — see *Fix applied* below. This was the root cause behind the "4.6/4.7/4.8 are not actually fixed" report. Those fixes landed in `restructure_for_audiobookshelf.py`; the run that produced the bad library was **`combobook.py`**, which has its own resolver and never calls any of them.
-- **File**: [`combobook.py:767-773`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L767-L773) — `process()`; and [`combobook.py:423-437`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L423-L437) — `tags_from_track()`
+- **File**: [`combobook.py:767-773`](combobook.py#L767-L773) — `process()`; and [`combobook.py:423-437`](combobook.py#L423-L437) — `tags_from_track()`
 - **How the tool was identified**: the output root contains `_unmatched/`, a literal defined only in `combobook.py:51` (`UNMATCHED_DIR`). `restructure_for_audiobookshelf.py` has no such concept. Output mtimes are `14:38-14:39`; the 4.6/4.7 source fixes are `14:06-14:16`, so the run *did* use the patched tree.
 - **Code**:
   ```python
@@ -445,56 +452,56 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
   1. **No validation.** Any file with a non-empty `artist` and `album` is accepted verbatim. Audiobook rips routinely carry the *filename*, a disc marker, or a track index in `artist`.
   2. **Unconditional short-circuit.** When tags exist, `process()` skips `guess_from_folder()`, `choose_meta()` (provider lookup) **and** the LLM fallback. There is no confidence check and no cross-check against the folder name — so the bad value can never be corrected. The `llm_threshold` work is unreachable on this path.
   Separately, combobook **never calls `extract_series_and_title()`**. Its only series source is `guess_from_folder()`'s `PARENT_RANGE_RX` (a parent named `<Series> (YYYY-YYYY)`), and that function is unreachable whenever tags are present.
-- **Impact — reproduced, 572 entries under `/home/citizenzero/Documents/temp_audiobooks/`**:
+- **Impact — reproduced, 572 entries under `<test library>/`**:
 
   | Output path | `artist` tag | `album` tag | What went wrong |
   |---|---|---|---|
-  | `Side 01/Riftwar saga 03 - Silverthorn` | `Side 01` | `Riftwar saga 03 - Silverthorn` | a **disc marker became the author folder**; series `Riftwar saga` #3 never split out |
-  | `AttheGatesofDarkness Part1 Track 01/At the Gates of Darkness` | `AttheGatesofDarkness Part1 Track 01` | `At the Gates of Darkness` | a **filename became the author folder** |
-  | `Raymond E Feist/Serpentwar Saga 03 - Rage of a Demon King (1998)` | `Raymond E Feist` | `Serpentwar Saga 03 - Rage of a Demon King` | correct author, but **no series level** — should be `Raymond E Feist/Serpentwar Saga/Rage of a Demon King (1998)` |
+  | `Side 01/Ember saga 03 - Nightthorn` | `Side 01` | `Ember saga 03 - Nightthorn` | a **disc marker became the author folder**; series `Ember saga` #3 never split out |
+  | `AttheGatesofDarkness Part1 Track 01/At the Gates of Dusk` | `AttheGatesofDarkness Part1 Track 01` | `At the Gates of Dusk` | a **filename became the author folder** |
+  | `Alex E Rivers/Tidewar Saga 03 - Rage of a Fallen King (1998)` | `Alex E Rivers` | `Tidewar Saga 03 - Rage of a Fallen King` | correct author, but **no series level** — should be `Alex E Rivers/Tidewar Saga/Rage of a Fallen King (1998)` |
   | `Andrzej Sapkowski, Terry Goodkind, Anthony Ryan, A/...` | 8 authors, 126 chars | 8 titles joined by `/` | truncated **mid-word at 50 chars**; a compilation filed as one pseudo-author |
-  | `Raymond E. Feist/` **and** `Raymond E Feist/` | both spellings present in tags | — | the same author **split across two folders**; no normalisation |
+  | `Alex E. Rivers/` **and** `Alex E Rivers/` | both spellings present in tags | — | the same author **split across two folders**; no normalisation |
 
   `extract_series_and_title()` handles every one of these series cases correctly when it is actually called:
   ```
-  'Serpentwar Saga 03 - Rage of a Demon King (1998)'   -> ('Serpentwar Saga', '03', 'Rage of a Demon King (1998)')
-  'Riftwar saga 03 - Silverthorn'                      -> ('Riftwar saga', '03', 'Silverthorn')
-  'Riftwar Legacy 03 Krondor - Tear Of The God (2000)' -> ('Riftwar Legacy', '03', 'Krondor - Tear Of The God (2000)')
+  'Tidewar Saga 03 - Rage of a Fallen King (1998)'   -> ('Tidewar Saga', '03', 'Rage of a Fallen King (1998)')
+  'Ember saga 03 - Nightthorn'                      -> ('Ember saga', '03', 'Nightthorn')
+  'Ember Legacy 03 Halcyon - Tear Of The God (2000)' -> ('Ember Legacy', '03', 'Halcyon - Tear Of The God (2000)')
   ```
   It is simply never reached from `combobook.py`.
 - **Fix applied (2026-09-05)**:
   1. **Tags became evidence, not an answer.** `process()` now computes the folder guess first, then accepts a track's tags only when `is_plausible_author()` passes; an implausible `artist` logs a reason and the book carries on to the folder guess, the providers and the LLM instead of short-circuiting.
-  2. **`merge_tag_and_folder()`** merges tag- and folder-derived fields, and runs the album frame through `extract_series_and_title()` — so a tagged `"Serpentwar Saga 03 - Rage of a Demon King"` finally produces a series level.
+  2. **`merge_tag_and_folder()`** merges tag- and folder-derived fields, and runs the album frame through `extract_series_and_title()` — so a tagged `"Tidewar Saga 03 - Rage of a Fallen King"` finally produces a series level.
   3. **The source tree is validated too.** `guess_from_folder()`'s parent climb runs the same guard, so a book filed under `Side 01/` no longer hands that string back as the author.
-  4. **`primary_author()` / `normalise_author()`** collapse `Raymond E Feist` and `Raymond E. Feist` into one folder and reduce a 126-character credit list to its first author rather than truncating mid-word.
+  4. **`primary_author()` / `normalise_author()`** collapse `Alex E Rivers` and `Alex E. Rivers` into one folder and reduce a 126-character credit list to its first author rather than truncating mid-word.
   5. **Provider queries stopped searching for a placeholder.** `_query_author()` omits the author clause when it is `"Unknown Author"`; previously every lookup for an untagged book searched for a nonexistent author and returned nothing.
-  6. **The scorer was rewritten.** `_similarity()` compares title and author separately (concatenating them meant an unknown author dominated the diff: identical titles scored 0.44), treats a contained name as a match (`Feist` ≡ `Raymond E. Feist`), and rewards a matching sequence number without penalising its absence — providers almost never return the index, so the old −0.12 hit applied to nearly every correct match.
+  6. **The scorer was rewritten.** `_similarity()` compares title and author separately (concatenating them meant an unknown author dominated the diff: identical titles scored 0.44), treats a contained name as a match (`Rivers` ≡ `Alex E. Rivers`), and rewards a matching sequence number without penalising its absence — providers almost never return the index, so the old −0.12 hit applied to nearly every correct match.
   7. **`--yes` gained a floor and an ambiguity guard.** `MIN_AUTO_SCORE` (0.75, `--auto-accept-score`) stops auto-accept taking a 0.47 match, and two candidates by different authors tying within 0.02 are refused outright rather than decided by sort order.
 - **Verification**: `tests/test_organiser_resolution.py` — 31 tests, all passing, built from the real tag values. End-to-end on a fixture reproducing every failure:
   ```
-  ↪ Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon
-      → Raymond E. Feist/Riftwar Saga/A Darkness at Sethanon (1986)   [was _unmatched/]
-  ↪ Raymond E Feist/Serpentwar Saga 03 - Rage of a Demon King (1998)
-      → Raymond E. Feist/Serpentwar Saga/Rage of a Demon King (1998)  [was flat, no series]
-  ↪ AttheGatesofDarkness Part1 Track 01/At the Gates of Darkness
-      → Raymond E. Feist/At the Gates of Darkness (2009)              [was a junk author folder]
+  ↪ Rivers - Ember Saga - Book 4 - A Shadow at Kelmoor
+      → Alex E. Rivers/Ember Saga/A Shadow at Kelmoor (1986)   [was _unmatched/]
+  ↪ Alex E Rivers/Tidewar Saga 03 - Rage of a Fallen King (1998)
+      → Alex E. Rivers/Tidewar Saga/Rage of a Fallen King (1998)  [was flat, no series]
+  ↪ AttheGatesofDarkness Part1 Track 01/At the Gates of Dusk
+      → Alex E. Rivers/At the Gates of Dusk (2009)              [was a junk author folder]
   ↪ Compilation/The Road with No Return
       → Andrzej Sapkowski/...                                         [was truncated mid-word]
-  • Side 01/Riftwar saga 03 - Silverthorn
-      ambiguous: Raymond E. Feist and Christopher C. Tubbs both match
-      'Silverthorn' at 1.00; not guessing → left in place
+  • Side 01/Ember saga 03 - Nightthorn
+      ambiguous: Alex E. Rivers and Jordan Vale both match
+      'Nightthorn' at 1.00; not guessing → left in place
   ```
   The remaining unmatched case is genuinely undecidable from the evidence on disk, and now says so instead of inventing an answer.
 - **Original fix plan** (all items shipped):
   1. Treat first-track tags as *one candidate*, not as an answer. Sanity-check `artist` before accepting it — reject values matching `DISC_RX`, values equal to the audio filename stem, and values that are purely numeric or index-like.
-  2. Always run `extract_series_and_title()` over the `album` tag and the folder name, so `Serpentwar Saga 03 - ...` yields a series level regardless of which source supplied the string.
+  2. Always run `extract_series_and_title()` over the `album` tag and the folder name, so `Tidewar Saga 03 - ...` yields a series level regardless of which source supplied the string.
   3. Fall through to `guess_from_folder()` → `choose_meta()` → LLM when the tag-derived author fails validation, instead of short-circuiting.
-  4. Normalise author spelling (`Raymond E Feist` ≡ `Raymond E. Feist`) before it becomes a directory name, and split multi-author `,`-joined strings rather than truncating them.
-- **Verification & Test Note**: the earlier 4.8 parity test cannot catch this — it starts from a pre-built `Meta`. A regression test must start from *files on disk*: write an MP3 with `artist="Side 01"`, `album="Riftwar saga 03 - Silverthorn"`, run `combobook.process()`, and assert the destination is `.../<real author>/Riftwar saga/Silverthorn`, **not** `.../Side 01/Riftwar saga 03 - Silverthorn`.
+  4. Normalise author spelling (`Alex E Rivers` ≡ `Alex E. Rivers`) before it becomes a directory name, and split multi-author `,`-joined strings rather than truncating them.
+- **Verification & Test Note**: the earlier 4.8 parity test cannot catch this — it starts from a pre-built `Meta`. A regression test must start from *files on disk*: write an MP3 with `artist="Side 01"`, `album="Ember saga 03 - Nightthorn"`, run `combobook.process()`, and assert the destination is `.../<real author>/Ember saga/Nightthorn`, **not** `.../Side 01/Ember saga 03 - Nightthorn`.
 
 ### 4.11 `read_tags` Prefers TIT2 (Track Title) Over TALB (Album Title)
 - **Status**: 🛠️ **FIXED (2026-09-05)** — `read_tags` now prefers `TALB` / `\xa9alb` (the album, i.e. the book) and falls back to `TIT2` / `\xa9nam`; `strip_track_tail()` removes a trailing `NN of NN` / `Part N` / bare index while at least two words survive, so "Slaughterhouse 5" and "Catch 22" are untouched.
-- **File**: [`ablib/tagging/files.py:223-226`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/tagging/files.py#L223-L226) — `read_tags`
+- **File**: [`ablib/tagging/files.py:223-226`](ablib/tagging/files.py#L223-L226) — `read_tags`
 - **Code**:
   ```python
   if "TIT2" in audio and audio["TIT2"].text:
@@ -505,42 +512,42 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 - **Error**: for an audiobook, `TIT2` is the **track** title and `TALB` is the **book** title. Preferring `TIT2` means `target_for()` names the destination folder after a single track. Because `read_tags` sits at the *top* of `target_for`'s precedence chain, this overrides both the sidecar and the folder name.
 - **Impact**: measured against files already in the library:
   ```
-  Rage of a Demon King - 01 of 14   <- TIT2, would become the folder name
-  Rage of a Demon King              <- TALB, correct
-  01                                <- TIT2 for the Silverthorn rip
-  At the Gates of Darkness Part1    <- TIT2, vs "At the Gates of Darkness" in TALB
+  Rage of a Fallen King - 01 of 14   <- TIT2, would become the folder name
+  Rage of a Fallen King              <- TALB, correct
+  01                                <- TIT2 for the Nightthorn rip
+  At the Gates of Dusk Part1    <- TIT2, vs "At the Gates of Dusk" in TALB
   ```
 - **Fix**: prefer `TALB` for the book title and treat `TIT2` only as a fallback when `TALB` is absent. (`combobook.tags_from_track()` already gets this right — it reads `au["album"][0]`.) Strip trailing `- NN of NN` / `Part N` / bare-index tails from whichever value is used.
 
 ### 4.12 `combobook.py`: Unidentifiable Folders Were Swept Into `_unmatched/`
 - **Status**: 🛠️ **FIXED (2026-09-05)** — folders with no metadata match are now **left in place** by default. `--move-unmatched` (CLI) / **Move unmatched** (GUI, Tag & Move tab) restores the old behaviour.
-- **File**: [`combobook.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py) — `process()`, `MOVE_UNMATCHED`
+- **File**: [`combobook.py`](combobook.py) — `process()`, `MOVE_UNMATCHED`
 - **Error**: a folder reaches this branch precisely because *nothing* could identify it — no tags, no provider hit, no LLM answer. The only evidence left about what the book is, is **where it sat in the source tree**. Moving it into a flat `<library>/_unmatched/` destroyed exactly that, and (in the old code path) additionally ran `flatten()` / `rename_tracks()` on it, renaming the tracks of a book whose identity was unknown.
-- **Impact**: reproduced — four Feist books landed in `_unmatched/` with names that were entirely parseable:
+- **Impact**: reproduced — four Rivers books landed in `_unmatched/` with names that were entirely parseable:
   ```
-  _unmatched/Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon
-  _unmatched/Feist - Empire Trilogy - Book 1 - Daughter of the Empire
-  _unmatched/Feist - Chaoswar Saga  - Book 3 - Magician's End
-  _unmatched/Feist - Riftwar Saga - Book 1 & 2 - Magician & Master
+  _unmatched/Rivers - Ember Saga - Book 4 - A Shadow at Kelmoor
+  _unmatched/Rivers - Dominion Trilogy - Book 1 - Daughter of the Dominion
+  _unmatched/Rivers - Stormwar Saga  - Book 3 - Sorcerer's End
+  _unmatched/Rivers - Ember Saga - Book 1 & 2 - Sorcerer & Master
   ```
 - **Root cause of *why* they were unmatched** (a folder-parsing fault, not a tag fault — these files are genuinely untagged, `artist=None`, `album=None`): `guess_from_folder()` cannot read this shape. It matches `LEAF_RX` (`Seq - Title (Year)`) against the leaf, then climbs **parent directories** looking for the author. These folders are flat under the source root, so there is no author parent:
   ```
-  guess_from_folder("Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon")
-    -> Meta(author='Unknown Author', title='Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon',
+  guess_from_folder("Rivers - Ember Saga - Book 4 - A Shadow at Kelmoor")
+    -> Meta(author='Unknown Author', title='Rivers - Ember Saga - Book 4 - A Shadow at Kelmoor',
             year=None, series=None, seq=None)
   ```
   With `author='Unknown Author'` and a 54-character title, `choose_meta()`'s provider search cannot hit, and the LLM fallback also failed. Meanwhile the shared parser handles all four:
   ```
-  extract_series_and_title("Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon")
-    -> ('Feist - Riftwar Saga', '4', 'A Darkness at Sethanon')
+  extract_series_and_title("Rivers - Ember Saga - Book 4 - A Shadow at Kelmoor")
+    -> ('Rivers - Ember Saga', '4', 'A Shadow at Kelmoor')
   ```
   `combobook` never calls it — see [4.10](#410-combobookpy-first-track-tags-short-circuit-the-entire-metadata-pipeline). Remaining gaps once it does: the `Author - Series` prefix needs splitting on the first ` - `, and omnibus editions (`Book 1 & 2`) need a rule of their own.
 - **Fix applied**: added module-level `MOVE_UNMATCHED = False`. When false, `process()` reports the folder, increments a new `left_in_place` counter, and returns **without** moving, flattening or renaming. Added `--move-unmatched` to the CLI parser, a **Move unmatched** checkbox to the GUI (snapshotted on the UI thread, per [3.x](#3-gui-logic-errors)), and `left_in_place` to both summary blocks.
 - **Verification**: run against a real untagged book, `dry=False`:
   ```
   MOVE_UNMATCHED default = False
-  • no metadata match: Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon
-    left in place: .../src/Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon
+  • no metadata match: Rivers - Ember Saga - Book 4 - A Shadow at Kelmoor
+    left in place: .../src/Rivers - Ember Saga - Book 4 - A Shadow at Kelmoor
   summary: {'total': 1, 'unmatched': 1, 'left_in_place': 1}
   source still there?  True
   lib contents      :  []
@@ -548,14 +555,14 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
   and with the opt-in re-enabled:
   ```
   MOVE_UNMATCHED = True
-  mv Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon → _unmatched/...
+  mv Rivers - Ember Saga - Book 4 - A Shadow at Kelmoor → _unmatched/...
   summary: {'total': 1, 'unmatched': 1, 'moved': 1}
   source gone? True
   ```
 
 ### 4.13 `restructure_for_audiobookshelf.py`: Books at the Source Root Are Skipped Silently
 - **Status**: 🛠️ **FIXED (2026-09-05)** — `discover_books()` now walks `[source_root, *source_root.rglob("*")]` and yields any directory holding a book, deriving the author from the path depth (empty when the layout has no author level). Verified 6/6 discovery parity with `combobook.leaf_dirs()`, and pointing the tool at a single book now processes it. This was [4.2](#42-combookpy--ablibclimainpy-root-folder-ignored-when-pointing-directly-to-a-book) again, in the one tool that never got the fix. `combobook.py` and `ablib/cli/main.py` were both corrected to `[root, *root.rglob("*")]`; `restructure_for_audiobookshelf.py` was not.
-- **File**: [`restructure_for_audiobookshelf.py:128-138`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/restructure_for_audiobookshelf.py#L128-L138) — `discover_books`
+- **File**: [`restructure_for_audiobookshelf.py:128-138`](restructure_for_audiobookshelf.py#L128-L138) — `discover_books`
 - **Error**: `discover_books()` assumes every directory under the source root is an *author* directory, and only ever yields at depth 2 (`<source>/<Author>/<Book>`) or depth 3 (`<source>/<Author>/<Series>/<Book>`). Two shapes therefore yield nothing:
   1. a book folder sitting **directly** under the source root — the loop treats it as an author directory, looks inside for sub-directories, finds only audio files, and moves on;
   2. the source root **itself** being a single book.
@@ -563,14 +570,14 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
   ```
   combobook.leaf_dirs        : 6
   restructure.discover_books : 5
-  SKIPPED SILENTLY: {'Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon'}
+  SKIPPED SILENTLY: {'Rivers - Ember Saga - Book 4 - A Shadow at Kelmoor'}
   ```
   and pointed straight at one book:
   ```
-  $ restructure_for_audiobookshelf.py ".../Raymond E. Feist/Faerie Tale (1988)" dst
+  $ restructure_for_audiobookshelf.py ".../Alex E. Rivers/Winter Tale (1988)" dst
   Processed 0 books (dry-run) - moved: 0, skipped: 0     <- reports success, did nothing
 
-  $ combobook.py ".../Raymond E. Feist/Faerie Tale (1988)" dst
+  $ combobook.py ".../Alex E. Rivers/Winter Tale (1988)" dst
   would_move   : 1                                        <- correct
   ```
   The GUI's **Restructure** button calls this function, so it inherits the gap.
@@ -578,12 +585,12 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 4.14 `restructure_for_audiobookshelf.py`: No "Leave In Place" for Books It Cannot Identify
 - **Status**: 🛠️ **FIXED (2026-09-05)** — `target_for` was split into `resolve_book_metadata()` (what was resolved) and `target_for()` (where it goes), so `restructure_library()` can see the author was never identified and decline the move. Books resolving to `Unknown Author` are left in place and counted as `left_in_place`; `--move-unmatched` restores the sweep, matching combobook's flag name. The counterpart to [4.12](#412-combobookpy-unidentifiable-folders-were-swept-into-_unmatched).
-- **File**: [`restructure_for_audiobookshelf.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/restructure_for_audiobookshelf.py) — `target_for` / `restructure_library`
+- **File**: [`restructure_for_audiobookshelf.py`](restructure_for_audiobookshelf.py) — `target_for` / `restructure_library`
 - **Error**: when nothing resolves an author, `target_for()` returns `"Unknown Author"` and the book is moved there regardless. Unlike combobook, this tool has no provider or LLM fallback to recover from, and no option to decline the move.
 - **Impact**: on the audit fixture, two books were moved out of a meaningful source path into a shared bucket:
   ```
-  Side 01/Riftwar saga 03 - Silverthorn        -> Unknown Author/Riftwar saga/Silverthorn
-  AttheGatesofDarkness .../At the Gates of ... -> Unknown Author/At the Gates of Darkness
+  Side 01/Ember saga 03 - Nightthorn        -> Unknown Author/Ember saga/Nightthorn
+  AttheGatesofDarkness .../At the Gates of ... -> Unknown Author/At the Gates of Dusk
   ```
   `Unknown Author/` is `_unmatched/` by another name, and 4.12 already established why that is the wrong default: the source path is the last evidence about a book nothing could identify.
 - **Fix**: apply the 4.12 decision here too — skip the move when the resolved author is `"Unknown Author"`, report it, and gate the old behaviour behind the same `--move-unmatched` flag so both organisers take the same option name.
@@ -591,33 +598,33 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 - **Verification**:
   ```
   $ restructure_for_audiobookshelf.py src lib
-  [unidentified] left in place: src/AttheGatesofDarkness Part1 Track 01/At the Gates of Darkness
-  [dry-run] src/Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon
-              -> lib/Feist/Riftwar Saga/A Darkness at Sethanon      <- was skipped entirely
-  [unidentified] left in place: src/Side 01/Riftwar saga 03 - Silverthorn
+  [unidentified] left in place: src/AttheGatesofDarkness Part1 Track 01/At the Gates of Dusk
+  [dry-run] src/Rivers - Ember Saga - Book 4 - A Shadow at Kelmoor
+              -> lib/Rivers/Ember Saga/A Shadow at Kelmoor      <- was skipped entirely
+  [unidentified] left in place: src/Side 01/Ember saga 03 - Nightthorn
   Processed 6 books (dry-run) - moved: 0, skipped: 0, left in place: 2   <- was "Processed 5"
 
-  $ restructure_for_audiobookshelf.py ".../Faerie Tale (1988)" lib
+  $ restructure_for_audiobookshelf.py ".../Winter Tale (1988)" lib
   Processed 1 books ...                                             <- was "Processed 0"
   ```
   Also confirmed: a book found at the source root no longer takes the source directory's own name as its series, multi-disc books still yield the book folder rather than one entry per disc, and a second pass over the output moves nothing (`moved: 0, skipped: 2`, tree unchanged).
 
 ### 4.15 `book.nfo` and `metadata.json` Described the Same Book Differently
 - **Status**: 🛠️ **FIXED (2026-09-05)**
-- **File**: [`ablib/tagging/files.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/tagging/files.py) — `export_metadata`, `build_book_nfo`
+- **File**: [`ablib/tagging/files.py`](ablib/tagging/files.py) — `export_metadata`, `build_book_nfo`
 - **Error**: `export_metadata` wrote `metadata.json` through `format_abs_metadata()` but built `book.nfo` by looping over the raw `meta` dict. The two sidecars for one book therefore disagreed — `<author>` / `<series_index>` in the XML against `authors` / `sequence` in the JSON — and whatever incidental keys the pipeline was carrying leaked into the XML as elements (`<score>93</score>`).
 - **Fix applied**: added `build_book_nfo(abs_payload)`; both files are now derived from the one payload, so disagreement is impossible. Element names follow the Kodi/Emby/Jellyfin convention that actually reads the file — repeated `<author>` / `<narrator>` / `<genre>`, plus `<year>`, `<series>` and `<seriesnumber>` — rather than Audiobookshelf's JSON keys. The 5.1 `str()` guard is preserved.
 - **Verification**: `test_nfo_and_json_describe_the_same_book` asserts every shared field matches across the two files, and that `<series_index>` and `<score>` are gone.
 
 ### 4.16 The Schema Fix Never Reached Libraries Already on Disk
 - **Status**: 🛠️ **FIXED (2026-09-05)**
-- **Files**: [`ablib/tagging/files.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/tagging/files.py) — `upgrade_sidecar`, `sidecar_is_current`; [`restructure_for_audiobookshelf.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/restructure_for_audiobookshelf.py) — `refresh_sidecars`
+- **Files**: [`ablib/tagging/files.py`](ablib/tagging/files.py) — `upgrade_sidecar`, `sidecar_is_current`; [`restructure_for_audiobookshelf.py`](restructure_for_audiobookshelf.py) — `refresh_sidecars`
 - **Error**: [4.9](#49-metadatajson-does-not-match-audiobookshelfs-schema) fixed the *writer*, but sidecars are only written at tagging time. The organisers **move** `metadata.json` and `book.nfo`; they never rewrite them. Every book tagged before the fix therefore kept the old flat schema — which is exactly what was observed in the audited library, where the sidecars were dated `13:02` against a `14:16` fix — and Audiobookshelf goes on ignoring them.
 - **Fix applied**: `upgrade_sidecar(folder)` re-reads what is on disk (existing sidecar first, embedded tags for anything it does not cover) and rewrites both files in the current schema. `sidecar_is_current()` keys off the `authors` array, so a run over a large library only touches folders that need it. Exposed as `restructure_for_audiobookshelf.py <library> --refresh-sidecars [--commit]`, which moves nothing (`destination` is not required in this mode), and as **Refresh Sidecars** on the GUI's Organise tab.
 - **Verification**:
   ```
   $ restructure_for_audiobookshelf.py lib_old --refresh-sidecars
-  [dry-run] would refresh sidecars: lib_old/Raymond E. Feist/Faerie Tale (1988)
+  [dry-run] would refresh sidecars: lib_old/Alex E. Rivers/Winter Tale (1988)
   Inspected 1 books (dry-run) - refreshed: 1, already current: 0
 
   $ restructure_for_audiobookshelf.py lib_old --refresh-sidecars --commit
@@ -630,14 +637,14 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 ### 4.17 A Hosted Quota Error Abandoned Every Remaining Book
 - **Status**: 🛠️ **FIXED (2026-09-05)** — reported from the field, mid-run against OpenRouter's free tier:
   ```
-   guess: Homeward Bound by Worldwar - Colonization (?)
+   guess: The Long Return by Ashfall - Reckoning (?)
      - no match
     - LM Studio returned HTTP 429: {"error":{"message":"Rate limit exceeded:
       free-models-per-day. Add 10 credits to unlock 1000 free model requests per day"...
     - LM Studio metadata request returned no content
     - no metadata found
   ```
-- **Files**: [`ablib/metadata/llm.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/metadata/llm.py), [`ablib/core/config.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/core/config.py), [`combobook.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py)
+- **Files**: [`ablib/metadata/llm.py`](ablib/metadata/llm.py), [`ablib/core/config.py`](ablib/core/config.py), [`combobook.py`](combobook.py)
 - **Error**: `_call_llm` returned `None` for *every* failure alike, and the caller then gave up on the book. A hosted free tier exhausts its daily quota partway through a large run, so from that point on every remaining book was reported "no metadata found" — even though a local model was sitting there able to answer. Three further faults were visible in that one log excerpt:
   1. Every message said **"LM Studio"** regardless of endpoint, so a quota error from `openrouter.ai` read as though the local server had produced it.
   2. `combobook` called `generate_metadata_via_llm(folder, audio_files)` with **no `guess`**, so nothing downstream had anything to check an answer against.
@@ -654,7 +661,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
   A. local agrees with the folder
     - openrouter HTTP 429 ... - falling back to local LLM (local/model)
     - local LLM answer accepted (score 100)
-    RESULT : {'title': 'Homeward Bound', 'author': 'Harry Turtledove', 'series': 'Worldwar', ...}
+    RESULT : {'title': 'The Long Return', 'author': 'Nora Ashcroft', 'series': 'Ashfall', ...}
     calls  : hosted=1 local=1
 
   B. local invents "The Hobbit"
@@ -665,7 +672,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
   Covered by `tests/test_llm_fallback.py` (10 tests), including that a merely *bad* answer never triggers the fallback and that a fallback pointed at the failing endpoint is skipped rather than asked twice.
 
 ### 4.18 The Provider Layer Sent Work to the LLM That It Could Answer Itself
-- **Status**: 🛠️ **FIXED (2026-09-05)** — measured against a real library, `/home/citizenzero/Downloads/Harry Turtledove` (15 books, `<Author>/<Series (years)>/<N - Title (Year)>`).
+- **Status**: 🛠️ **FIXED (2026-09-05)** — measured against a real library, `<library A>` (15 books, `<Author>/<Series (years)>/<N - Title (Year)>`).
 
   | | before | after |
   |---|---|---|
@@ -674,20 +681,20 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
   | wrong book chosen | 3 | 0 |
   | wall clock | 91s | 36s |
 
-- **Files**: [`ablib/metadata/utils.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/metadata/utils.py) (`guess_from_path`), [`ablib/providers/http.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/providers/http.py), [`ablib/core/http.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/core/http.py), [`combobook.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py)
+- **Files**: [`ablib/metadata/utils.py`](ablib/metadata/utils.py) (`guess_from_path`), [`ablib/providers/http.py`](ablib/providers/http.py), [`ablib/core/http.py`](ablib/core/http.py), [`combobook.py`](combobook.py)
 - **Errors** — five faults, compounding:
-  1. **The series folder was read as the author.** `guess_from_path` took the immediate parent unconditionally, so `Harry Turtledove/Worldwar - Colonization (1994-2004)/8 - Homeward Bound (2004)` was queried as *author* `"Worldwar - Colonization"` — and its year `(2004)` and index `8` were dropped entirely. A nonexistent author suppressed every correct hit and let unrelated books by real authors outrank them: *Homeward Bound* by **Elaine Tyler May**, *Aftershocks* by **Catherine Coulter**, *Second Contact* by **Craig A. Falconer** all won at 80-84. `combobook.guess_from_folder` had this right via `PARENT_RANGE_RX`; the CLI path did not.
+  1. **The series folder was read as the author.** `guess_from_path` took the immediate parent unconditionally, so `Nora Ashcroft/Ashfall - Reckoning (1994-2004)/8 - The Long Return (2004)` was queried as *author* `"Ashfall - Reckoning"` — and its year `(2004)` and index `8` were dropped entirely. A nonexistent author suppressed every correct hit and let unrelated books by real authors outrank them: *The Long Return* by **Dana Whitlock**, *Afterlight* by **Petra Nilsen**, *Second Landing* by **Cassius Oyelaran** all won at 80-84. `combobook.guess_from_folder` had this right via `PARENT_RANGE_RX`; the CLI path did not.
   2. **Goodreads had never worked.** The shared session identified as `python-requests/2.34.2`; Goodreads answers **403** to that, and the helper called `.text` with no `raise_for_status()`, so it parsed the error page and returned `None` — silently, on every book since the tier existed. It is queried *first*, so this cost one wasted request per book and lost the only provider that names the series inline.
   3. **Scoring was deflated when no author was known.** Fixed weights meant a *perfect* title match scored `100 × 0.7 = 70` — below `ACCEPT_SCORE` (85) *and* the default `--llm-threshold` (85). Every untagged book went to the LLM even when a provider had already returned exactly the right book.
-  4. **Rip debris went straight into the query.** `"Daughter of the Empire 128kbps"` matched nothing at all; `"Magicians End (Unabridged)"` scored 45.
+  4. **Rip debris went straight into the query.** `"Daughter of the Dominion 128kbps"` matched nothing at all; `"Magicians End (Unabridged)"` scored 45.
   5. **One query, one chance.** If the first form found nothing, nothing else was tried.
 - **Fix applied**:
   - `guess_from_path` reads the leaf with the shared `parse_book_folder_name`, then recognises a parent named `<Series> (YYYY[-YYYY])` as a series level and takes the author from above it (`split_parent_series`). All five fields are now recovered.
   - The shared `SESSION` sends a browser User-Agent and retries `429/5xx` twice with backoff.
   - `score_candidate()` weights each dimension only when there is something to compare against, so title alone decides when no author is known.
-  - `clean_query_title()` strips `(Unabridged)`, `[Audiobook]`, bitrates, `NN of NN`, disc/part markers, bare `(YYYY)`, and unbalanced trailing parentheticals — the last for `"2 - West and East (20109"`, a real folder whose year is a typo.
+  - `clean_query_title()` strips `(Unabridged)`, `[Audiobook]`, bitrates, `NN of NN`, disc/part markers, bare `(YYYY)`, and unbalanced trailing parentheticals — the last for `"2 - North and South (20109"`, a real folder whose year is a typo.
   - `best_match()` runs a short ladder: as guessed → without the guessed author (a directory name is a guess, the title rarely is) → with the series appended. Each rung only runs if the previous found nothing at/above `ACCEPT_SCORE`, so a confident first hit still costs one request.
-  - Providers return `series`/`series_index`/`isbn`/`language`. `split_series_suffix()` lifts a series out of the title (`Silverthorn (The Riftwar Saga, #3)`, `(Colonization, Book 2)`, `(Worldwar Series, Volume 2)`, `Book One`), and `strip_edition_tail()` removes a `by <Author> (1996-12-05)` reissue tail — which would otherwise have become the folder name.
+  - Providers return `series`/`series_index`/`isbn`/`language`. `split_series_suffix()` lifts a series out of the title (`Nightthorn (The Ember Saga, #3)`, `(Reckoning, Book 2)`, `(Ashfall Series, Volume 2)`, `Book One`), and `strip_edition_tail()` removes a `by <Author> (1996-12-05)` reissue tail — which would otherwise have become the folder name.
   - Results are cached per query, bounded at 512.
   - Goodreads throttles with **HTTP 202 and an empty body**, which `raise_for_status()` does not catch; three consecutive refusals now disable it for the rest of the run instead of wasting a request per book.
   - `combobook` uses the same `clean_query_title`, and its folder guess strips a leading `N - ` index even when the trailing year is malformed.
@@ -695,7 +702,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 4.19 Two Scoring Scales, and combobook's Floor Sat Inside the Wrong-Answer Band
 - **Status**: 🛠️ **FIXED (2026-09-05)** — one constant, `constants.DEFAULT_MATCH_THRESHOLD = 83`, now read by every match decision.
-- **Files**: [`ablib/core/constants.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/core/constants.py), [`combobook.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py), [`ablib/providers/http.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/providers/http.py), [`ablib/core/config.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/core/config.py), [`ablib/cli/main.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/cli/main.py), [`AbtoolsGui.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/AbtoolsGui.py)
+- **Files**: [`ablib/core/constants.py`](ablib/core/constants.py), [`combobook.py`](combobook.py), [`ablib/providers/http.py`](ablib/providers/http.py), [`ablib/core/config.py`](ablib/core/config.py), [`ablib/cli/main.py`](ablib/cli/main.py), [`AbtoolsGui.py`](AbtoolsGui.py)
 - **Error**: "the threshold" meant two different things. `combobook._similarity` graded 0-1 with its own SequenceMatcher blend and a `MIN_AUTO_SCORE` floor of **0.75**; everything else graded 0-100 via `score_candidate` with a bar of 85. Worse, combobook's scale compressed the bands until they **overlapped**:
   ```
   1.00  ACCEPTED   CORRECT exact
@@ -711,13 +718,13 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
   |---|---|
   | 100 | correct — exact title, superset title, surname-only folder, missing initial |
   | 97 | correct, one-character typo in the title |
-  | *81* | *right title, **wrong author*** — Homeward Bound / Elaine Tyler May, Aftershocks / Catherine Coulter, Second Contact / Craig A. Falconer |
+  | *79-82* | *right title, **wrong author*** — The Long Return / Dana Whitlock, Afterlight / Petra Nilsen, Second Landing / Cassius Oyelaran |
   | 80 | title padded, different book |
   | 78 | words reordered, different book |
   | 65 | query title is a subset of the hit |
   | 53 | right author, wrong book |
 
-  **70-80 is the wrong-answer band.** The gap is 81 → 97.
+  **70-80 is the wrong-answer band.** The gap is 82 → 97, so 83 clears the highest wrong answer by a single point — the margin is real but thin, and it depends on how unlike the two author names happen to be.
 - **Fix applied**: `combobook._similarity` delegates to the shared `score_candidate`, so both tools grade identically; its bands become 100 / 81 / 53 and the wrong-author cases are now **rejected**. Every threshold reads `DEFAULT_MATCH_THRESHOLD`: `ACCEPT_SCORE`, `--llm-threshold`, `--auto-accept-score`, `llm_fallback_min_score`, and both GUI spinboxes. `--auto-accept-score` changed scale from 0-1 to 0-100, and the ambiguity guard's tie window from 0.02 to 2.0.
 - **Follow-up (same day)**: `MCP_ACCEPT_SCORE` now reads `DEFAULT_MATCH_THRESHOLD` too, at the user's direction, so there is one number in the project. It gates `calculate_combined_score`, which is a *different scale* (the model's self-reported score averaged with a fuzzy blend that includes the folder name), so the 83 bands measured on `score_candidate` do not transfer to it — recorded in the constant's comment. Practical effect: stage-1 MCP refinements scoring 83-94 are now accepted and skip the SequentialThinking stage, where they were previously discarded.
 - **Verification**: `test_the_threshold_sits_between_the_measured_bands` asserts real correct results land at/above 83 and real wrong ones below it; `test_every_match_threshold_is_the_shared_constant` stops them drifting apart again.
@@ -726,7 +733,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 5.1 `ablib/tagging/files.py`: Non-String Metadata Crashes XML Serializer
 - **Status**: 🛠️ **FIXED (2026-09-05)** — `child.text = str(value)`. Verified: a dict carrying `score=93` now writes `<score>93</score>` instead of raising.
-- **File**: [`ablib/tagging/files.py:84-88`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/tagging/files.py#L84-L88)
+- **File**: [`ablib/tagging/files.py:84-88`](ablib/tagging/files.py#L84-L88)
 - **Code**:
   ```python
   for key, value in meta.items():
@@ -742,7 +749,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 5.2 `ablib/metadata/utils.py`: Regex Character Class Typo `[--]` Splits Words on Hyphens
 - **Status**: 🛠️ **FIXED (2026-09-05)** — now `re.split(r"\s+[-–—]\s+", cleaned)`, so a dash only splits when it is surrounded by whitespace. Verified: `'Jean-Paul Sartre - Nausea'` previously split to `['Jean', 'Paul Sartre', 'Nausea']` and yielded no author; it now yields `author='Jean-Paul Sartre'`, `title='Nausea'`.
-- **File**: [`ablib/metadata/utils.py:168`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/metadata/utils.py#L168)
+- **File**: [`ablib/metadata/utils.py:168`](ablib/metadata/utils.py#L168)
 - **Code**:
   ```python
   parts = [part.strip() for part in re.split(r"\s*[--]\s*", cleaned) if part.strip()]
@@ -753,14 +760,14 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 5.3 `ablib/providers/http.py`: `openlib` and `gbooks` Never Called in `best_match`
 - **Status**: 🛠️ **FIXED (2026-09-05)** — the providers are now a list walked in order with an early return once one scores ≥85, so the common case stays fast. Verified by instrumenting each provider: all four are queried in order `goodreads, audible, openlib, gbooks`.
-- **File**: [`ablib/providers/http.py:182-192`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/providers/http.py#L182-L192)
+- **File**: [`ablib/providers/http.py:182-192`](ablib/providers/http.py#L182-L192)
 - **Error**: `best_match()` queries only Goodreads and Audible. `openlib` and `gbooks` are defined and exported, but reached only from `enrich_metadata_with_providers` (gap-filling), never for primary matching.
 - **Impact**: When Goodreads and Audible both miss, `best_match()` returns `None` and the pipeline escalates to the LLM without ever consulting Open Library or Google Books — contradicting `README.md`, which lists all four as match sources.
 - **Fix**: Add `openlib` / `gbooks` to the candidate sweep in `best_match()`.
 
 ### 5.4 `ablib/providers/mcp.py`: `_parse_provider_query` Splits on "by" Inside Titles
 - **Status**: 🛠️ **FIXED (2026-09-05)** — searches from the right and requires a two-word author. See the trade-off note below.
-- **File**: [`ablib/providers/mcp.py:52-58`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/providers/mcp.py#L52-L58)
+- **File**: [`ablib/providers/mcp.py:52-58`](ablib/providers/mcp.py#L52-L58)
 - **Code**:
   ```python
   match = re.search(r"\bby\b", cleaned, flags=re.IGNORECASE)
@@ -775,7 +782,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 5.5 `mcp_server/tools/audible.py` & `goodreads.py`: Missing URL Parameter Encoding
 - **Status**: 🛠️ **FIXED (2026-09-05)** — both now pass `params={...}` to `requests.get`, matching the sibling `googlebooks.py`/`openlibrary.py` modules.
-- **File**: [`mcp_server/tools/audible.py:13`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/mcp_server/tools/audible.py#L13), [`mcp_server/tools/goodreads.py:13`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/mcp_server/tools/goodreads.py#L13)
+- **File**: [`mcp_server/tools/audible.py:13`](mcp_server/tools/audible.py#L13), [`mcp_server/tools/goodreads.py:13`](mcp_server/tools/goodreads.py#L13)
 - **Code**:
   ```python
   url = f"https://www.audible.com/search?keywords={query.replace(' ', '+')}"
@@ -788,14 +795,14 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 5.6 `ablib/tagging/files.py`: `series_index` Omitted from Audio Tags
 - **Status**: 🛠️ **FIXED (2026-09-05)** — writes `TXXX:series-part` (MP3) and `----:com.apple.iTunes:series-part` (MP4). Verified: a tagged file now carries `TXXX:series-part` alongside `TXXX:series`.
-- **File**: [`ablib/tagging/files.py:53-70`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/tagging/files.py#L53-L70)
+- **File**: [`ablib/tagging/files.py:53-70`](ablib/tagging/files.py#L53-L70)
 - **Error**: `write_tags()` writes `series` to ID3 (`TXXX:series`) and MP4 (`----:com.apple.iTunes:series`) but never writes `series_index`, even though the pipeline resolves it and `export_metadata` persists it to `metadata.json` / `book.nfo`.
 - **Impact**: Embedded tags lose series position; Audiobookshelf cannot order a series from the audio files alone.
 - **Fix**: Write `TXXX:series-part` (MP3) and `----:com.apple.iTunes:series-part` (MP4), matching the keys `combobook.tags_from_track` already reads back.
 
 ### 5.7 `ablib/metadata/utils.py`: `guess_from_path` Can Discard the Real Title
-- **Status**: 🛠️ **FIXED (2026-09-05)** — when there are 2+ segments the title is always `parts[-1]`; `combined` is now mined only for series metadata. Verified: `"Author - Series 3 Bonus - The Real Title"` returns `title='The Real Title'` (was `'Bonus'`), with `"Frank Herbert/Dune (1965)"` and `"Brandon Sanderson - Mistborn 1 - The Final Empire"` unchanged.
-- **File**: [`ablib/metadata/utils.py:76-95`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/metadata/utils.py#L76-L95)
+- **Status**: 🛠️ **FIXED (2026-09-05)** — when there are 2+ segments the title is always `parts[-1]`; `combined` is now mined only for series metadata. Verified: `"Author - Series 3 Bonus - The Real Title"` returns `title='The Real Title'` (was `'Bonus'`), with `"Frank Herbert/Dune (1965)"` and `"Iris Calder - Emberborn 1 - The Last Dominion"` unchanged.
+- **File**: [`ablib/metadata/utils.py:76-95`](ablib/metadata/utils.py#L76-L95)
 - **Code**:
   ```python
   combined = " - ".join(parts[:-1]) if len(parts) >= 2 else parts[0]
@@ -812,7 +819,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 5.8 `combobook.py`: `choose_meta` Crashes on a `None` Provider Title
 - **Status**: 🛠️ **FIXED (2026-09-05)** — candidates missing a title or author are skipped before the dedup key is built, and an empty candidate list returns `None`. Verified: providers returning null titles now yield `None` instead of raising.
-- **File**: [`combobook.py:525-532`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L525-L532), [`combobook.py:433-452`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L433-L452)
+- **File**: [`combobook.py:525-532`](combobook.py#L525-L532), [`combobook.py:433-452`](combobook.py#L433-L452)
 - **Code**:
   ```python
   out.append(Meta(author=..., title=info.get("title"), ...))   # gb_search_all: may be None
@@ -827,40 +834,40 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 5.9 `ablib/metadata/llm.py`: Gap-Filling Retry Replaces Instead of Merging
 - **Status**: 🛠️ **FIXED (2026-09-05)** — the retry result is merged over the primary, primary winning conflicts. *(Found in a follow-up pass over `ablib/`; not in either earlier audit.)*
-- **File**: [`ablib/metadata/llm.py:394-396`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/metadata/llm.py#L394-L396)
+- **File**: [`ablib/metadata/llm.py:394-396`](ablib/metadata/llm.py#L394-L396)
 - **Error**: `generate_metadata_via_llm` issues a second LLM call whose *sole purpose* is to fill optional fields the first response omitted, then did `result = retry_result` — discarding everything the primary had established.
 - **Impact**: the retry could leave **less** metadata than before it ran. Reproduced: a primary carrying `year`, `narrator`, `publisher` and `description` but missing `series`, followed by a retry supplying `series` but omitting the rest, produced `{'title', 'author', 'series', 'series_index'}` — `year`, `narrator`, `publisher` and `description` all silently lost.
 - **Fix applied**: `merged = dict(retry_result)` then `merged.update({k: v for k, v in result.items() if v})`, so the retry supplies only gaps. Verified: all four primary fields survive and `series` is still gained.
 
 ### 5.10 `ablib/`: Three Different Bars for Accepting an MCP Refinement
 - **Status**: 🛠️ **FIXED (2026-09-05)** — unified as `MCP_ACCEPT_SCORE`. *(Follow-up pass.)*
-- **Files**: [`ablib/metadata/llm.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/metadata/llm.py), [`ablib/cli/main.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/cli/main.py)
+- **Files**: [`ablib/metadata/llm.py`](ablib/metadata/llm.py), [`ablib/cli/main.py`](ablib/cli/main.py)
 - **Error**: `refine_metadata_via_mcp` returned early once stage 1 scored **≥90**, but both callers only accepted **≥95** (a third path accepted any result). A stage-1 result scoring 90-94 therefore skipped the SequentialThinking stage *and* was then thrown away by the caller.
 - **Impact**: books in that band lost the benefit of stage 2 and fell through to the plain LLM path — the expensive refinement ran and its output was binned.
 - **Fix applied**: one exported `MCP_ACCEPT_SCORE = 95` used by the stage-1 gate and both callers, so they cannot drift again. The validation-recovery path at `main.py:264` still accepts any result deliberately, because it re-validates immediately afterwards.
 
 ### 5.11 `ablib/providers/http.py`: Provider Lookups Were Serial Despite the Advertised Parallel Fetch
 - **Status**: 🛠️ **FIXED (2026-09-05)** — tiered, with the second tier concurrent. *(Follow-up pass.)*
-- **File**: [`ablib/providers/http.py:145-199`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/providers/http.py#L145-L199)
+- **File**: [`ablib/providers/http.py:145-199`](ablib/providers/http.py#L145-L199)
 - **Error**: every lookup was sequential at a 10s timeout each. `ThreadPoolExecutor`/`as_completed` were imported but unused — flagged by pyflakes — and `README.md` advertised "Fetches metadata in parallel for faster tagging", which was untrue of `ablib`. Adding openlib/gbooks in [5.3](#53-ablibprovidershttppy-openlib-and-gbooks-never-called-in-best_match) had made a miss cost up to four chained timeouts.
 - **Fix applied**: tier 1 queries Goodreads alone and short-circuits at ≥85, so a confident hit still costs one request and the scraped sites are not hit four times unnecessarily; tier 2 fans the remaining three out concurrently. Verified with 1s stub providers: **2.00s** vs ~4.0s serial, all four queried, and a confident Goodreads hit still returns in 0.00s having queried only Goodreads.
 
 ### 5.12 `ablib/providers/mcp.py`: `MCP_RESULT_CACHE` Grew Without Bound
 - **Status**: 🛠️ **FIXED (2026-09-05)** — capped at 512 entries, oldest evicted first. *(Follow-up pass.)*
-- **File**: [`ablib/providers/mcp.py:25-26`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/providers/mcp.py#L25-L26)
+- **File**: [`ablib/providers/mcp.py:25-26`](ablib/providers/mcp.py#L25-L26)
 - **Error**: `mcp_full_web_search` wrote every result into a module-level dict that nothing ever cleared.
 - **Impact**: a long run over a large library retained every search result for the life of the process. Verified: 1200 cached results now settle at 200 live entries under the cap instead of growing unbounded. Dropping a stale id costs at most one re-fetch.
 
 ### 5.13 `ablib/metadata/utils.py`: Cosmetic Validation Issues Refuse the Whole Book
 - **Status**: 🛠️ **FIXED (2026-09-05)** — only missing title/author are fatal now. *(Second follow-up pass over `ablib/`.)*
-- **Files**: [`ablib/metadata/utils.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/metadata/utils.py), [`ablib/cli/main.py:249`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/cli/main.py#L249)
+- **Files**: [`ablib/metadata/utils.py`](ablib/metadata/utils.py), [`ablib/cli/main.py:249`](ablib/cli/main.py#L249)
 - **Error**: `validate_metadata_fields` returned `(len(issues) == 0, issues)`, so *any* finding marked the metadata invalid — and `process_leaf` treats invalid metadata as fatal: it logs `REVIEW`, writes the review log and returns **without tagging**.
 - **Impact**: a book with a perfect title and author was refused because its description ran to seven characters. Same for an empty narrator string, a `series_index` with no series name, or a malformed year. It also triggered a pointless MCP refinement attempt for those cosmetic cases.
 - **Fix applied**: `FATAL_VALIDATION_ISSUES = {"missing_title", "missing_author"}`; `usable` reflects only those, while `issues` still reports everything. `process_leaf` prints the advisory ones as `metadata notes:` and proceeds. Verified: short description / empty narrator / stray series_index / odd year are all now usable, while missing title, missing author, and both together remain fatal.
 
 ### 5.14 `ablib/providers/http.py`: Enrichment Queried Every Provider Hunting a Nonexistent Series
 - **Status**: 🛠️ **FIXED (2026-09-05)** — loop termination now keyed on author/year only. *(Second follow-up pass.)*
-- **File**: [`ablib/providers/http.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/providers/http.py) — `enrich_metadata_with_providers`
+- **File**: [`ablib/providers/http.py`](ablib/providers/http.py) — `enrich_metadata_with_providers`
 - **Error**: `needed` included `series`, and the loop only stopped once `needed` was empty. Most books are standalone and have no series, so `needed` could never empty — every such book ran Audible, Open Library **and** Google Books serially at a 10s timeout each, purely to look for a series that does not exist.
 - **Impact**: up to 30s of avoidable lookups per book, on top of `best_match`, for the common case of a book that already had author and year.
 - **Fix applied**: termination is decided by author/year alone; `series` is still filled opportunistically from whatever a provider happens to return. Verified: a book with author and year known now makes **zero** provider calls (was three), a book missing both still enriches and stops at the first provider that answers, and series is still picked up when offered.
@@ -868,23 +875,23 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 ## 6. GUI & CLI Synchronization Issues
 
 ### 6.4 `AbtoolsGui.py`: The Folder Browser Shows Nothing for a Network Share
-- **Status**: 🛠️ **FIXED (2026-09-05)** — reported from the field: *"when the folder is network mounted like `citizenzero@10.10.10.10:/home/citizenzero/bshelf` the browser is returning no folders, empty."*
-- **File**: [`AbtoolsGui.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/AbtoolsGui.py) — `choose_directory`, and the new `local_path` / `remote_to_mount_point` / `mounted_twin`
+- **Status**: 🛠️ **FIXED (2026-09-05)** — reported from the field: *"when the folder is network mounted like `user@host:/srv/audiobooks` the browser is returning no folders, empty."*
+- **File**: [`AbtoolsGui.py`](AbtoolsGui.py) — `choose_directory`, and the new `local_path` / `remote_to_mount_point` / `mounted_twin`
 - **Error**: three separate faults, all of which present identically as an empty browser.
-  1. **A remote location is not a path.** `citizenzero@10.10.10.10:/home/citizenzero/bshelf` is an sshfs source string. `Path()` parses it as a *relative* path whose first component is `citizenzero@10.10.10.10:`, so it is never a directory:
+  1. **A remote location is not a path.** `user@host:/srv/audiobooks` is an sshfs source string. `Path()` parses it as a *relative* path whose first component is `user@host:`, so it is never a directory:
      ```
-     Path parts : ('citizenzero@10.10.10.10:', 'home', 'citizenzero', 'bshelf')
+     Path parts : ('user@host:', 'srv', 'audiobooks')
      is_dir     : False
-     parent walk: [... , 'citizenzero@10.10.10.10:', '.']
-     landed on  : '.'  ->  /home/citizenzero/Documents/Key/Abtools/ABtools
+     parent walk: [... , 'user@host:', '.']
+     landed on  : '.'  ->  <repo>
      ```
      `choose_directory` walked up until something was listable, silently landed on the **working directory**, and said nothing.
   2. **Mount-shadowed paths.** This host is a btrfs `@`-subvolume layout: `/home` is subvolid 259 (`subvol=/@home`) mounted at `/home`, and `/@home` is the same subvolume reached from the root subvolume. They are the same directory on disk, but **only `/home` carries the mounts**:
      ```
-     /home/citizenzero/pi_share   ->  23 entries   (the sshfs mount)
-     /@home/citizenzero/pi_share  ->   0 entries   (the bare mount point underneath)
+     /home/user/mnt   ->  23 entries   (the sshfs mount)
+     /@home/user/mnt  ->   0 entries   (the bare mount point underneath)
      ```
-     The GUI had `"dest": "/@home/citizenzero/Documents/temp_audiobooks"` saved in `~/.abtools_gui.json`, and `/` lists `@home` right next to `home`, so this is easy to reach by accident and impossible to diagnose from the UI.
+     The GUI had `"dest": "/@home/user/test-library"` saved in `~/.abtools_gui.json`, and `/` lists `@home` right next to `home`, so this is easy to reach by accident and impossible to diagnose from the UI.
   3. **An empty box was never explained.** `populate()` printed only `..` whether the folder was empty, held files but no sub-folders, or was a shadowed mount point. It also built the listing with `sorted(c for c in path.iterdir() if c.is_dir())` inside one `try`, so a single entry raising `OSError` — routine on a flaky network share — discarded the whole listing.
 - **Fix applied**:
   - `remote_to_mount_point()` reads `/proc/mounts` (decoding its octal escapes) and maps a remote location to where it is actually mounted, matching the source exactly or as a parent with the remainder appended. Handles sshfs `user@host:/path`, `//host/share`, and the `sftp://` / `ssh://` / `smb://` / `cifs://` / `nfs://` prefixes.
@@ -893,31 +900,31 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
   - `choose_directory` now reports when it could not reach the requested location instead of silently relocating, `go_typed` says *"… is not a folder on this machine"* rather than doing nothing, per-entry `OSError` skips one entry instead of the listing, and an empty result always states *why* — empty, files-only, or shadowed.
 - **Verification** against the live mount on the reporting machine:
   ```
-  local_path("citizenzero@10.10.10.10:/home/citizenzero/bshelf")
-    -> /home/citizenzero/pi_share    listable: True   entries: 24
+  local_path("user@host:/srv/audiobooks")
+    -> /home/user/mnt    listable: True   entries: 24
 
-  mounted_twin("/@home/citizenzero/pi_share")   (0 entries)
-    -> /home/citizenzero/pi_share                     (24 entries)
+  mounted_twin("/@home/user/mnt")   (0 entries)
+    -> /home/user/mnt                     (24 entries)
   ```
   Covered by `test_remote_location_maps_to_its_mount_point`, `test_local_path_accepts_a_remote_location` and `test_mount_shadowed_path_finds_its_mounted_twin`.
 
 ### 6.1 `find_duplicates.py`: `--only-src-log` Is Dead Code in CLI
 - **Status**: 🛠️ **FIXED (2026-09-05)** — the CLI now reads `root/duplicate_log.txt` via `_read_paths_from_log()` and passes the result as `limit_paths` / `limit_src`. Both scan functions had always accepted it and the GUI already wired it; only the CLI dropped the flag on the floor. It now also exits with a clear message when the log is missing or lists nothing usable.
-- **File**: [`find_duplicates.py:475-478`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/find_duplicates.py#L475-L478), [`find_duplicates.py:508-545`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/find_duplicates.py#L508-L545)
+- **File**: [`find_duplicates.py:475-478`](find_duplicates.py#L475-L478), [`find_duplicates.py:508-545`](find_duplicates.py#L508-L545)
 - **Error**: The flag is parsed, but `args.only_src_log` is never read and never forwarded as `limit_paths` / `limit_src`.
 - **Impact**: `--only-src-log` silently does nothing on the CLI. The supporting machinery (`_read_paths_from_log`, `limit_paths`, `limit_src`) is fully implemented and *is* correctly wired from `AbtoolsGui.py:793-799` — only the CLI path was missed.
 - **Fix**: Read `args.only_src_log` in `__main__` and pass `limit_paths=` / `limit_src=`, mirroring the GUI.
 
 ### 6.2 `abclient.py`: Local `abclient.json` Ignored
 - **Status**: ⚠️ **Verified — reclassified as by-design / low priority, not a bug.**
-- **File**: [`abclient.py:17`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/abclient.py#L17)
+- **File**: [`abclient.py:17`](abclient.py#L17)
 - **Original claim**: `AbClient()` should read the repository's `abclient.json`.
 - **Correction**: `scaffold.md` describes the repo file as *"Sample client configuration"*, and `README.md` documents `~/.abclient.json` as the real location. The current behaviour matches both documents, and `AbClient(path=...)` already allows an explicit override. Treating the repo sample as live config would be a **behaviour change**, and would make a checked-in file silently override user settings.
 - **Action**: Optional ergonomics improvement only. If adopted, load the repo file as a *lower*-precedence default beneath `~/.abclient.json`, never above it.
 
 ### 6.3 `AbtoolsGui.py`: Tkinter `clam` Default `lightcolor: #EEEBE7` Draws Glaring White Line Around Tab Container
 - **Status**: 🛠️ **FIXED (2026-09-05)** — configured root `.` with `bordercolor/lightcolor/darkcolor = BORDER` and `TNotebook` with `bordercolor=BG, lightcolor=BG, darkcolor=BG`, borderless flat tabs.
-- **File**: [`AbtoolsGui.py:305-365`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/AbtoolsGui.py#L305-L365)
+- **File**: [`AbtoolsGui.py:305-365`](AbtoolsGui.py#L305-L365)
 - **Error**: In Tkinter's `clam` theme engine, the `Notebook.client` container element draws a 3D bevel around the active tab area using a built-in default `lightcolor: #EEEBE7` (off-white) unless overridden. Because `style.configure(".")` and `TNotebook` omitted `lightcolor`, a bright white rectangular line framed the entire notebook content across dark themes (measured empirically across `y=36`, `y=514`, `x=24`, `x=693`).
 - **Impact**: In all dark themes, the tab area was framed by a jarring, high-contrast off-white line that cut through the dark theme styling.
 - **Fix applied**: Configured root `.` style with `bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER` to eliminate any clam `#eeebe7` fallback, and configured `TNotebook` with `bordercolor=BG, lightcolor=BG, darkcolor=BG` and `tabmargins=(0, 0, 0, 0)` with borderless `flat` tabs. Active tabs now seamlessly flow directly into the tab card body with zero white border.
@@ -929,28 +936,28 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 7.1 `repair_m4b.py`: Missing `Iterable` Import
 - **Status**: ❌ **REFUTED as a runtime bug** — downgraded to a type-checker nit.
-- **File**: [`repair_m4b.py:116`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/repair_m4b.py#L116)
+- **File**: [`repair_m4b.py:116`](repair_m4b.py#L116)
 - **Original claim**: `def iter_targets(root: Path) -> Iterable[Path]:` raises `NameError` because `Iterable` is never imported.
-- **Why it is wrong**: the module begins with `from __future__ import annotations` ([line 14](file:///home/citizenzero/Documents/Key/Abtools/ABtools/repair_m4b.py#L14)), so under PEP 563 all annotations are stored as **strings** and never evaluated. The module imports and the function runs fine; `python3 -m py_compile` and normal execution both succeed.
+- **Why it is wrong**: the module begins with `from __future__ import annotations` ([line 14](repair_m4b.py#L14)), so under PEP 563 all annotations are stored as **strings** and never evaluated. The module imports and the function runs fine; `python3 -m py_compile` and normal execution both succeed.
 - **Residual issue**: `typing.get_type_hints()` or a strict type-checker run would fail. Adding `from collections.abc import Iterable` is still worth doing for correctness of tooling — but it fixes **no runtime behaviour**, and this should not be triaged as a crash.
 
 ### 7.2 `catalog.py`: `calc_signature` Crashes on `None` or Decimal Duration
 - **Status**: ⚠️ **Verified — but the module is entirely unused.** `grep` finds no `import catalog` / `Catalog(` anywhere in the project, so this code is currently unreachable. Fix opportunistically, not urgently.
-- **File**: [`catalog.py:60`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/catalog.py#L60)
+- **File**: [`catalog.py:60`](catalog.py#L60)
 - **Code**: `duration = int(meta.get("duration", 0))`
 - **Error**: `{"duration": None}` makes `.get` return `None` (the default only applies to a *missing* key), so `int(None)` raises `TypeError`; `"120.5"` raises `ValueError`.
 - **Fix**: `int(float(meta.get("duration") or 0))`.
 
 ### 7.3 `combobook.py`: Unsafe Index Access in `tags_from_track`
 - **Status**: ✅ **Verified** by inspection — narrow edge case (malformed tags only).
-- **File**: [`combobook.py:357-360`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L357-L360)
+- **File**: [`combobook.py:357-360`](combobook.py#L357-L360)
 - **Code**: `year = au.get("date",[None])[0][:4] if "date" in au else None`
 - **Error**: The `[None]` default is dead — the `if "date" in au` guard means the key always exists. If the value is an **empty list**, `[][0]` raises `IndexError`, which the surrounding `except mutagen.MutagenError` does not catch. The same pattern repeats for `series`, `series-part` and `composer` on the following lines.
 - **Fix**: `if "date" in au and au["date"]: ...`, applied to all four fields.
 
 ### 7.4 `combobook.py`: Title Truncation Cuts Off / Corrupts Year Suffix
 - **Status**: 🛠️ **FIXED (2026-09-05)** — the title is truncated to `MAX_TITLE_LEN - len(" (YYYY)")` first and the year appended after. Verified: the same 65-char title now yields `'The Extraordinarily Long And Winding Title (2003)'` (49 chars, year intact); short titles and year-less titles are unchanged.
-- **File**: [`combobook.py:659-667`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L659-L667)
+- **File**: [`combobook.py:659-667`](combobook.py#L659-L667)
 - **Code**:
   ```python
   if meta.year:
@@ -963,7 +970,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 7.5 `ablib/metadata/llm.py`: Token Budget Shrinks on Length Retries
 - **Status**: ⚠️ **Verified — currently latent.** All three in-module call sites pass `max_tokens=1024`, where `min(2048, 2048)` behaves correctly. The bug bites any caller using the `CONFIG.llm_max_tokens` default — and `_call_llm` is exported in `__all__`.
-- **File**: [`ablib/metadata/llm.py:145-146`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/metadata/llm.py#L145-L146)
+- **File**: [`ablib/metadata/llm.py:145-146`](ablib/metadata/llm.py#L145-L146)
 - **Code**: `new_budget = min(token_budget * 2, 2048)`
 - **Error**: `CONFIG.llm_max_tokens` defaults to **8000**. On `finish_reason == "length"`, `min(16000, 2048)` yields **2048** — a 4× *reduction* on a retry whose entire purpose is to give the model more room. Verified: `token_budget=8000 -> retry budget=2048`.
 - **Fix**: `new_budget = min(token_budget * 2, 16384)`, or better `max(token_budget, min(token_budget * 2, 16384))` so the retry can never shrink.
@@ -986,7 +993,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 8.1 Audible: two different selector sets for the same site
 - **Status**: ⚠️ **Unverified — cannot be validated from this host** (Audible returns 503). Flagged for review, not asserted as broken.
-- **Files**: [`mcp_server/tools/audible.py:22-24`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/mcp_server/tools/audible.py#L22-L24) vs [`ablib/providers/http.py:120-126`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/providers/http.py#L120-L126)
+- **Files**: [`mcp_server/tools/audible.py:22-24`](mcp_server/tools/audible.py#L22-L24) vs [`ablib/providers/http.py:120-126`](ablib/providers/http.py#L120-L126)
 - **Observation**: the repo scrapes Audible in two places with **disjoint selectors**:
   ```python
   # mcp_server/tools/audible.py
@@ -1003,7 +1010,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ### 8.2 Provider tools return a list on success but a dict on failure
 - **Status**: ✅ **Verified** by inspection — design inconsistency, low severity.
-- **Files**: all four of [`mcp_server/tools/`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/mcp_server/tools)
+- **Files**: all four of [`mcp_server/tools/`](mcp_server/tools)
 - **Observation**: each search tool ends with `return results or {"error": "No results"}` — a `list` when it succeeds, a `dict` when it fails.
 - **Impact**: a consumer must type-check the response before iterating; an LLM client reading the raw payload can easily mistake the error dict for a result. It also conflates "the site returned nothing" with "our parser matched nothing" (see 8.1).
 - **Suggested fix**: always return a consistent envelope, e.g. `{"results": [...], "error": None}`.
@@ -1012,28 +1019,28 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 
 ## 9. Encoder Output Formats & Deletion Safety
 
-Found while adding output profiles to `ab_encode.py` on 2026-09-06. Evidence throughout is the user's own library at `~/Downloads/Harry Turtledove` (353 MP3s, 3 M4Bs across 15 books), which turns out to contain 8 MP3s and 2 M4Bs that are part-finished downloads — an unplanned but ideal test set.
+Found while adding output profiles to `ab_encode.py` on 2026-09-06. Evidence throughout is the user's own library at `<library A>` (353 MP3s, 3 M4Bs across 15 books), which turns out to contain 8 MP3s and 2 M4Bs that are part-finished downloads — an unplanned but ideal test set.
 
 ### 9.1 `ab_encode.py`: Folders of `.m4b` parts were invisible, not skipped
 - **Status**: 🛠️ **FIXED (2026-09-06)**
-- **File**: [`ab_encode.py:40`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ab_encode.py#L40)
+- **File**: [`ab_encode.py:40`](ab_encode.py#L40)
 - **Error**: `EXTENSIONS = (".mp3", ".wav", ".flac", ".m4a", ".ogg")` — no `.m4b`, no `.opus`, no `.mp4`. `main()` queues a folder only when `any(f.lower().endswith(EXTENSIONS))`, so a folder holding only `.m4b` files produced **no task at all**: no encode, no skip message, no line in the final report.
-- **Impact**: reproduced against the real library. `The War That Came Early/2 - West and East (20109/` holds `1.m4b` and `2.m4b`, a two-part book that was never joined and never mentioned:
+- **Impact**: reproduced against the real library. `The Long Winter/2 - North and South (20109/` holds `1.m4b` and `2.m4b`, a two-part book that was never joined and never mentioned:
   ```
   EXTENSIONS: ('.mp3', '.wav', '.flac', '.m4a', '.ogg')
   folders ffmpeg would process: 13
   folders WITH audio that are NOT in the task list:
-     The War That Came Early (2009-2014)/2 - West and East (20109 -> ['1.m4b', '2.m4b']
-     Through Darkest Europe (2018) -> ['Through Darkest Europe.m4b']
+     The Long Winter (2009-2014)/2 - North and South (20109 -> ['1.m4b', '2.m4b']
+     Through Darkest Winter (2018) -> ['Through Darkest Winter.m4b']
   ```
 - **Fix applied**: `EXTENSIONS` now covers `.mp3 .m4a .m4b .mp4 .aac .opus .ogg .oga .flac .wav .wma .aiff .aif`, and the output file is excluded from its own source list by name.
 - **Verification**: `test_a_folder_of_m4b_parts_is_now_visible_to_the_walker`. On the real folder the run now reports the true problem — both parts are NUL-padded downloads — instead of silence.
 
 ### 9.2 `ab_encode.py`: `verify_audio` was far too weak to authorise deleting anything
 - **Status**: 🛠️ **FIXED (2026-09-06)** — the one entry in this report with a live data-loss path.
-- **File**: [`ab_encode.py:61-75`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ab_encode.py#L61-L75), `process_folder`
+- **File**: [`ab_encode.py:61-75`](ab_encode.py#L61-L75), `process_folder`
 - **Error**: the gate on `--cleanup` was `float(ffprobe format=duration) > 0`. A truncated, half-empty or wrong-codec output reports a positive duration just as happily as a correct one. Nothing compared the output against its sources.
-- **Impact**: reproduced end to end. `3 - The Big Switch (2011)` holds 26 MP3s, 4 of which are part-downloads (15.5 MB of NUL bytes then ~1.5 MB of real frames):
+- **Impact**: reproduced end to end. `3 - The Turning (2011)` holds 26 MP3s, 4 of which are part-downloads (15.5 MB of NUL bytes then ~1.5 MB of real frames):
   ```
   sum of readable source durations : 25621 s
   ffmpeg exit code                 : 0
@@ -1046,7 +1053,7 @@ Found while adding output profiles to `ab_encode.py` on 2026-09-06. Evidence thr
 
 ### 9.3 `ab_encode.py`: ffmpeg's exit code is not a success signal, and its stderr was discarded
 - **Status**: 🛠️ **FIXED (2026-09-06)**
-- **File**: [`ab_encode.py:168-185`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ab_encode.py#L168-L185)
+- **File**: [`ab_encode.py:168-185`](ab_encode.py#L168-L185)
 - **Error**: three compounding problems in one command.
   1. `-err_detect ignore_err -fflags +discardcorrupt` told ffmpeg to **silently drop** corrupt input rather than fail on it.
   2. `stderr=subprocess.DEVNULL` threw away the only place ffmpeg explains itself.
@@ -1077,7 +1084,7 @@ Found while adding output profiles to `ab_encode.py` on 2026-09-06. Evidence thr
 
 ### 9.5 `ab_encode.py`: stream-copy passthrough ignored mismatched stream parameters
 - **Status**: 🛠️ **FIXED (2026-09-06)**
-- **File**: [`ab_encode.py:150-166`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ab_encode.py#L150-L166)
+- **File**: [`ab_encode.py:150-166`](ab_encode.py#L150-L166)
 - **Error**: `can_copy` required only that every source be an AAC file in an MP4-family container. The concat demuxer does **not** renegotiate stream parameters between files, so copying across a sample-rate or channel-count change yields output that plays at the wrong speed from the switch onwards — and at the right *duration*, so no length check would ever catch it.
 - **Fix applied**: `_can_stream_copy()` requires one codec, one sample rate and one channel count across all sources, and returns the reason when it refuses.
 - **Verification**: `test_stream_copy_is_refused_when_the_parameters_differ`, `test_the_copy_profile_refuses_mp3_sources_rather_than_garbling_them`.
@@ -1087,10 +1094,10 @@ Found while adding output profiles to `ab_encode.py` on 2026-09-06. Evidence thr
 - **Error**: the encoder had a single hard-coded target (`aac`, `44100`, `.m4b`) with no way to ask for anything else, and never wrote chapter marks. An M4B without them is one unbroken seven-hour file: Apple Books and most Android players show no chapter list and resume badly.
 - **Fix applied**: a `PROFILES` table read by both the CLI and the GUI, so they cannot drift into offering different encoders. Default `iphone` = AAC-LC `.m4b` with `-profile:a aac_low` and `+faststart` — the one combination that plays on iOS, Android, Audiobookshelf and CarPlay alike. Added `android-aac` (`.m4a`, for Android players that do not index `.m4b`), `android-opus` (about half the size, no Apple decoder), `mp3`, and `copy`. Chapters are derived from the source files' own durations and title tags, one per file.
 - **Also**: neither the sample rate nor the channel count is forced any more. A profile's rate is a *fallback*, used only when the sources are mixed or non-standard; otherwise the source rate is kept, because resampling is never free in either direction. `--channels` defaults to `source` for the same reason: forcing mono on a book that is already an AAC `.m4b` re-encodes it and discards a channel, where leaving it alone joins the parts losslessly. Both were measured against two real libraries — sources run 12/22.05/24/32/44.1/48 kHz in a mix of mono and stereo, **283 of 345 files in one are 24 kHz**, and **930 of 1294 in the other are already `.m4b`** — so the previous fixed `44100` mono would have resampled and downmixed almost everything for nothing. Costs no compatibility: AAC-LC and MPEG audio define every rate in `STANDARD_SAMPLE_RATES` and all iOS/Android decoders accept them.
-- **Chapter naming, measured on a second library** (`~/pi_share/audiobooks`, 1294 files): title tags are used only when *every* one is distinct, because a real two-part book carried the identical tag in both halves and would have produced a chapter list of two identical entries. Otherwise filenames, with the prefix every name in the folder repeats trimmed at a **word boundary** — the raw common prefix stops mid-token, so four files numbered 01-04 share the leading `0` and `01 - Opening Credits` became `1 - Opening Credits`. Trimming is abandoned when what survives is too short to read, which is what stops a two-part book becoming `1.2` and `2.2`.
+- **Chapter naming, measured on a second library** (`<library B>`, 1294 files): title tags are used only when *every* one is distinct, because a real two-part book carried the identical tag in both halves and would have produced a chapter list of two identical entries. Otherwise filenames, with the prefix every name in the folder repeats trimmed at a **word boundary** — the raw common prefix stops mid-token, so four files numbered 01-04 share the leading `0` and `01 - Opening Credits` became `1 - Opening Credits`. Trimming is abandoned when what survives is too short to read, which is what stops a two-part book becoming `1.2` and `2.2`.
 - **Scale of 9.1, on that same library**: the old code queued **11 of 704** folders. 693 were invisible, 43 of them holding books split across several files that had never been joined. The encoder was doing nothing at all on 98% of that collection.
 - **False-positive check on 9.4**: over a 200-file random sample, the padding ratio ran min 1.000, p50 1.014, max **1.049** against a limit of 3.0 — zero false positives — while still catching a `Track 1.m4b` with a 64 KiB NUL head, which only the head check could see because no bitrate was computable for the ratio.
-- **Verification**: all four re-encoding profiles produce a correct file from the same sources; the `.m4b` output probes as `mp4a.40.2` (AAC-LC exactly), carries three chapters at the right boundaries, and still opens and tags cleanly in mutagen. End to end on real books: a 10.7-hour, 14-file MP3 book encoded and fully decoded in 3m31s with **0 s** duration drift and 14 chapters; the two-part 41-hour *Shadow Rising* stream-copied in **58.6 s** — 1178 MB in, 1175 MB out, duration exact, deep-verified — where the old code could not see the folder at all. `--list-profiles` marks anything this ffmpeg build cannot produce.
+- **Verification**: all four re-encoding profiles produce a correct file from the same sources; the `.m4b` output probes as `mp4a.40.2` (AAC-LC exactly), carries three chapters at the right boundaries, and still opens and tags cleanly in mutagen. End to end on real books: a 10.7-hour, 14-file MP3 book encoded and fully decoded in 3m31s with **0 s** duration drift and 14 chapters; the two-part 41-hour *The Rising Storm* stream-copied in **58.6 s** — 1178 MB in, 1175 MB out, duration exact, deep-verified — where the old code could not see the folder at all. `--list-profiles` marks anything this ffmpeg build cannot produce.
 
 ---
 

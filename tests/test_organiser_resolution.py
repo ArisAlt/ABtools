@@ -31,7 +31,7 @@ from ablib.metadata.utils import (  # noqa: E402
 )
 from ablib.tagging.files import strip_track_tail  # noqa: E402
 
-LONG_CREDIT = "Andrzej Sapkowski, Terry Goodkind, Anthony Ryan, Andy Weir, Raymond E. Feist"
+LONG_CREDIT = "Ingrid Halvorsen, Marcus Bell, Tomas Reed, Lena Frost, Alex E. Rivers"
 
 
 # ── the author guard ────────────────────────────────────────────────────────
@@ -48,25 +48,25 @@ LONG_CREDIT = "Andrzej Sapkowski, Terry Goodkind, Anthony Ryan, Andy Weir, Raymo
         ("Various Artists", None),
         ("", None),
         ("AttheGatesofDarkness Part1 Track 01", "AttheGatesofDarkness Part1 Track 01"),
-        ("01 A Darhness at Sethanon", "01_A_Darhness_at_Sethanon"),
+        ("01 A Shadov at Kelmoor", "01_A_Shadov_at_Kelmoor"),
     ],
 )
 def test_rip_debris_is_not_an_author(name, stem):
     assert not is_plausible_author(name, filename_stem=stem)
 
 
-@pytest.mark.parametrize("name", ["Raymond E. Feist", "Raymond E Feist", "Feist", "bell hooks"])
+@pytest.mark.parametrize("name", ["Alex E. Rivers", "Alex E Rivers", "Rivers", "bell hooks"])
 def test_real_names_survive(name):
     assert is_plausible_author(name)
 
 
 def test_one_author_yields_one_folder():
-    assert normalise_author("Raymond E Feist") == normalise_author("Raymond E. Feist")
+    assert normalise_author("Alex E Rivers") == normalise_author("Alex E. Rivers")
 
 
 def test_long_credit_list_is_not_truncated_mid_word():
-    # Previously became "Andrzej Sapkowski, Terry Goodkind, Anthony Ryan, A".
-    assert primary_author(LONG_CREDIT) == "Andrzej Sapkowski"
+    # Previously became "Ingrid Halvorsen, Marcus Bell, Tomas Reed, A".
+    assert primary_author(LONG_CREDIT) == "Ingrid Halvorsen"
 
 
 def test_co_authorship_is_preserved():
@@ -78,16 +78,16 @@ def test_co_authorship_is_preserved():
 @pytest.mark.parametrize(
     "folder, author, series, index, title",
     [
-        ("Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon",
-         "Feist", "Riftwar Saga", "4", "A Darkness at Sethanon"),
-        ("Feist - Empire Trilogy - Book 1 - Daughter of the Empire",
-         "Feist", "Empire Trilogy", "1", "Daughter of the Empire"),
-        ("Feist - Riftwar Saga - Book 1 & 2 - Magician & Master",
-         "Feist", "Riftwar Saga", "1", "Magician & Master"),
-        ("Serpentwar Saga 03 - Rage of a Demon King (1998)",
-         None, "Serpentwar Saga", "03", "Rage of a Demon King"),
-        ("Mistborn Book 1 - The Final Empire (2006)",
-         None, "Mistborn", "1", "The Final Empire"),
+        ("Rivers - Ember Saga - Book 4 - A Shadow at Kelmoor",
+         "Rivers", "Ember Saga", "4", "A Shadow at Kelmoor"),
+        ("Rivers - Dominion Trilogy - Book 1 - Daughter of the Dominion",
+         "Rivers", "Dominion Trilogy", "1", "Daughter of the Dominion"),
+        ("Rivers - Ember Saga - Book 1 & 2 - Sorcerer & Master",
+         "Rivers", "Ember Saga", "1", "Sorcerer & Master"),
+        ("Tidewar Saga 03 - Rage of a Fallen King (1998)",
+         None, "Tidewar Saga", "03", "Rage of a Fallen King"),
+        ("Emberborn Book 1 - The Last Dominion (2006)",
+         None, "Emberborn", "1", "The Last Dominion"),
     ],
 )
 def test_leaf_name_carries_the_book(folder, author, series, index, title):
@@ -99,9 +99,9 @@ def test_leaf_name_carries_the_book(folder, author, series, index, title):
 
 
 def test_standalone_book_gets_no_invented_series():
-    parsed = parse_book_folder_name("Krondor the Betrayal (1998)")
+    parsed = parse_book_folder_name("Halcyon the Betrayal (1998)")
     assert parsed["series"] is None
-    assert parsed["title"] == "Krondor the Betrayal"
+    assert parsed["title"] == "Halcyon the Betrayal"
     assert parsed["year"] == "1998"
 
 
@@ -110,11 +110,11 @@ def test_standalone_book_gets_no_invented_series():
 @pytest.mark.parametrize(
     "raw, expected",
     [
-        ("Rage of a Demon King - 01 of 14", "Rage of a Demon King"),
+        ("Rage of a Fallen King - 01 of 14", "Rage of a Fallen King"),
         ("At the Gates of Darkness Part1", "At the Gates of Darkness"),
         ("Slaughterhouse 5", "Slaughterhouse 5"),   # a number that belongs
         ("Catch 22", "Catch 22"),
-        ("Faerie Tale", "Faerie Tale"),
+        ("Winter Tale", "Winter Tale"),
     ],
 )
 def test_track_tail_stripping(raw, expected):
@@ -155,8 +155,8 @@ def test_junk_artist_tag_never_becomes_an_author_folder(tmp_path):
     import restructure_for_audiobookshelf as restructure
 
     book = _write_book(
-        tmp_path / "src", "Side 01/Riftwar saga 03 - Silverthorn",
-        "Side 01 - 01.mp3", artist="Side 01", album="Riftwar saga 03 - Silverthorn",
+        tmp_path / "src", "Side 01/Ember saga 03 - Nightthorn",
+        "Side 01 - 01.mp3", artist="Side 01", album="Ember saga 03 - Nightthorn",
     )
     lib = tmp_path / "lib"
     parts = restructure.target_for("Side 01", book, lib).relative_to(lib).parts
@@ -164,8 +164,8 @@ def test_junk_artist_tag_never_becomes_an_author_folder(tmp_path):
     assert parts[0] != "Side 01"
     assert parts[0] == "Unknown Author"
     # the series level still has to appear, and the title must lose its prefix
-    assert parts[1] == "Riftwar saga"
-    assert parts[2] == "Silverthorn"
+    assert parts[1] == "Ember saga"
+    assert parts[2] == "Nightthorn"
 
 
 def test_tagged_series_book_gets_a_series_level(tmp_path):
@@ -174,20 +174,20 @@ def test_tagged_series_book_gets_a_series_level(tmp_path):
 
     book = _write_book(
         tmp_path / "src",
-        "Raymond E Feist/Serpentwar Saga 03 - Rage of a Demon King (1998)",
-        "Raymond E Feist - Rage of a Demon King - 01 of 14.mp3",
-        artist="Raymond E Feist", album="Serpentwar Saga 03 - Rage of a Demon King",
+        "Alex E Rivers/Tidewar Saga 03 - Rage of a Fallen King (1998)",
+        "Alex E Rivers - Rage of a Fallen King - 01 of 14.mp3",
+        artist="Alex E Rivers", album="Tidewar Saga 03 - Rage of a Fallen King",
         date="1998",
     )
     lib = tmp_path / "lib"
-    expected = Path("Raymond E. Feist/Serpentwar Saga/Rage of a Demon King (1998)")
+    expected = Path("Alex E. Rivers/Tidewar Saga/Rage of a Fallen King (1998)")
 
     tags = combobook.tags_from_track(next(book.glob("*.mp3")))
     merged = combobook.merge_tag_and_folder(tags, combobook.guess_from_folder(book))
     assert combobook.dest_path(lib, merged).relative_to(lib) == expected
 
     # and the other organiser must land in exactly the same place
-    assert restructure.target_for("Raymond E Feist", book, lib).relative_to(lib) == expected
+    assert restructure.target_for("Alex E Rivers", book, lib).relative_to(lib) == expected
 
 
 def test_unmatched_folder_is_left_alone(tmp_path):
@@ -219,13 +219,13 @@ def test_book_directly_at_the_source_root_is_found(tmp_path):
     import restructure_for_audiobookshelf as restructure
 
     src = tmp_path / "src"
-    _write_book(src, "Raymond E. Feist/Faerie Tale (1988)", "01.mp3",
-                artist="Raymond E. Feist", album="Faerie Tale", date="1988")
-    _write_book(src, "Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon",
+    _write_book(src, "Alex E. Rivers/Winter Tale (1988)", "01.mp3",
+                artist="Alex E. Rivers", album="Winter Tale", date="1988")
+    _write_book(src, "Rivers - Ember Saga - Book 4 - A Shadow at Kelmoor",
                 "01.mp3")
 
     found = {b.relative_to(src).as_posix() for _, b in restructure.discover_books(src)}
-    assert "Feist - Riftwar Saga - Book 4 - A Darkness at Sethanon" in found
+    assert "Rivers - Ember Saga - Book 4 - A Shadow at Kelmoor" in found
     # and it must agree with the other organiser's view of the same tree
     assert found == {p.relative_to(src).as_posix() for p in combobook.leaf_dirs(src)}
 
@@ -234,8 +234,8 @@ def test_pointing_straight_at_one_book_finds_it(tmp_path):
     """Previously reported 'Processed 0 books ... skipped: 0' and did nothing."""
     import restructure_for_audiobookshelf as restructure
 
-    book = _write_book(tmp_path / "src", "Raymond E. Feist/Faerie Tale (1988)",
-                       "01.mp3", artist="Raymond E. Feist", album="Faerie Tale")
+    book = _write_book(tmp_path / "src", "Alex E. Rivers/Winter Tale (1988)",
+                       "01.mp3", artist="Alex E. Rivers", album="Winter Tale")
     assert [b for _, b in restructure.discover_books(book)] == [book]
 
 
@@ -244,8 +244,8 @@ def test_root_level_book_gets_no_invented_series(tmp_path):
     import restructure_for_audiobookshelf as restructure
 
     src = tmp_path / "my_audiobooks"
-    book = _write_book(src, "Faerie Tale (1988)", "01.mp3",
-                       artist="Raymond E. Feist", album="Faerie Tale", date="1988")
+    book = _write_book(src, "Winter Tale (1988)", "01.mp3",
+                       artist="Alex E. Rivers", album="Winter Tale", date="1988")
     author, _ = next(iter(restructure.discover_books(src)))
     resolved = restructure.resolve_book_metadata(author, book)
     assert resolved["series"] != "my_audiobooks"
@@ -259,9 +259,9 @@ def test_restructure_leaves_unidentified_books_in_place(tmp_path):
     import restructure_for_audiobookshelf as restructure
 
     src = tmp_path / "src"
-    book = _write_book(src, "Side 01/Riftwar saga 03 - Silverthorn",
+    book = _write_book(src, "Side 01/Ember saga 03 - Nightthorn",
                        "Side 01 - 01.mp3", artist="Side 01",
-                       album="Riftwar saga 03 - Silverthorn")
+                       album="Ember saga 03 - Nightthorn")
     lib = tmp_path / "lib"
 
     stats = restructure.restructure_library(src, lib, dry=False, copy=False)
@@ -275,15 +275,15 @@ def test_move_unmatched_restores_the_old_behaviour(tmp_path):
     import restructure_for_audiobookshelf as restructure
 
     src = tmp_path / "src"
-    _write_book(src, "Side 01/Riftwar saga 03 - Silverthorn", "Side 01 - 01.mp3",
-                artist="Side 01", album="Riftwar saga 03 - Silverthorn")
+    _write_book(src, "Side 01/Ember saga 03 - Nightthorn", "Side 01 - 01.mp3",
+                artist="Side 01", album="Ember saga 03 - Nightthorn")
     lib = tmp_path / "lib"
 
     stats = restructure.restructure_library(
         src, lib, dry=False, copy=False, move_unmatched=True
     )
     assert stats["moved"] == 1
-    assert (lib / "Unknown Author" / "Riftwar saga" / "Silverthorn").is_dir()
+    assert (lib / "Unknown Author" / "Ember saga" / "Nightthorn").is_dir()
 
 
 def test_multi_disc_book_yields_the_book_not_each_disc(tmp_path):
@@ -291,11 +291,11 @@ def test_multi_disc_book_yields_the_book_not_each_disc(tmp_path):
 
     src = tmp_path / "src"
     for disc, track in (("Disc 1", "01.mp3"), ("Disc 2", "02.mp3")):
-        _write_book(src, f"Raymond E. Feist/Magician (1982)/{disc}", track,
-                    artist="Raymond E. Feist", album="Magician", date="1982")
+        _write_book(src, f"Alex E. Rivers/Sorcerer (1982)/{disc}", track,
+                    artist="Alex E. Rivers", album="Sorcerer", date="1982")
 
     found = [b.relative_to(src).as_posix() for _, b in restructure.discover_books(src)]
-    assert found == ["Raymond E. Feist/Magician (1982)"]
+    assert found == ["Alex E. Rivers/Sorcerer (1982)"]
 
 
 def test_restructuring_is_idempotent(tmp_path):
@@ -303,8 +303,8 @@ def test_restructuring_is_idempotent(tmp_path):
     import restructure_for_audiobookshelf as restructure
 
     src = tmp_path / "src"
-    _write_book(src, "Raymond E. Feist/Serpentwar Saga/Rage of a Demon King (1998)",
-                "01.mp3", artist="Raymond E. Feist", album="Rage of a Demon King",
+    _write_book(src, "Alex E. Rivers/Tidewar Saga/Rage of a Fallen King (1998)",
+                "01.mp3", artist="Alex E. Rivers", album="Rage of a Fallen King",
                 date="1998")
     lib = tmp_path / "lib"
 
@@ -328,8 +328,8 @@ def test_nfo_and_json_describe_the_same_book(tmp_path):
     from ablib.tagging.files import export_metadata
 
     export_metadata(tmp_path, {
-        "title": "Rage of a Demon King", "author": "Raymond E. Feist",
-        "year": "1998", "series": "Serpentwar Saga", "series_index": "3",
+        "title": "Rage of a Fallen King", "author": "Alex E. Rivers",
+        "year": "1998", "series": "Tidewar Saga", "series_index": "3",
         "narrator": "Peter Joyce",
         "score": 93,          # pipeline noise that used to leak into the XML
     })
@@ -352,11 +352,11 @@ def test_old_schema_sidecar_is_upgraded_in_place(tmp_path):
     never reached libraries already on disk."""
     from ablib.tagging.files import sidecar_is_current, upgrade_sidecar
 
-    book = tmp_path / "Rage of a Demon King (1998)"
+    book = tmp_path / "Rage of a Fallen King (1998)"
     book.mkdir()
     (book / "metadata.json").write_text(json.dumps({
-        "title": "Rage of a Demon King", "author": "Raymond E. Feist",
-        "year": "1998", "series": "Serpentwar Saga", "series_index": "3",
+        "title": "Rage of a Fallen King", "author": "Alex E. Rivers",
+        "year": "1998", "series": "Tidewar Saga", "series_index": "3",
     }), encoding="utf-8")
 
     assert not sidecar_is_current(book)
@@ -364,8 +364,8 @@ def test_old_schema_sidecar_is_upgraded_in_place(tmp_path):
     assert sidecar_is_current(book)
 
     payload = json.loads((book / "metadata.json").read_text(encoding="utf-8"))
-    assert payload["authors"] == ["Raymond E. Feist"]
-    assert payload["series"] == [{"name": "Serpentwar Saga", "sequence": "3"}]
+    assert payload["authors"] == ["Alex E. Rivers"]
+    assert payload["series"] == [{"name": "Tidewar Saga", "sequence": "3"}]
     assert payload["publishedYear"] == "1998"
 
     # a second run must not churn files that are already current
@@ -376,10 +376,10 @@ def test_refresh_sidecars_walks_a_library_without_moving_anything(tmp_path):
     import restructure_for_audiobookshelf as restructure
 
     src = tmp_path / "lib"
-    book = _write_book(src, "Raymond E. Feist/Faerie Tale (1988)", "01.mp3",
-                       artist="Raymond E. Feist", album="Faerie Tale", date="1988")
+    book = _write_book(src, "Alex E. Rivers/Winter Tale (1988)", "01.mp3",
+                       artist="Alex E. Rivers", album="Winter Tale", date="1988")
     (book / "metadata.json").write_text(json.dumps({
-        "title": "Faerie Tale", "author": "Raymond E. Feist", "year": "1988",
+        "title": "Winter Tale", "author": "Alex E. Rivers", "year": "1988",
     }), encoding="utf-8")
     before = sorted(p.relative_to(src).as_posix() for p in src.rglob("*"))
 
@@ -388,7 +388,7 @@ def test_refresh_sidecars_walks_a_library_without_moving_anything(tmp_path):
     # nothing moved; only book.nfo was added alongside the rewritten json
     after = sorted(p.relative_to(src).as_posix() for p in src.rglob("*"))
     assert set(before) <= set(after)
-    assert json.loads((book / "metadata.json").read_text())["authors"] == ["Raymond E. Feist"]
+    assert json.loads((book / "metadata.json").read_text())["authors"] == ["Alex E. Rivers"]
 
 
 # ── dry-run must not touch files ────────────────────────────────────────────
@@ -443,18 +443,18 @@ def test_remote_location_maps_to_its_mount_point(monkeypatch, tmp_path):
     """A folder browser cannot list "user@host:/path"; the mount point is in
     /proc/mounts, so translate rather than showing an empty box."""
     gui = _gui_helpers()
-    share = tmp_path / "pi_share"
+    share = tmp_path / "mnt"
     (share / "audiobooks").mkdir(parents=True)
     monkeypatch.setattr(
         gui, "_mount_table",
-        lambda: [("me@10.0.0.1:/home/me/bshelf", share), ("/dev/sda1", Path("/"))],
+        lambda: [("me@host:/srv/audiobooks", share), ("/dev/sda1", Path("/"))],
     )
 
-    assert gui.remote_to_mount_point("me@10.0.0.1:/home/me/bshelf") == share
+    assert gui.remote_to_mount_point("me@host:/srv/audiobooks") == share
     # a subdirectory of the share resolves through the mount too
     assert gui.remote_to_mount_point(
-        "me@10.0.0.1:/home/me/bshelf/audiobooks") == share / "audiobooks"
-    assert gui.remote_to_mount_point("sftp://me@10.0.0.1:/home/me/bshelf") == share
+        "me@host:/srv/audiobooks/audiobooks") == share / "audiobooks"
+    assert gui.remote_to_mount_point("sftp://me@host:/srv/audiobooks") == share
     # ordinary local paths are left alone
     assert gui.remote_to_mount_point(str(share)) is None
     assert gui.remote_to_mount_point("/home/me/books") is None
@@ -462,12 +462,12 @@ def test_remote_location_maps_to_its_mount_point(monkeypatch, tmp_path):
 
 def test_local_path_accepts_a_remote_location(monkeypatch, tmp_path):
     gui = _gui_helpers()
-    share = tmp_path / "pi_share"
+    share = tmp_path / "mnt"
     share.mkdir()
     monkeypatch.setattr(gui, "_mount_table",
-                        lambda: [("me@10.0.0.1:/home/me/bshelf", share)])
+                        lambda: [("me@host:/srv/audiobooks", share)])
 
-    assert gui.local_path("me@10.0.0.1:/home/me/bshelf") == share
+    assert gui.local_path("me@host:/srv/audiobooks") == share
     assert gui.local_path("~").is_absolute()
 
 
@@ -479,8 +479,8 @@ def test_mount_shadowed_path_finds_its_mounted_twin(monkeypatch, tmp_path):
     A mount is the only thing that produces "same parent, different child", and
     a test cannot mount anything -- so the parent identity check is stubbed and
     the traversal is what is under test. Verified against a real sshfs mount on
-    a btrfs @-subvolume host: mounted_twin("/@home/me/pi_share") returned
-    "/home/me/pi_share", where the former listed 0 entries and the latter 23.
+    a btrfs @-subvolume host: mounted_twin("/@home/me/mnt") returned
+    "/home/me/mnt", where the former listed 0 entries and the latter 23.
     """
     gui = _gui_helpers()
 

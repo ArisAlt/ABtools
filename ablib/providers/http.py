@@ -45,7 +45,7 @@ _NOISE_PATTERNS = (
 )
 NOISE_RX = re.compile("|".join(_NOISE_PATTERNS), re.IGNORECASE)
 
-# Goodreads titles carry the series inline: "Silverthorn (The Riftwar Saga, #3)".
+# Goodreads titles carry the series inline: "Book Title (The Series Name, #3)".
 # That is precisely the series level the library layout needs, and it used to be
 # thrown away with the rest of the parenthetical.
 SERIES_SUFFIX_RX = re.compile(
@@ -86,7 +86,7 @@ def clean_query_title(title: Optional[str]) -> str:
 
 
 def split_series_suffix(title: Optional[str]) -> tuple[str, Optional[str], Optional[str]]:
-    """"Silverthorn (The Riftwar Saga, #3)" -> ("Silverthorn", "The Riftwar Saga", "3")."""
+    """"Book Title (The Series Name, #3)" -> ("Book Title", "The Series Name", "3")."""
     if not title:
         return "", None, None
     match = SERIES_SUFFIX_RX.match(title.strip())
@@ -111,7 +111,7 @@ EDITION_DATE_RX = re.compile(r"\s*\(\s*\d{4}-\d{2}-\d{2}\s*\)\s*$")
 def strip_edition_tail(title: str, authors: Optional[list]) -> str:
     """Drop a "by <Author> (1996-12-05)" tail some catalogue editions carry.
 
-    Goodreads returns e.g. "Worldwar: Striking the Balance by Harry Turtledove
+    Goodreads returns e.g. "Series: Book Title by Author Name
     (1996-12-05)" for reissues. Left alone that whole string becomes the book's
     folder name. The "by ..." part is only removed when it actually names one
     of the authors the same result reported, so a title that genuinely contains

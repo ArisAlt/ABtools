@@ -54,9 +54,9 @@ def extract_series_and_title(text: str) -> tuple[Optional[str], Optional[str], s
 
 
 # A series folder announces itself with a year or a year range:
-#   Harry Turtledove/Worldwar - Colonization (1994-2004)/8 - Homeward Bound (2004)
+#   Author Name/Series Name (1994-2004)/8 - Book Title (2004)
 # Reading that middle level as the author -- which is what the immediate-parent
-# rule did -- sent "Worldwar - Colonization" to the catalogues as an author. It
+# rule did -- sent "Series Name" to the catalogues as an author. It
 # suppressed every correct hit, let unrelated books by real authors outrank
 # them, and guaranteed a sub-threshold score, so the whole tree fell through to
 # the LLM. See combobook.PARENT_RANGE_RX, which had this right.
@@ -66,7 +66,7 @@ PARENT_SERIES_RX = re.compile(
 
 
 def split_parent_series(name: str) -> Optional[str]:
-    """"Worldwar - Colonization (1994-2004)" -> "Worldwar - Colonization"."""
+    """"Series Name (1994-2004)" -> "Series Name"."""
     match = PARENT_SERIES_RX.match((name or "").strip())
     return match.group("series").strip() if match else None
 
@@ -402,8 +402,8 @@ def is_plausible_author(name: Optional[str], *, filename_stem: Optional[str] = N
 def normalise_author(name: Optional[str]) -> Optional[str]:
     """Canonicalise an author string so one person yields one library folder.
 
-    Restores the period after a bare middle initial, so "Raymond E Feist" and
-    "Raymond E. Feist" stop producing two sibling directories, and collapses
+    Restores the period after a bare middle initial, so "Alex E Rivers" and
+    "Alex E. Rivers" stop producing two sibling directories, and collapses
     runs of whitespace.
     """
     if not name:

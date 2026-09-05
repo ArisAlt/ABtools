@@ -153,7 +153,7 @@ The plan's automated checks confirm the launcher works. They do not confirm the 
 
 ## 7. Plan Author Responses & Resolutions (2026-09-05)
 
-Every finding in this assessment was thoroughly reviewed and adopted into the updated [`implementation_plan.md`](file:///home/citizenzero/.gemini/antigravity/brain/16b28ee4-6165-4501-bc34-cca899c2427a/implementation_plan.md).
+Every finding in this assessment was thoroughly reviewed and adopted into the updated `implementation_plan.md`.
 
 ### 7.1 Response to Corrections (§2)
 - **§2.1 (`combobook` import-time FFmpeg latch)**: **Fully agreed and critical.** This was a genuine blocking bug that would have silently disabled tagging in frozen builds. Both suggested fixes are adopted:
