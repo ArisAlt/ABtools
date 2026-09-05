@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import requests
 from rapidfuzz import fuzz
@@ -265,13 +265,9 @@ def execute_tool_call(name: str, arguments: Dict[str, Any]) -> str:
 def mcp_full_web_search(
     query: str, *, num_results: int = 5, include_content: bool = False
 ) -> list[dict[str, Any]]:
-    if CONFIG.tavily_api_key:
-        results = _tavily_search_raw(
-            query, max_results=num_results, include_content=include_content
-        ) or []
-    else:
-        # Fallback to DuckDuckGo (no key required)
-        results = _ddg_search_raw(query, max_results=num_results) or []
+    # DuckDuckGo needs no key. Tavily used to be tried first, but it required a
+    # paid key that few installs had, so it only ever added a failed request.
+    results = _ddg_search_raw(query, max_results=num_results) or []
 
     collected: list[dict[str, Any]] = []
     for item in results[:num_results]:
@@ -342,68 +338,6 @@ def mcp_sequential_thinking(query: str, context: Optional[str]) -> dict[str, Any
     }
 
 
-def _tavily_search_raw(
-    query: str, *, max_results: int = 5, include_content: bool = False
-) -> Optional[list[dict[str, Any]]]:
-    if not CONFIG.tavily_api_key:
-        return None
-    payload = {
-        "api_key": CONFIG.tavily_api_key,
-        "query": query,
-        "search_depth": "advanced",
-        "max_results": max_results,
-    }
-    if include_content:
-        payload["include_content"] = True
-    try:
-        resp = SESSION.post(
-            CONFIG.tavily_endpoint, json=payload, timeout=CONFIG.llm_timeout
-        )
-    except requests.RequestException as exc:
-        if CONFIG.debug:
-            rprint(f"  [yellow]- Tavily search failed: {exc}[/]")
-        return None
-    if resp.status_code >= 400:
-        if CONFIG.debug:
-            rprint(
-                f"  [yellow]- Tavily returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
-            )
-        return None
-    try:
-        data = resp.json()
-    except ValueError:
-        if CONFIG.debug:
-            rprint("  [yellow]- Tavily response was not valid JSON[/]")
-        return None
-    results = data.get("results")
-    if not results:
-        return []
-    return results
-
-
-def _tavily_search(query: str, *, max_results: int = 3) -> Optional[str]:
-    results = _tavily_search_raw(query, max_results=max_results)
-    if not results:
-        return None
-    snippets: List[str] = []
-    for item in results:
-        if not isinstance(item, dict):
-            continue
-        title = item.get("title") or item.get("url") or "Result"
-        content = item.get("content") or item.get("snippet") or ""
-        url = item.get("url")
-        chunk = content.strip()
-        if len(chunk) > 500:
-            chunk = chunk[:500].rsplit(" ", 1)[0] + "..."
-        line = f"- {title.strip()}"
-        if url:
-            line += f" ({url.strip()})"
-        if chunk:
-            line += f": {chunk}"
-        snippets.append(line)
-    return "\n".join(snippets[:max_results]) if snippets else None
-
-
 def _ddg_search_raw(query: str, max_results: int = 5) -> list[dict[str, Any]]:
     if DDGS is None:
         if CONFIG.debug:
@@ -438,8 +372,5 @@ __all__ = [
     "mcp_search_google_books",
     "mcp_search_openlibrary",
     "mcp_sequential_thinking",
-    "_tavily_search",
-
-    "_tavily_search_raw",
     "_ddg_search_raw",
 ]

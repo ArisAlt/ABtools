@@ -16,7 +16,7 @@ from ablib.core.console import rprint
 from ablib.core.http import SESSION
 from ablib.core.logging import review_log
 from ablib.metadata.utils import determine_best_author, enhanced_author_extraction
-from ablib.providers.mcp import execute_tool_call, serialise_tool_result, _tavily_search
+from ablib.providers.mcp import execute_tool_call, serialise_tool_result
 
 CONFIG = config.config
 
@@ -29,6 +29,23 @@ _MAX_CALLS_PER_TOOL: int = 5
 # early at 90 while its caller only accepted 95, so a stage-1 result scoring
 # 90-94 skipped the SequentialThinking stage and was then discarded anyway.
 MCP_ACCEPT_SCORE: int = 95
+
+
+def _auth_headers() -> dict[str, str]:
+    """Headers for the completions request.
+
+    Hosted OpenAI-compatible providers (OpenRouter and friends) need a bearer
+    token; a local LM Studio or Ollama server ignores it. Sending nothing at
+    all was why only local endpoints ever worked.
+    """
+    headers = {"Content-Type": "application/json"}
+    key = (CONFIG.llm_api_key or "").strip()
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+        # OpenRouter attributes requests with these; harmless elsewhere.
+        headers["HTTP-Referer"] = "https://github.com/ArisAlt/ABtools"
+        headers["X-Title"] = "ABtools"
+    return headers
 
 
 def _call_llm(
@@ -69,7 +86,10 @@ def _call_llm(
             payload["tool_choice"] = "auto"
         try:
             resp = SESSION.post(
-                CONFIG.llm_endpoint, json=payload, timeout=CONFIG.llm_timeout
+                CONFIG.llm_endpoint,
+                json=payload,
+                headers=_auth_headers(),
+                timeout=CONFIG.llm_timeout,
             )
         except requests.RequestException as exc:  # pragma: no cover
             if CONFIG.debug:
@@ -357,35 +377,12 @@ def generate_metadata_via_llm(
 
     if missing_fields:
         missing_list = ", ".join(sorted(missing_fields))
-        tavily_context = None
-        if CONFIG.tavily_api_key:
-            query_terms: List[str] = []
-            if result and result.get("title"):
-                query_terms.append(str(result["title"]))
-            else:
-                query_terms.append(folder_label)
-            if result and result.get("author"):
-                query_terms.append(str(result["author"]))
-            query = " ".join(t for t in query_terms if t).strip()
-            if query:
-                tavily_context = _tavily_search(query)
-                if CONFIG.debug and tavily_context:
-                    rprint(f"  [cyan]- Tavily search context fetched for '{query}'[/]")
-
         retry_prompt = (
             prompt
             + "\n\nThe previous response was missing these fields: "
             + missing_list
             + ". Please research reputable audiobook sources (Audible, Open Library, Google Books, publisher sites) and try again."
         )
-        if tavily_context:
-            retry_prompt += (
-                "\n\nExternal research via Tavily Search (summaries):\n"
-                + tavily_context
-                + "\nUse this information to fill the missing metadata fields."
-            )
-        else:
-            retry_prompt += "\n\nIf needed, consult the Tavily Search API when gathering details."
 
         if CONFIG.debug:
             rprint(
@@ -655,4 +652,5 @@ def refine_metadata_via_mcp(
         return None
 
 
-__all__ = ["_call_llm", "generate_metadata_via_llm", "refine_metadata_via_mcp", "MCP_ACCEPT_SCORE"]
+__all__ = ["_call_llm", "_auth_headers", "generate_metadata_via_llm",
+           "refine_metadata_via_mcp", "MCP_ACCEPT_SCORE"]

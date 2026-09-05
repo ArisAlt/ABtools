@@ -26,12 +26,13 @@ class RuntimeConfig:
     llm_model_name: Optional[str] = DEFAULT_LLM_MODEL_NAME
     llm_timeout: int = LLM_TIMEOUT_DEFAULT
     llm_max_tokens: int = LLM_MAX_TOKENS_DEFAULT
-    tavily_api_key: Optional[str] = field(
-        default_factory=lambda: os.environ.get("TAVILY_API_KEY")
-    )
-    tavily_endpoint: str = field(
-        default_factory=lambda: os.environ.get(
-            "TAVILY_ENDPOINT", "https://api.tavily.com/search"
+    # Bearer token for hosted OpenAI-compatible providers such as OpenRouter.
+    # Read from the environment so it need never be typed into the GUI or
+    # written to a settings file in plain text.
+    llm_api_key: Optional[str] = field(
+        default_factory=lambda: (
+            os.environ.get("ABTOOLS_LLM_API_KEY")
+            or os.environ.get("OPENROUTER_API_KEY")
         )
     )
 

@@ -371,7 +371,7 @@ def build_parser() -> argparse.ArgumentParser:
               --llm-endpoint URL   OpenAI-compatible endpoint (default: {constants.DEFAULT_LLM_ENDPOINT})
               --llm-model NAME     model to request from the endpoint (default: {constants.DEFAULT_LLM_MODEL_NAME})
               --llm-threshold SCORE  confidence score before using the LLM (default: 85)
-              --tavily-key KEY     Tavily Search API key for supplemental research
+              --llm-api-key KEY    bearer token for a hosted endpoint (e.g. OpenRouter)
             """
         ),
     )
@@ -402,9 +402,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="use the local LLM when provider score falls below SCORE (default: 85, minimum: 80)",
     )
     parser.add_argument(
-        "--tavily-key",
+        "--llm-api-key",
         default=None,
-        help="Tavily Search API key for supplemental research (use 'none' to disable)",
+        metavar="KEY",
+        help=(
+            "Bearer token for a hosted OpenAI-compatible endpoint such as "
+            "OpenRouter. Prefer the ABTOOLS_LLM_API_KEY or OPENROUTER_API_KEY "
+            "environment variable so the key stays out of your shell history."
+        ),
     )
     return parser
 
@@ -422,11 +427,11 @@ def main(argv: Optional[List[str]] = None) -> None:
     model_arg = (args.llm_model or "").strip()
     CONFIG.llm_model_name = model_arg or None
 
-    if args.tavily_key is not None:
-        tavily_arg = args.tavily_key.strip()
-        CONFIG.tavily_api_key = (
-            None if tavily_arg.lower() in {"", "none", "null"} else tavily_arg
-        )
+    # An explicit flag wins; otherwise whatever the environment already put on
+    # CONFIG.llm_api_key stands.
+    if args.llm_api_key:
+        CONFIG.llm_api_key = args.llm_api_key.strip() or None
+
 
     args.llm_threshold = max(80, min(100, args.llm_threshold))
     if not args.root.exists():
