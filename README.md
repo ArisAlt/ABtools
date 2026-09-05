@@ -26,7 +26,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 
 - Writes metadata to both `metadata.json` and `book.nfo` (for Kodi-style readers)
 
-- Provides preview and logging
+- Preview (omit `--commit`, or untick Commit in the GUI) runs the full pipeline — folder guess, provider lookups and scores, LLM/MCP refinement, validation — and prints exactly what it *would* write, without touching a single file or log
 
 - Optionally prompts for confirmation or proceeds automatically
 

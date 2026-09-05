@@ -450,14 +450,16 @@ source_var = tk.StringVar()
 dest_var = tk.StringVar()
 
 def browse_src():
-    path = filedialog.askdirectory()
+    path = filedialog.askdirectory(initialdir=source_var.get() or None)
     if path:
         source_var.set(path)
+        save_settings(source=path)
 
 def browse_dst():
-    path = filedialog.askdirectory()
+    path = filedialog.askdirectory(initialdir=dest_var.get() or None)
     if path:
         dest_var.set(path)
+        save_settings(dest=path)
 
 
 paths_frame = ttk.LabelFrame(main, text="File Paths", padding=PAD_X)
@@ -1349,10 +1351,9 @@ def tag_only() -> None:
                         rel = leaf
                     action = "Previewing" if not commit_flag else "Tagging"
                     tag_cli.rprint(f"[cyan]({idx}/{total}) {action} {rel}[/]")
-                    if not commit_var.get():
-                        tag_cli.rprint(f"[dim]preview:[/] {leaf}")
-                    else:
-                        tag_cli.process_leaf(leaf, args)
+                    # process_leaf previews when args.commit is False: it still
+                    # runs the lookups and prints what it *would* write.
+                    tag_cli.process_leaf(leaf, args)
                     elapsed = time.time() - start
                     rate = idx / elapsed if elapsed else 0.0
                     eta = (total - idx) / rate if rate else 0.0
@@ -1510,12 +1511,46 @@ Tooltip(stop_button,
         "moment. Work already written is left as it is.")
 
 if __name__ == "__main__":
-    # Restore the last-used endpoint/model before the first probe.
+    # Restore the previous session: paths, options, endpoint/model, geometry.
+    # Everything except Commit, which is deliberately never restored -- writing
+    # to a library must be an explicit choice each run, not something a previous
+    # session silently left switched on.
     _saved = load_settings()
-    if isinstance(_saved.get("llm_endpoint"), str) and _saved["llm_endpoint"].strip():
-        llm_endpoint_var.set(_saved["llm_endpoint"])
-    if isinstance(_saved.get("llm_model"), str) and _saved["llm_model"].strip():
-        llm_model_var.set(_saved["llm_model"])
+    for _key, _var in (("source", source_var), ("dest", dest_var),
+                       ("llm_endpoint", llm_endpoint_var), ("llm_model", llm_model_var)):
+        _value = _saved.get(_key)
+        if isinstance(_value, str) and _value.strip():
+            _var.set(_value)
+    for _key, _var in (("copy", copy_var), ("yes", yes_var), ("recurse", recurse_var),
+                       ("network", network_var), ("only_src_log", only_src_log_var),
+                       ("use_llm", use_llm_var)):
+        if isinstance(_saved.get(_key), bool):
+            _var.set(_saved[_key])
+    for _key, _var in (("timeout", timeout_var), ("threads", threads_var)):
+        if isinstance(_saved.get(_key), int):
+            _var.set(_saved[_key])
+    if isinstance(_saved.get("compare_by"), str) and _saved["compare_by"] in ("hash", "name"):
+        compare_by_var.set(_saved["compare_by"])
+    if isinstance(_saved.get("geometry"), str):
+        try:
+            root.geometry(_saved["geometry"])
+        except tk.TclError:
+            pass
+    toggle_llm_controls()
+
+    def _persist_and_close() -> None:
+        save_settings(
+            source=source_var.get(), dest=dest_var.get(),
+            copy=copy_var.get(), yes=yes_var.get(), recurse=recurse_var.get(),
+            network=network_var.get(), only_src_log=only_src_log_var.get(),
+            use_llm=use_llm_var.get(), timeout=timeout_var.get(),
+            threads=threads_var.get(), compare_by=compare_by_var.get(),
+            llm_endpoint=llm_endpoint_var.get(), llm_model=llm_model_var.get(),
+            geometry=root.winfo_geometry(),
+        )
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", _persist_and_close)
 
     poll_queue()
     # Probe shortly after the window appears rather than before it: the request

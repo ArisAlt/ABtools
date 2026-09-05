@@ -26,6 +26,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 | P1 | [4.1](#41-combobookpy-leaf_dirs-treats-disc-subfolders-as-separate-audiobooks) / [4.4](#44-flatten_discspy-folders-starting-with-disc-prefix-collide-under-empty-string-) | Multi-disc books lose discs; unrelated books merged together | 🛠️ Fixed |
 | P1 | [1.3](#13-mcp_serverserverpy-standard-output-banners-violate-mcp-json-rpc-protocol) | MCP server unusable by any stdio client | 🛠️ Fixed |
 | P2 | [5.x](#5-metadata-providers--tagging-logic-errors) | Metadata corruption and crashes on specific inputs | 🛠️ Fixed (5.1-5.14) |
+| P2 | [2.3](#23-ablibclimainpy-preview-mode-fails-to-inspect-or-preview-metadata) | Preview showed folder names only | 🛠️ Fixed |
 | P3 | [7.x](#7-edge-cases-type-errors--performance-issues) | Latent / narrow edge cases | Mostly closed — [7.3](#73-combobookpy-unsafe-index-access-in-tags_from_track) open |
 | — | [8](#8-mcp-tool-runtime-verification) | MCP tools executed for real: 3 working, 2 blocked by the remote host | Verified |
 
@@ -146,7 +147,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 - **Fix**: Add a `dry: bool` parameter to `rename_tracks` and skip `p.rename` when set.
 
 ### 2.3 `ablib/cli/main.py`: Preview Mode Fails to Inspect or Preview Metadata
-- **Status**: ✅ **Verified** — accurate. Best characterised as a design gap rather than a crash.
+- **Status**: 🛠️ **FIXED (2026-09-05)** — `process_leaf` now runs in preview mode and withholds only the writes. Verified: a preview prints the folder guess, per-provider scores, the chosen match and a `would tag …` line carrying the full metadata summary, while writing **no** tags, **no** `metadata.json`/`book.nfo` and **no** log entries; `--commit` still writes all three. `--striptags` previews as `would strip tags from N file(s)`.
 - **File**: [`ablib/cli/main.py:395-397`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/cli/main.py#L395-L397), [`AbtoolsGui.py:738-740`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/AbtoolsGui.py#L738-L740)
 - **Code**:
   ```python
@@ -157,7 +158,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
   ```
 - **Error**: In preview mode, `process_leaf` is skipped entirely, so nothing is looked up.
 - **Impact**: Preview prints folder names only — no provider results, no proposed tags, no confidence scores. `README.md` advertises "preview and logging", and the module docstring's `# preview everything` example implies more than this delivers.
-- **Fix**: Let `process_leaf` run in preview mode and guard only the `write_tags` / `export_metadata` calls with `args.commit`.
+- **Fix applied**: `process_leaf` reads `commit` once at the top (defaulting True, so callers that omit the flag are unaffected) and gates `write_tags`, `export_metadata`, `strip_tags` and the `tag_log`/`review_log` writes on it — logs record actions taken, so a preview should not add to them. `main()` and the GUI no longer short-circuit before calling it.
 
 ### 2.4 `ablib/cli/main.py`: `--no` Ignored & Confirmation Skipped for Confidence Scores >= 70
 - **Status**: 🛠️ **FIXED (2026-09-05)** — the gate now reads `best_score < llm_threshold` instead of the hardcoded `70`, so `--no` is honoured for any below-threshold match and the 70-85 band prompts instead of tagging silently. The unreachable `else: Confirm(prompt_message, ...)` branch was removed at the same time. Verified across six paths: above-threshold tags silently; below-threshold with `--no` skips without prompting; accept tags; decline skips; `--yes` bypasses the prompt. (`llm_threshold` is still clamped to 80-100 by `process_leaf`, as documented in the CLI help.)

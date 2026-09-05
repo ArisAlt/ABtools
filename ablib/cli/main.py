@@ -40,6 +40,11 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
     llm_threshold = max(80, min(100, llm_threshold))
     setattr(args, "llm_threshold", llm_threshold)
 
+    # Preview runs the whole pipeline -- lookups, refinement, validation -- and
+    # withholds only the writes, so "preview" actually shows what would happen.
+    # Defaults True so callers that omit the flag keep the old behaviour.
+    commit = bool(getattr(args, "commit", True))
+
     if path.name == "Unknown Author" or path.parent.name == "Unknown Author":
         rprint("- skip Unknown Author:", path)
         log("SKIP", str(path))
@@ -51,6 +56,9 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
             if path.is_file()
             else [f for f in path.rglob("*") if f.suffix.lower() in constants.AUDIO_EXTS]
         )
+        if not commit:
+            rprint(f"[cyan]->[/] {path}  [dim]would strip tags from {len(targets)} file(s)[/]")
+            return
         ok = 0
         for target in targets:
             try:
@@ -123,8 +131,10 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
                     meta = llm_meta
                     llm_used = True
                 else:
-                    log("NOMATCH", str(path))
-                    review_log(path, "no_match")
+                    rprint("  [yellow]- no metadata found[/]")
+                    if commit:
+                        log("NOMATCH", str(path))
+                        review_log(path, "no_match")
                     return
         else:
             llm_meta = generate_metadata_via_llm(
@@ -138,8 +148,10 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
                 meta = llm_meta
                 llm_used = True
             else:
-                log("NOMATCH", str(path))
-                review_log(path, "no_match")
+                rprint("  [yellow]- no metadata found[/]")
+                if commit:
+                    log("NOMATCH", str(path))
+                    review_log(path, "no_match")
                 return
     else:
         score, hit = result
@@ -242,8 +254,10 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
                 # unreachable, and would have raised if it ever ran.
                 proceed = Confirm.ask(prompt_message, default=False)
             if not proceed:
-                log("SKIP", str(path))
-                review_log(path, "user_skip")
+                rprint("  [yellow]- declined[/]")
+                if commit:
+                    log("SKIP", str(path))
+                    review_log(path, "user_skip")
                 return
 
     valid, validation_issues = validate_metadata_fields(meta)
@@ -280,22 +294,12 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
         if not valid:
             issues_text = ", ".join(validation_issues)
             rprint("  [red]- validation failed; book queued for review")
-            log("REVIEW", f"{path} validation_failed: {issues_text}")
-            review_log(path, "validation_failed")
+            if commit:
+                log("REVIEW", f"{path} validation_failed: {issues_text}")
+                review_log(path, "validation_failed")
             return
         if validation_refined:
             rprint("  [magenta]- metadata passed validation after refinement[/]")
-
-    ok = 0
-    for idx, target in enumerate(targets, 1):
-        try:
-            write_tags(target, meta, idx, len(targets))
-            ok += 1
-        except (MutagenError, MP4StreamInfoError):
-            log("ERR", f"tag {target}")
-
-    label = "OK" if ok == len(targets) else "ERR"
-    rprint(f"  [green]tagged {ok}/{len(targets)} file(s)[/]")
 
     suffix_parts: List[str] = []
     if llm_used:
@@ -309,6 +313,25 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
 
     suffix = " " + " ".join(suffix_parts) if suffix_parts else ""
     meta_summary = format_metadata_summary(meta)
+
+    if not commit:
+        # Preview: everything above ran for real -- guess, provider scores,
+        # match, refinement -- so the user can see what *would* be written.
+        # Only the writes are withheld.
+        rprint(f"  [dim]would tag {len(targets)} file(s):[/] {meta_summary}{suffix}")
+        rprint(f"  [dim]would write metadata.json + book.nfo in[/] {path}")
+        return
+
+    ok = 0
+    for idx, target in enumerate(targets, 1):
+        try:
+            write_tags(target, meta, idx, len(targets))
+            ok += 1
+        except (MutagenError, MP4StreamInfoError):
+            log("ERR", f"tag {target}")
+
+    label = "OK" if ok == len(targets) else "ERR"
+    rprint(f"  [green]tagged {ok}/{len(targets)} file(s)[/]")
     log(label, f"{path}  ({ok}/{len(targets)}){suffix} | {meta_summary}")
 
     if label == "OK":
@@ -412,9 +435,6 @@ def main(argv: Optional[List[str]] = None) -> None:
     items = walk_leaves(args.root) if args.recurse else [args.root]
     for leaf in items:
         try:
-            if not args.commit:
-                rprint(f"[dim]preview:[/] {leaf}")
-                continue
             process_leaf(leaf, args)
         except Exception as exc:
             rprint(f"[red]ERR:[/] {leaf} - {exc}")
