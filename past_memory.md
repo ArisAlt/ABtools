@@ -130,3 +130,26 @@ the old `discover_books` (I suspected a 4.1-style split and was wrong --
 idempotent: a second pass over the output moves nothing.
 
 Test suite is 38 tests, on `main`.
+
+## 2026-09-05 (cleanup) — the last four open entries closed
+
+- **2.2**: `rename_tracks(folder, dry=False)`. Two of its four call sites sit
+  inside `if dry:` branches, so a preview renamed the user's source files for
+  real. Latent only because `RENAME_TRACKS = False`.
+- **6.1**: `--only-src-log` reached `add_argument` and nothing else. Both scan
+  functions had always accepted `limit_paths`/`limit_src` and the GUI already
+  wired it — only the CLI dropped it. One-place fix.
+- **4.15** (new): `export_metadata` wrote the JSON through
+  `format_abs_metadata()` but built the NFO from the raw `meta` dict, so one
+  book's two sidecars disagreed and pipeline noise (`score`) leaked into the
+  XML. Added `build_book_nfo(abs_payload)`; both now derive from one payload.
+  NFO keeps Kodi/Jellyfin element names (`<seriesnumber>`, repeated
+  `<author>`), which is the convention that actually reads that file.
+- **4.16** (new): 4.9 fixed the sidecar *writer*, but sidecars are only written
+  at tagging time and the organisers move them without rewriting — so books
+  tagged earlier kept the old schema forever. `upgrade_sidecar()` +
+  `restructure_for_audiobookshelf.py <lib> --refresh-sidecars`, plus a
+  **Refresh Sidecars** button on the GUI Organise tab. `sidecar_is_current()`
+  keys off the `authors` array so re-runs skip what is already done.
+
+bug.md now has no open entries. 43 tests, pyflakes clean, all on `main`.

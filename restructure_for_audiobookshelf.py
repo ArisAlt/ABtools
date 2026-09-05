@@ -32,9 +32,9 @@ from ablib.metadata.utils import (
     parse_book_folder_name,
     primary_author,
 )
-from ablib.tagging.files import read_sidecar_metadata, read_tags
+from ablib.tagging.files import read_sidecar_metadata, read_tags, upgrade_sidecar
 
-VERSION = "5.7"
+VERSION = "5.8"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -308,6 +308,33 @@ def move_or_copy(src: Path, dst: Path, *, copy: bool) -> None:
         shutil.move(src, dst)
 
 
+def refresh_sidecars(root: Path, *, dry: bool, force: bool = False) -> Dict[str, int]:
+    """Rewrite every book's sidecars under `root` in the current schema.
+
+    Libraries tagged before the Audiobookshelf schema fix keep their old flat
+    metadata.json: the organisers move sidecars, they never rewrite them, so
+    the fix does not reach books already on disk. This walks an existing
+    library and upgrades them in place, moving nothing.
+    """
+    stats: Dict[str, int] = {"books": 0, "upgraded": 0, "already_current": 0}
+    for _, book_dir in discover_books(root):
+        stats["books"] += 1
+        if dry:
+            from ablib.tagging.files import sidecar_is_current
+            if force or not sidecar_is_current(book_dir):
+                print(f"[dry-run] would refresh sidecars: {book_dir}")
+                stats["upgraded"] += 1
+            else:
+                stats["already_current"] += 1
+            continue
+        if upgrade_sidecar(book_dir, force=force):
+            print(f"Refreshed sidecars: {book_dir}")
+            stats["upgraded"] += 1
+        else:
+            stats["already_current"] += 1
+    return stats
+
+
 UNKNOWN_AUTHOR = "Unknown Author"
 
 
@@ -366,8 +393,21 @@ def main(argv: list[str] | None = None) -> int:
         description="Restructure <source>/<Author>/[Series]/<Book> into <dest>/<Author>/[Series]/<Title (Year)>",
     )
     parser.add_argument("source", type=Path, help="Source folder containing author subdirectories")
-    parser.add_argument("destination", type=Path, help="Destination Audiobookshelf library root")
+    parser.add_argument(
+        "destination",
+        type=Path,
+        nargs="?",
+        help="Destination Audiobookshelf library root "
+             "(not required with --refresh-sidecars, which moves nothing)",
+    )
     parser.add_argument("--copy", action="store_true", help="Copy instead of move")
+    parser.add_argument(
+        "--refresh-sidecars",
+        action="store_true",
+        help="Rewrite metadata.json / book.nfo under SOURCE in the current "
+             "Audiobookshelf schema and move nothing. Use on a library that "
+             "was tagged before the schema fix.",
+    )
     parser.add_argument(
         "--move-unmatched",
         action="store_true",
@@ -383,13 +423,27 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     source = args.source.resolve()
-    destination = args.destination.resolve()
 
     if not source.exists():
         print(f"Source folder not found: {source}", file=sys.stderr)
         return 1
 
     dry = not args.commit
+
+    if args.refresh_sidecars:
+        sidecar_stats = refresh_sidecars(source, dry=dry)
+        print(
+            f"Inspected {sidecar_stats['books']} books "
+            f"({'dry-run' if dry else 'applied'}) - "
+            f"refreshed: {sidecar_stats['upgraded']}, "
+            f"already current: {sidecar_stats['already_current']}"
+        )
+        return 0
+
+    if args.destination is None:
+        parser.error("destination is required unless --refresh-sidecars is given")
+    destination = args.destination.resolve()
+
     stats = restructure_library(
         source, destination, dry=dry, copy=args.copy,
         move_unmatched=args.move_unmatched,

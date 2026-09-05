@@ -306,6 +306,14 @@ Folders are moved to `<library>/Author/Series?/Title (Year)/`.
 
 
 
+Sidecars are only written when a book is tagged, and the organisers move them rather than rewriting them — so a library tagged before the Audiobookshelf schema fix keeps the old flat `metadata.json`. Bring one up to date without moving anything:
+
+```bash
+python restructure_for_audiobookshelf.py "library_folder" --refresh-sidecars --commit
+```
+
+Omit `--commit` to preview. Folders already on the current schema are skipped, so it is safe to re-run. The GUI exposes the same thing as **Refresh Sidecars** on the Organise tab.
+
 Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when run with `--copy` alongside `--commit`.
 
 Both also accept `--move-unmatched`. Left off (the default), a book neither tool could identify stays exactly where it is in the source tree rather than being swept into `_unmatched/` (combobook) or `Unknown Author/` (restructure) — for a book with no usable tags, its source path is the last clue about what it is.

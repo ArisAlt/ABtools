@@ -1781,6 +1781,47 @@ def restructure() -> None:
 
     start_worker(worker)
 
+def refresh_sidecars_run() -> None:
+    """Rewrite metadata.json / book.nfo under Source in the current schema."""
+    src_str = (source_var.get() or "").strip()
+    if not src_str:
+        messagebox.showerror("Error", "Source path is required")
+        return
+    src = Path(src_str).expanduser()
+    if not src.exists():
+        messagebox.showerror("Error", "Source path does not exist")
+        return
+
+    # Snapshot on the UI thread -- see the note in find_dupes().
+    commit_flag = commit_var.get()
+
+    output_text.configure(state="normal")
+    output_text.delete("1.0", tk.END)
+    output_text.configure(state="disabled")
+    progress.configure(maximum=1)
+    progress_var.set(0)
+    eta_var.set("ETA: --:--")
+
+    def worker() -> None:
+        try:
+            with redirect_stdout(QueueWriter(output_queue)), redirect_stderr(QueueWriter(output_queue)):
+                stats = restructure_for_audiobookshelf.refresh_sidecars(
+                    src, dry=not commit_flag
+                )
+                print(
+                    f"Inspected {stats['books']} books - "
+                    f"refreshed: {stats['upgraded']}, "
+                    f"already current: {stats['already_current']}"
+                )
+                if not commit_flag:
+                    print("Preview only - tick Commit to write the sidecars.")
+            output_queue.put(("status", "done"))
+        except Exception as exc:
+            output_queue.put(("status", f"error:{exc}"))
+
+    start_worker(worker)
+
+
 def tag_only() -> None:
     src_str = (source_var.get() or "").strip()
     if not src_str:
@@ -2174,7 +2215,8 @@ tag_button, move_button = _actions(tag_tab, 4, [
      "merging any disc sub-folders.\n\nTick Copy to leave the source in place."),
 ])
 
-restructure_button, flatten_button, striptags_button, repair_button = _actions(organise_tab, 2, [
+(restructure_button, flatten_button, striptags_button, repair_button,
+ sidecars_button) = _actions(organise_tab, 2, [
     ("\u2637  Restructure", None, lambda: restructure(),
      "Reorganise an already-tagged library into Author/Year - Title, using "
      "existing tags, metadata.json or the folder name. No metadata lookup."),
@@ -2187,6 +2229,12 @@ restructure_button, flatten_button, striptags_button, repair_button = _actions(o
     ("\u2692  Repair M4B", None, lambda: repair_run(),
      "Rewrite .m4b/.mp4 files that mutagen refuses to read (the "
      "'zero length atom' error), using ffmpeg."),
+    ("\u21bb  Refresh Sidecars", None, lambda: refresh_sidecars_run(),
+     "Rewrite metadata.json and book.nfo under Source in the current "
+     "Audiobookshelf schema, moving nothing.\n\nUse on a library tagged "
+     "before the schema fix: organising a book moves its sidecars but never "
+     "rewrites them, so old files keep the old shape and Audiobookshelf "
+     "ignores them. Folders already current are skipped."),
 ])
 
 dup_button, = _actions(dupes_tab, 3, [
@@ -2204,7 +2252,8 @@ encode_button, = _actions(encode_tab, 3, [
 ])
 
 action_buttons.extend([tag_button, move_button, restructure_button, flatten_button,
-                       striptags_button, repair_button, dup_button, encode_button])
+                       striptags_button, repair_button, sidecars_button,
+                       dup_button, encode_button])
 
 Tooltip(tag_button,
         "Look up metadata and write tags to the files where they are, without "

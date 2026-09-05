@@ -12,6 +12,7 @@ missing series level, or an unnecessary trip to _unmatched/.
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -316,3 +317,105 @@ def test_restructuring_is_idempotent(tmp_path):
     assert stats["moved"] == 0
     assert stats["skipped"] == stats["books"]
     assert before == after
+
+
+# ── sidecars: the two files must agree, and old ones must be upgradeable ────
+
+def test_nfo_and_json_describe_the_same_book(tmp_path):
+    """bug.md: the NFO was built from the raw meta dict while the JSON went
+    through format_abs_metadata, so the two sidecars disagreed."""
+    import xml.etree.ElementTree as ET
+    from ablib.tagging.files import export_metadata
+
+    export_metadata(tmp_path, {
+        "title": "Rage of a Demon King", "author": "Raymond E. Feist",
+        "year": "1998", "series": "Serpentwar Saga", "series_index": "3",
+        "narrator": "Peter Joyce",
+        "score": 93,          # pipeline noise that used to leak into the XML
+    })
+    payload = json.loads((tmp_path / "metadata.json").read_text(encoding="utf-8"))
+    nfo = ET.parse(tmp_path / "book.nfo").getroot()
+
+    assert nfo.findtext("title") == payload["title"]
+    assert [e.text for e in nfo.findall("author")] == payload["authors"]
+    assert [e.text for e in nfo.findall("narrator")] == payload["narrators"]
+    assert nfo.findtext("year") == payload["publishedYear"]
+    assert nfo.findtext("series") == payload["series"][0]["name"]
+    assert nfo.findtext("seriesnumber") == payload["series"][0]["sequence"]
+    # the old element names are gone, and pipeline noise does not leak
+    assert nfo.find("series_index") is None
+    assert nfo.find("score") is None
+
+
+def test_old_schema_sidecar_is_upgraded_in_place(tmp_path):
+    """The organisers move sidecars but never rewrite them, so the schema fix
+    never reached libraries already on disk."""
+    from ablib.tagging.files import sidecar_is_current, upgrade_sidecar
+
+    book = tmp_path / "Rage of a Demon King (1998)"
+    book.mkdir()
+    (book / "metadata.json").write_text(json.dumps({
+        "title": "Rage of a Demon King", "author": "Raymond E. Feist",
+        "year": "1998", "series": "Serpentwar Saga", "series_index": "3",
+    }), encoding="utf-8")
+
+    assert not sidecar_is_current(book)
+    assert upgrade_sidecar(book) is True
+    assert sidecar_is_current(book)
+
+    payload = json.loads((book / "metadata.json").read_text(encoding="utf-8"))
+    assert payload["authors"] == ["Raymond E. Feist"]
+    assert payload["series"] == [{"name": "Serpentwar Saga", "sequence": "3"}]
+    assert payload["publishedYear"] == "1998"
+
+    # a second run must not churn files that are already current
+    assert upgrade_sidecar(book) is False
+
+
+def test_refresh_sidecars_walks_a_library_without_moving_anything(tmp_path):
+    import restructure_for_audiobookshelf as restructure
+
+    src = tmp_path / "lib"
+    book = _write_book(src, "Raymond E. Feist/Faerie Tale (1988)", "01.mp3",
+                       artist="Raymond E. Feist", album="Faerie Tale", date="1988")
+    (book / "metadata.json").write_text(json.dumps({
+        "title": "Faerie Tale", "author": "Raymond E. Feist", "year": "1988",
+    }), encoding="utf-8")
+    before = sorted(p.relative_to(src).as_posix() for p in src.rglob("*"))
+
+    stats = restructure.refresh_sidecars(src, dry=False)
+    assert stats == {"books": 1, "upgraded": 1, "already_current": 0}
+    # nothing moved; only book.nfo was added alongside the rewritten json
+    after = sorted(p.relative_to(src).as_posix() for p in src.rglob("*"))
+    assert set(before) <= set(after)
+    assert json.loads((book / "metadata.json").read_text())["authors"] == ["Raymond E. Feist"]
+
+
+# ── dry-run must not touch files ────────────────────────────────────────────
+
+def test_rename_tracks_dry_run_renames_nothing(tmp_path):
+    """bug.md 2.2: two of four call sites sit inside `if dry:` branches."""
+    import combobook
+
+    book = _write_book(tmp_path, "A Book", "zz_first.mp3")
+    (book / "aa_second.mp3").write_bytes((book / "zz_first.mp3").read_bytes())
+    before = sorted(p.name for p in book.iterdir())
+
+    combobook.rename_tracks(book, dry=True)
+    assert sorted(p.name for p in book.iterdir()) == before
+
+    combobook.rename_tracks(book, dry=False)
+    assert sorted(p.name for p in book.iterdir()) == ["Track 1.mp3", "Track 2.mp3"]
+
+
+def test_only_src_log_limits_the_cli_scan(tmp_path):
+    """bug.md 6.1: the flag was parsed and then never reached find_dupes."""
+    import find_duplicates
+
+    kept = tmp_path / "keep.mp3"
+    kept.write_bytes(b"data")
+    (tmp_path / "duplicate_log.txt").write_text(
+        f"Folder {tmp_path}\n  SHA1 abc\n    {kept}\n", encoding="utf-8"
+    )
+    paths = find_duplicates._read_paths_from_log(tmp_path / "duplicate_log.txt")
+    assert kept in paths

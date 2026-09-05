@@ -490,6 +490,19 @@ if __name__ == "__main__":
 
     label = "name" if args.by == "name" else "SHA1"
 
+    # --only-src-log was accepted and then ignored: the flag never reached
+    # find_dupes/find_cross_dupes, both of which have always taken a
+    # `limit_paths`/`limit_src` set. The GUI wired it; the CLI did not.
+    limit_set: Optional[set[Path]] = None
+    if args.only_src_log:
+        log_path = root / DUP_LOG.name
+        if not log_path.is_file():
+            sys.exit(f"--only-src-log: no {DUP_LOG.name} found in {root}")
+        limit_set = _read_paths_from_log(log_path)
+        if not limit_set:
+            sys.exit(f"--only-src-log: {log_path} lists no usable file paths")
+        print(f"Limiting scan to {len(limit_set)} file(s) listed in {log_path}")
+
     def _print_current(stage: str, p: Path) -> None:
         # Quiet by default; enable with --show-files
         if not args.show_files:
@@ -517,6 +530,7 @@ if __name__ == "__main__":
             hash_timeout=args.hash_timeout,
             on_file=_print_current,
             threads=args.threads,
+            limit_src=limit_set,
         )
         if not dupes:
             print("No cross-duplicates found.")
@@ -536,6 +550,7 @@ if __name__ == "__main__":
             hash_timeout=args.hash_timeout,
             on_file=_print_current,
             threads=args.threads,
+            limit_paths=limit_set,
         )
         if not dupes:
             print("No duplicates found.")

@@ -35,6 +35,8 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 | P2 | [4.12](#412-combobookpy-unidentifiable-folders-were-swept-into-_unmatched) | Unmatched folders were moved into `_unmatched/`, destroying their source path | 🛠️ **Fixed (2026-09-05)** |
 | **P1** | [4.13](#413-restructure_for_audiobookshelfpy-books-at-the-source-root-are-skipped-silently) | restructure silently skips books at the source root; reports success having done nothing | 🛠️ **Fixed (2026-09-05)** |
 | P2 | [4.14](#414-restructure_for_audiobookshelfpy-no-leave-in-place-for-books-it-cannot-identify) | restructure still sweeps unidentified books into `Unknown Author/` | 🛠️ **Fixed (2026-09-05)** |
+| P2 | [4.15](#415-booknfo-and-metadatajson-described-the-same-book-differently) | The two sidecars for one book disagreed | 🛠️ **Fixed (2026-09-05)** |
+| **P1** | [4.16](#416-the-schema-fix-never-reached-libraries-already-on-disk) | 4.9 fixed the writer; books already tagged kept the old schema | 🛠️ **Fixed (2026-09-05)** |
 | P2 | [4.9](#49-metadatajson-does-not-match-audiobookshelfs-schema) | Sidecar schema likely ignored by Audiobookshelf | 🛠️ **Fixed (2026-09-05)** |
 | — | [8](#8-mcp-tool-runtime-verification) | MCP tools executed for real: 3 working, 2 blocked by the remote host | Verified |
 
@@ -146,7 +148,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
   ```
 
 ### 2.2 `combobook.py`: `rename_tracks` Has No Dry-Run Guard
-- **Status**: ⚠️ **Verified — description corrected.** Real defect, but currently **latent**: `RENAME_TRACKS = False` at [`combobook.py:47`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L47), so the branch never executes today. It becomes a live data-loss bug the moment that constant is flipped to `True`.
+- **Status**: 🛠️ **FIXED (2026-09-05)** — `rename_tracks(folder, dry=False)`; the two call sites inside `if dry:` branches now pass `dry=True` and report `would rename X -> Y` instead of renaming. Previously latent only because `RENAME_TRACKS = False`; it was a live data-loss bug the moment that constant was flipped.
 - **File**: [`combobook.py:784-785`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L784-L785), [`combobook.py:620-626`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py#L620-L626)
 - **Code**:
   ```python
@@ -596,6 +598,31 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
   ```
   Also confirmed: a book found at the source root no longer takes the source directory's own name as its series, multi-disc books still yield the book folder rather than one entry per disc, and a second pass over the output moves nothing (`moved: 0, skipped: 2`, tree unchanged).
 
+### 4.15 `book.nfo` and `metadata.json` Described the Same Book Differently
+- **Status**: 🛠️ **FIXED (2026-09-05)**
+- **File**: [`ablib/tagging/files.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/tagging/files.py) — `export_metadata`, `build_book_nfo`
+- **Error**: `export_metadata` wrote `metadata.json` through `format_abs_metadata()` but built `book.nfo` by looping over the raw `meta` dict. The two sidecars for one book therefore disagreed — `<author>` / `<series_index>` in the XML against `authors` / `sequence` in the JSON — and whatever incidental keys the pipeline was carrying leaked into the XML as elements (`<score>93</score>`).
+- **Fix applied**: added `build_book_nfo(abs_payload)`; both files are now derived from the one payload, so disagreement is impossible. Element names follow the Kodi/Emby/Jellyfin convention that actually reads the file — repeated `<author>` / `<narrator>` / `<genre>`, plus `<year>`, `<series>` and `<seriesnumber>` — rather than Audiobookshelf's JSON keys. The 5.1 `str()` guard is preserved.
+- **Verification**: `test_nfo_and_json_describe_the_same_book` asserts every shared field matches across the two files, and that `<series_index>` and `<score>` are gone.
+
+### 4.16 The Schema Fix Never Reached Libraries Already on Disk
+- **Status**: 🛠️ **FIXED (2026-09-05)**
+- **Files**: [`ablib/tagging/files.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/tagging/files.py) — `upgrade_sidecar`, `sidecar_is_current`; [`restructure_for_audiobookshelf.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/restructure_for_audiobookshelf.py) — `refresh_sidecars`
+- **Error**: [4.9](#49-metadatajson-does-not-match-audiobookshelfs-schema) fixed the *writer*, but sidecars are only written at tagging time. The organisers **move** `metadata.json` and `book.nfo`; they never rewrite them. Every book tagged before the fix therefore kept the old flat schema — which is exactly what was observed in the audited library, where the sidecars were dated `13:02` against a `14:16` fix — and Audiobookshelf goes on ignoring them.
+- **Fix applied**: `upgrade_sidecar(folder)` re-reads what is on disk (existing sidecar first, embedded tags for anything it does not cover) and rewrites both files in the current schema. `sidecar_is_current()` keys off the `authors` array, so a run over a large library only touches folders that need it. Exposed as `restructure_for_audiobookshelf.py <library> --refresh-sidecars [--commit]`, which moves nothing (`destination` is not required in this mode), and as **Refresh Sidecars** on the GUI's Organise tab.
+- **Verification**:
+  ```
+  $ restructure_for_audiobookshelf.py lib_old --refresh-sidecars
+  [dry-run] would refresh sidecars: lib_old/Raymond E. Feist/Faerie Tale (1988)
+  Inspected 1 books (dry-run) - refreshed: 1, already current: 0
+
+  $ restructure_for_audiobookshelf.py lib_old --refresh-sidecars --commit
+  Inspected 1 books (applied) - refreshed: 1, already current: 0
+
+  $ restructure_for_audiobookshelf.py lib_old --refresh-sidecars --commit
+  Inspected 1 books (applied) - refreshed: 0, already current: 1
+  ```
+
 ## 5. Metadata, Providers & Tagging Logic Errors
 
 ### 5.1 `ablib/tagging/files.py`: Non-String Metadata Crashes XML Serializer
@@ -742,7 +769,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 ## 6. GUI & CLI Synchronization Issues
 
 ### 6.1 `find_duplicates.py`: `--only-src-log` Is Dead Code in CLI
-- **Status**: ✅ **Verified** — `grep` shows `only_src_log` appears exactly once in the file, at its `add_argument`.
+- **Status**: 🛠️ **FIXED (2026-09-05)** — the CLI now reads `root/duplicate_log.txt` via `_read_paths_from_log()` and passes the result as `limit_paths` / `limit_src`. Both scan functions had always accepted it and the GUI already wired it; only the CLI dropped the flag on the floor. It now also exits with a clear message when the log is missing or lists nothing usable.
 - **File**: [`find_duplicates.py:475-478`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/find_duplicates.py#L475-L478), [`find_duplicates.py:508-545`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/find_duplicates.py#L508-L545)
 - **Error**: The flag is parsed, but `args.only_src_log` is never read and never forwarded as `limit_paths` / `limit_src`.
 - **Impact**: `--only-src-log` silently does nothing on the CLI. The supporting machinery (`_read_paths_from_log`, `limit_paths`, `limit_src`) is fully implemented and *is* correctly wired from `AbtoolsGui.py:793-799` — only the CLI path was missed.

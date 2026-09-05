@@ -846,12 +846,24 @@ def flatten(folder: Path, dry: bool):
                 pass
 
 # ───────────── track renamer ─────────────────────────────────────────────────
-def rename_tracks(folder:Path):
-    tracks=sorted(p for p in folder.iterdir() if p.suffix.lower() in AUDIO_EXTS)
-    digits=len(str(len(tracks)))
-    for i,p in enumerate(tracks,1):
-        new=p.with_name(f"Track {i:0{digits}d}{p.suffix.lower()}")
-        if new!=p: p.rename(new)
+def rename_tracks(folder: Path, dry: bool = False) -> None:
+    """Renumber a book's tracks as "Track 01.mp3", "Track 02.mp3", ...
+
+    `dry` reports the renames instead of performing them. Two of the four call
+    sites sit inside `if dry:` branches, so without this the preview renamed
+    the user's source files for real -- the same class of fault as 2.1, and
+    latent only because RENAME_TRACKS defaults to False (bug.md 2.2).
+    """
+    tracks = sorted(p for p in folder.iterdir() if p.suffix.lower() in AUDIO_EXTS)
+    digits = len(str(len(tracks)))
+    for i, p in enumerate(tracks, 1):
+        new = p.with_name(f"Track {i:0{digits}d}{p.suffix.lower()}")
+        if new == p:
+            continue
+        if dry:
+            rprint(f"  [dim]would rename {p.name} -> {new.name}[/]")
+            continue
+        p.rename(new)
 
 # ───────────── build Audiobookshelf dest path ────────────────────────────────
 # ───────────── updated dest_path() with truncation ────────────────────────────
@@ -1031,7 +1043,7 @@ def process(folder: Path, src: Path, lib: Path, dry: bool, yes: bool, copy: bool
                 if FLATTEN_DISCS:
                     flatten(folder, True)
                 if RENAME_TRACKS and not FLATTEN_DISCS:
-                    rename_tracks(folder)
+                    rename_tracks(folder, dry=True)
                 return
             safe_move(folder, dest, copy=copy)
             if FLATTEN_DISCS:
@@ -1077,7 +1089,7 @@ def process(folder: Path, src: Path, lib: Path, dry: bool, yes: bool, copy: bool
         if FLATTEN_DISCS:
             flatten(folder, True)
         if RENAME_TRACKS and not FLATTEN_DISCS:
-            rename_tracks(folder)
+            rename_tracks(folder, dry=True)
 
     dest = dest_path(lib, meta)
     if dest.exists():
