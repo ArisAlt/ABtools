@@ -1,6 +1,6 @@
 # Proposal: Dynamic LLM Model Configuration
 
-**Status:** Phase 1 done; scope fixed to **local providers only** (decided 2026-09-05)
+**Status:** Phases 1 and 2 shipped; scope fixed to **local providers only** (decided 2026-09-05)
 **Date:** 2026-09-05
 **Scope:** `AbtoolsGui.py`, `ablib/core/config.py`, `ablib/metadata/llm.py`, `mcp_server/`
 **Goal:** remove the hardcoded `MODEL_CHOICES` list and make endpoint/model configuration discoverable, persistent and consistent across the GUI, CLI and MCP server.
@@ -139,9 +139,22 @@ The sketch lists `OPENAI_BASE_URL` / `OPENAI_MODEL_NAME` as fallbacks. Silently 
 - ~~Add a comment in `ablib/cli/__init__.py` recording the shadowing trap (§2.3).~~ Added to the module docstring.
 - **Also fixed, found during this cleanup:** the CLI and GUI defaulted to *different models*. `constants.py` gave `ibm/granite-4-h-tiny` while the CLI's `--llm-model` default was the literal `mistral-7b-instruct-q4`, and argparse always supplies its default — so every CLI run silently overrode the constant. The CLI's own `--help` epilog also still advertised port 1234 against a real default of 8888. Both argparse defaults now reference `constants`, and the epilog is an f-string interpolating them, so the three can no longer drift.
 
-### Phase 2 — auto-discovery + persistence (the main change)
+### Phase 2 — auto-discovery + persistence ✅ **shipped 2026-09-05**
 
-Single change covering options 1 and 3.
+Options 1 and 3, shipped together. `MODEL_CHOICES` is gone.
+
+**What landed**
+
+- `models_url()` derives the probe URL with `urlsplit`; all five endpoint shapes in §2.4 verified.
+- `probe_models()` runs on a worker thread and posts `("models", …)` to `output_queue`; `poll_queue` applies it on the UI thread, per §3.1.
+- A `↻` button next to the Model box, plus an automatic probe on `<FocusOut>` of the endpoint field and once ~300ms after launch. The button is in `llm_controls`, so it greys out with the LLM toggle.
+- A muted status line under the Model box: *"N model(s) available"*, *"endpoint unreachable"*, or *"N available – 'x' not among them"* when the selected model is not loaded on the server.
+- MRU: `remember_model()` records the model on each run, de-duplicated, most-recent-first, capped at 10. It seeds the dropdown at launch and is the fallback whenever the probe fails.
+- The settings file became one versioned document (`version`, `theme`, `llm_endpoint`, `llm_model`, `recent_models`) via `load_settings()` / `save_settings(**changes)`, per §3.4. The last endpoint and model are restored at startup.
+
+**Verified**: probe populates the dropdown from a stub server; an unreachable endpoint falls back to recent models and says so; a model absent from the server's list is called out; nothing fires while the LLM toggle is off; the seven themes, tooltips and log rendering are unaffected.
+
+**Startup probe** — §6 decision 2 was left open; resolved as *probe once at launch*. With scope now local-only the request only ever goes to a loopback address, runs on a worker with a 4s timeout, and cannot delay the window.
 
 **Endpoint derivation:**
 
@@ -229,5 +242,5 @@ All three are small. Recommendation: land those first, then Phase 1 + 2 together
 ## 6. Decisions needed
 
 1. ~~**Auth:** is remote/hosted provider support wanted?~~ **Resolved 2026-09-05: no — local only.** No `api_key` on `RuntimeConfig`, no headers in `_call_llm`, no "Remote" preset.
-2. **Probe on startup:** should the GUI probe the saved endpoint automatically at launch, or only on demand? Automatic is more convenient; on-demand avoids firing a request at whatever address happens to be saved.
+2. ~~**Probe on startup:**~~ **Resolved: probe once at launch**, ~300ms after the window appears. Safe now that scope is local-only.
 3. **Phase 4 scope:** GUI + CLI only, or extend to the MCP server at the same time?

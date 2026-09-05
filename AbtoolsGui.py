@@ -6,6 +6,9 @@ from __future__ import annotations
 
 import json
 import re
+from urllib.parse import urlsplit, urlunsplit
+
+import requests
 import sys, threading, queue, time
 from collections import defaultdict
 from contextlib import redirect_stdout, redirect_stderr
@@ -197,19 +200,56 @@ if "clam" in style.theme_names():
     style.theme_use("clam")
 
 
-def _load_saved_theme() -> str:
+SETTINGS_VERSION = 1
+MAX_RECENT_MODELS = 10
+
+
+def load_settings() -> dict:
+    """Read the settings document, tolerating a missing or corrupt file."""
     try:
-        name = json.loads(SETTINGS_PATH.read_text()).get("theme")
-    except (OSError, ValueError, AttributeError):
-        return DEFAULT_THEME
+        data = json.loads(SETTINGS_PATH.read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_settings(**changes: object) -> None:
+    """Merge `changes` into the settings file. Never raises.
+
+    One file for all GUI state -- a read-only home is not worth failing the
+    UI over, so write errors are swallowed.
+    """
+    data = load_settings()
+    data.update(changes)
+    data["version"] = SETTINGS_VERSION
+    try:
+        SETTINGS_PATH.write_text(json.dumps(data, indent=2))
+    except OSError:
+        pass
+
+
+def _load_saved_theme() -> str:
+    name = load_settings().get("theme")
     return name if name in THEMES else DEFAULT_THEME
 
 
 def _save_theme(name: str) -> None:
-    try:
-        SETTINGS_PATH.write_text(json.dumps({"theme": name}, indent=2))
-    except OSError:
-        pass          # a read-only home is not worth failing the UI over
+    save_settings(theme=name)
+
+
+def recent_models() -> list[str]:
+    """Models used before, most recent first. Seeds the dropdown offline."""
+    values = load_settings().get("recent_models")
+    return [m for m in values if isinstance(m, str)] if isinstance(values, list) else []
+
+
+def remember_model(name: str) -> None:
+    """Push `name` to the front of the MRU list, de-duplicated and capped."""
+    name = (name or "").strip()
+    if not name:
+        return
+    ordered = [name] + [m for m in recent_models() if m != name]
+    save_settings(recent_models=ordered[:MAX_RECENT_MODELS], llm_model=name)
 
 
 def apply_theme(name: str, *, persist: bool = False) -> None:
@@ -254,6 +294,7 @@ def _style_widgets() -> None:
     style.configure("App.TFrame", background=BG)
     style.configure("TLabel", background=SURFACE, foreground=FG)
     style.configure("Bg.TLabel", background=BG, foreground=MUTED)
+    style.configure("Muted.TLabel", background=SURFACE, foreground=MUTED)
     style.configure("TCheckbutton", background=SURFACE, foreground=FG,
                     indicatorcolor=FIELD, bordercolor=MUTED, focuscolor=SURFACE)
     style.map("TCheckbutton",
@@ -547,12 +588,48 @@ tip(ttk.Checkbutton(checkbox_frame, text="Only src log", variable=only_src_log_v
     "Useful for re-checking a previous run's findings quickly."
     ).grid(row=1, column=1, sticky="w", padx=(0, PAD_X), pady=(PAD_Y // 2, 0))
 
-MODEL_CHOICES = (
-    DEFAULT_LLM_MODEL,
-    "llama-3-8b-instruct",
-    "mixtral-8x7b-instruct",
-    "phi-3-medium-4k-instruct",
-)
+def models_url(endpoint: str) -> str:
+    """Derive the /v1/models URL from a chat-completions endpoint.
+
+    urlsplit rather than string surgery, because people type all of
+    ".../v1/chat/completions", a trailing slash, a bare ".../v1", a bare host,
+    and path-prefixed deployments.
+    """
+    parts = urlsplit((endpoint or "").strip().rstrip("/"))
+    path = parts.path
+    for suffix in ("/chat/completions", "/completions"):
+        if path.endswith(suffix):
+            path = path[: -len(suffix)]
+    if not path.endswith("/v1"):
+        path = path.rstrip("/") + "/v1"
+    return urlunsplit((parts.scheme or "http", parts.netloc, path + "/models", "", ""))
+
+
+def probe_models(endpoint: str) -> None:
+    """Ask the server which models it has loaded, off the UI thread.
+
+    Tkinter is not thread-safe, so the worker must not touch model_combo. It
+    posts to output_queue and poll_queue applies the result on the UI thread.
+    """
+    if not endpoint:
+        return
+    url = models_url(endpoint)
+
+    def work() -> None:
+        try:
+            response = requests.get(url, timeout=4)
+            response.raise_for_status()
+            payload = response.json()
+            names = sorted(
+                str(item["id"])
+                for item in payload.get("data", [])
+                if isinstance(item, dict) and item.get("id")
+            )
+            output_queue.put(("models", (names, None)))
+        except Exception as exc:                      # offline is normal, not fatal
+            output_queue.put(("models", (None, f"{type(exc).__name__}: {exc}")))
+
+    threading.Thread(target=work, daemon=True).start()
 
 llm_frame = ttk.LabelFrame(main, text="Model Configuration", padding=PAD_X)
 llm_frame.grid(row=2, column=0, sticky="ew", pady=(PAD_Y, 0))
@@ -582,9 +659,46 @@ ttk.Label(llm_frame, text="Model:").grid(row=2, column=0, sticky="e", padx=(0, P
 # Editable, and spanning the same columns as Endpoint above it. It was a
 # half-width readonly box, yet the CLI accepts any model name -- and
 # toggle_llm_controls() already flipped it to editable on the first toggle.
-model_combo = ttk.Combobox(llm_frame, textvariable=llm_model_var, values=MODEL_CHOICES)
-model_combo.grid(row=2, column=1, columnspan=3, sticky="ew", pady=(0, PAD_Y))
+# Seeded from previously-used models so the dropdown is useful before any
+# probe returns, and replaced by the server's real list once one does.
+model_combo = ttk.Combobox(llm_frame, textvariable=llm_model_var,
+                           values=recent_models() or [DEFAULT_LLM_MODEL])
+model_combo.grid(row=2, column=1, columnspan=2, sticky="ew", pady=(0, PAD_Y))
 llm_controls.append(model_combo)
+
+refresh_button = ttk.Button(llm_frame, text="\u21bb", width=3,
+                            command=lambda: refresh_models(explicit=True))
+refresh_button.grid(row=2, column=3, sticky="e", padx=(PAD_X // 2, 0), pady=(0, PAD_Y))
+llm_controls.append(refresh_button)
+
+endpoint_status = tk.StringVar(value="")
+ttk.Label(llm_frame, textvariable=endpoint_status, style="Muted.TLabel").grid(
+    row=3, column=1, columnspan=3, sticky="w"
+)
+
+
+def refresh_models(*, explicit: bool = False) -> None:
+    """Ask the configured endpoint for its model list."""
+    if not use_llm_var.get():
+        return
+    endpoint = (llm_endpoint_var.get() or "").strip()
+    if not endpoint or endpoint.lower() in {"none", "null", "off"}:
+        return
+    if explicit:
+        endpoint_status.set("checking...")
+    probe_models(endpoint)
+
+
+def _endpoint_changed(_event: object = None) -> None:
+    """Probe when focus leaves the endpoint field, not on every keystroke."""
+    endpoint = (llm_endpoint_var.get() or "").strip()
+    if endpoint and endpoint != getattr(_endpoint_changed, "_last", None):
+        _endpoint_changed._last = endpoint
+        save_settings(llm_endpoint=endpoint)
+        refresh_models()
+
+
+endpoint_entry.bind("<FocusOut>", _endpoint_changed, add="+")
 
 Tooltip(endpoint_entry,
         "URL of an OpenAI-compatible chat-completions endpoint, such as the "
@@ -593,7 +707,12 @@ Tooltip(endpoint_entry,
         "Set to 'none' to disable the fallback.")
 Tooltip(model_combo,
         "Model to request from that endpoint. It must already be loaded there.\n\n"
-        "The list is only a shortcut - you can type any model name.")
+        "The list is filled from the server when it can be reached, and falls "
+        "back to models you have used before. You can always type a name.")
+Tooltip(refresh_button,
+        "Ask the endpoint which models it currently has loaded.\n\n"
+        "Runs automatically when you finish editing the endpoint. If the "
+        "server cannot be reached the list keeps your recent models.")
 
 
 
@@ -780,6 +899,11 @@ def apply_llm_settings(settings: dict[str, object]) -> None:
     else:
         CONFIG.llm_model_name = DEFAULT_LLM_MODEL
 
+    # Record the model actually used, so it seeds the dropdown next launch even
+    # if the server is unreachable then.
+    if enabled and CONFIG.llm_model_name:
+        remember_model(CONFIG.llm_model_name)
+
     # No propagation needed: ablib.core.config.config is a module-level
     # singleton, so CONFIG here, combobook.tagger.CONFIG and ablib.cli.main
     # .CONFIG are all the same object (id-verified). The block that used to
@@ -917,6 +1041,24 @@ def poll_queue() -> None:
                 resp_q.put(bool(ans))
             except Exception:
                 pass
+        elif typ == "models":
+            # Applied here, on the UI thread: the probe runs in a worker and
+            # Tkinter is not thread-safe.
+            names, error = msg
+            if names:
+                model_combo["values"] = names
+                endpoint_status.set(f"{len(names)} model(s) available")
+                if llm_model_var.get() not in names and names:
+                    endpoint_status.set(
+                        f"{len(names)} available - '{llm_model_var.get()}' not among them"
+                    )
+            else:
+                fallback = recent_models()
+                if fallback:
+                    model_combo["values"] = fallback
+                endpoint_status.set("endpoint unreachable")
+                if CONFIG.debug and error:
+                    append_output(f"[dim]model probe failed: {error}[/]\n")
         elif typ == "status":
             if msg == "done":
                 set_running(False)
@@ -1368,5 +1510,16 @@ Tooltip(stop_button,
         "moment. Work already written is left as it is.")
 
 if __name__ == "__main__":
+    # Restore the last-used endpoint/model before the first probe.
+    _saved = load_settings()
+    if isinstance(_saved.get("llm_endpoint"), str) and _saved["llm_endpoint"].strip():
+        llm_endpoint_var.set(_saved["llm_endpoint"])
+    if isinstance(_saved.get("llm_model"), str) and _saved["llm_model"].strip():
+        llm_model_var.set(_saved["llm_model"])
+
     poll_queue()
+    # Probe shortly after the window appears rather than before it: the request
+    # is local-only and runs on a worker with a short timeout, so it can never
+    # delay or block the UI.
+    root.after(300, refresh_models)
     root.mainloop()

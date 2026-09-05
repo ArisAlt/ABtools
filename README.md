@@ -314,6 +314,8 @@ The action row is Tag / Move / Restructure / Find Duplicates / Stop, all one hei
 
 **Hover help.** Every button, entry, spinbox, combobox and checkbox carries a tooltip describing what it actually does. Tooltips are clamped to the screen so the bottom-row buttons do not push them off the edge.
 
+**Model discovery.** The Model dropdown is filled from the server itself: the GUI queries the endpoint's `/v1/models` shortly after launch, whenever you finish editing the Endpoint field, and on demand via the `↻` button. A status line reports how many models the server has loaded, warns when the selected model is not among them, and says so plainly when the endpoint cannot be reached — in which case the list falls back to models you have used before. Endpoint, model and the recent-model list persist in `~/.abtools_gui.json`. You can still type any model name.
+
 Debug output is written to `AudioBooks_tools/AbtoolsGui.debug.log` so you can inspect the underlying CLI runs when troubleshooting.
 
 
