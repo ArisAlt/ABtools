@@ -972,6 +972,13 @@ channels_var = tk.StringVar(value="1")         # ab_encode -c
 workers_var = tk.IntVar(value=4)               # ab_encode -w
 cleanup_var = tk.BooleanVar()                  # ab_encode --cleanup
 api_key_var = tk.StringVar(value=CONFIG.llm_api_key or "")   # --llm-api-key
+# Local model to fall back to when the main endpoint cannot answer. A hosted
+# free tier runs out mid-run ("Rate limit exceeded: free-models-per-day") and
+# every remaining book was then left with no metadata at all.
+fallback_var = tk.BooleanVar(value=True)
+fallback_endpoint_var = tk.StringVar(value=CONFIG.llm_fallback_endpoint or "")
+fallback_model_var = tk.StringVar(value=CONFIG.llm_fallback_model or "")
+fallback_score_var = tk.IntVar(value=CONFIG.llm_fallback_min_score)
 remember_key_var = tk.BooleanVar()             # opt in to storing it on disk
 provider_var = tk.StringVar(value="LM Studio") # proposal.md Phase 3
 
@@ -1200,6 +1207,44 @@ Tooltip(remember_key_check,
         "It is stored in PLAIN TEXT. The file is written with owner-only "
         "permissions (0600), but anything running as you can still read it. "
         "An environment variable is safer; untick this to erase a stored key.")
+
+
+fallback_check = ttk.Checkbutton(llm_frame, text="Local fallback",
+                                 variable=fallback_var)
+fallback_check.grid(row=8, column=0, columnspan=2, sticky="w", pady=(PAD_Y, 0))
+llm_controls.append(fallback_check)
+Tooltip(fallback_check,
+        "When the endpoint above cannot answer - a hosted free tier hitting "
+        "its daily quota, a rejected key, a server error - retry the question "
+        "against a local model instead of giving up on the book.\n\n"
+        "Only those failures trigger it. A model that answered badly is not "
+        "asked twice.")
+
+fallback_endpoint_entry = ttk.Entry(llm_frame, textvariable=fallback_endpoint_var)
+fallback_endpoint_entry.grid(row=8, column=2, columnspan=2, sticky="ew", pady=(PAD_Y, 0))
+llm_controls.append(fallback_endpoint_entry)
+Tooltip(fallback_endpoint_entry,
+        "Local OpenAI-compatible endpoint, e.g. LM Studio on "
+        "http://127.0.0.1:8888/v1/chat/completions")
+
+ttk.Label(llm_frame, text="Fallback model:").grid(
+    row=9, column=0, sticky="e", padx=(0, PAD_X), pady=(PAD_Y // 2, 0))
+fallback_model_entry = ttk.Entry(llm_frame, textvariable=fallback_model_var)
+fallback_model_entry.grid(row=9, column=1, sticky="ew", pady=(PAD_Y // 2, 0))
+llm_controls.append(fallback_model_entry)
+
+ttk.Label(llm_frame, text="Min score:").grid(
+    row=9, column=2, sticky="e", padx=(0, PAD_X), pady=(PAD_Y // 2, 0))
+fallback_score_spin = ttk.Spinbox(llm_frame, from_=0, to=100, width=5,
+                                  textvariable=fallback_score_var)
+fallback_score_spin.grid(row=9, column=3, sticky="w", pady=(PAD_Y // 2, 0))
+llm_controls.append(fallback_score_spin)
+Tooltip(fallback_score_spin,
+        "How closely the local model's answer must match the folder before it "
+        "is written, 0-100.\n\nA small local model asked \"which audiobook is "
+        "this?\" will answer even when it has no idea, and there is no provider "
+        "score here to catch it - so its answer is compared against the folder "
+        "name. Below this the book is left untagged rather than tagged wrongly.")
 
 
 def _remember_key_changed() -> None:
@@ -1525,7 +1570,14 @@ def gather_llm_settings() -> dict[str, object]:
     # debug/api_key are read here, on the UI thread: apply_llm_settings() is
     # called from inside a worker, and a tk variable read there raises
     # "main thread is not in main loop".
-    extra = {"debug": bool(debug_var.get()), "api_key": (api_key_var.get() or "").strip()}
+    extra = {
+        "debug": bool(debug_var.get()),
+        "api_key": (api_key_var.get() or "").strip(),
+        "fallback": bool(fallback_var.get()),
+        "fallback_endpoint": (fallback_endpoint_var.get() or "").strip(),
+        "fallback_model": (fallback_model_var.get() or "").strip(),
+        "fallback_score": int(fallback_score_var.get()),
+    }
     if not enabled:
         return {"enabled": False, "endpoint": "none", "model": "", **extra}
     return {"enabled": True, "endpoint": endpoint, "model": model, **extra}
@@ -1549,6 +1601,13 @@ def apply_llm_settings(settings: dict[str, object]) -> None:
         CONFIG.llm_model_name = model_raw
     else:
         CONFIG.llm_model_name = DEFAULT_LLM_MODEL
+
+    if settings.get("fallback"):
+        CONFIG.llm_fallback_endpoint = str(settings.get("fallback_endpoint") or "") or None
+        CONFIG.llm_fallback_model = str(settings.get("fallback_model") or "") or None
+    else:
+        CONFIG.llm_fallback_endpoint = None
+    CONFIG.llm_fallback_min_score = max(0, min(100, int(settings.get("fallback_score", 85))))
 
     CONFIG.debug = bool(settings.get("debug", False))
     # An empty box leaves whatever the environment supplied.

@@ -424,6 +424,28 @@ def build_parser() -> argparse.ArgumentParser:
             "environment variable so the key stays out of your shell history."
         ),
     )
+    parser.add_argument(
+        "--llm-fallback-endpoint",
+        default=None,
+        metavar="URL",
+        help=(
+            "Local OpenAI-compatible endpoint to use when the main one cannot "
+            "answer -- a hosted free tier hitting its daily quota, a rejected "
+            "key, a server error. Pass 'none' to disable the fallback."
+        ),
+    )
+    parser.add_argument(
+        "--llm-fallback-model", default=None, metavar="NAME",
+        help="Model to request from the fallback endpoint.",
+    )
+    parser.add_argument(
+        "--llm-fallback-min-score", type=int, default=None, metavar="SCORE",
+        help=(
+            "How closely a fallback answer must match the folder before it is "
+            "written, 0-100 (default 85). Below this the book is left "
+            "untagged rather than tagged from an unverified guess."
+        ),
+    )
     return parser
 
 
@@ -433,8 +455,13 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     if args.show_config:
         rprint("[bold]effective configuration[/]")
-        for name, value, source in config.describe_config():
-            rprint(f"  {name:16} {value:<48} [dim]<- {source}[/]")
+        rows = config.describe_config()
+        # Size the columns to the content: the fixed 16/48 widths wrapped the
+        # source onto its own line once the fallback settings were added.
+        name_width = max((len(name) for name, _, _ in rows), default=16)
+        value_width = max((len(value) for _, value, _ in rows), default=8)
+        for name, value, source in rows:
+            rprint(f"  {name:<{name_width}}  {value:<{value_width}}  [dim]<- {source}[/]")
         for problem in config.env_problems:
             rprint(f"  [yellow]! {problem}[/]")
         rprint("\n[dim]precedence: CLI flag > saved GUI settings > ABTOOLS_* env > defaults[/]")
@@ -456,6 +483,15 @@ def main(argv: Optional[List[str]] = None) -> None:
     # CONFIG.llm_api_key stands.
     if args.llm_api_key:
         CONFIG.llm_api_key = args.llm_api_key.strip() or None
+    if args.llm_fallback_endpoint is not None:
+        value = args.llm_fallback_endpoint.strip()
+        CONFIG.llm_fallback_endpoint = (
+            None if value.lower() in {"", "none", "null"} else value
+        )
+    if args.llm_fallback_model:
+        CONFIG.llm_fallback_model = args.llm_fallback_model.strip() or None
+    if args.llm_fallback_min_score is not None:
+        CONFIG.llm_fallback_min_score = max(0, min(100, args.llm_fallback_min_score))
 
 
     args.llm_threshold = max(0, min(100, args.llm_threshold))

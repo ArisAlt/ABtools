@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 import requests
 from rapidfuzz import fuzz
+from urllib.parse import urlsplit
 
 from ablib.core import config, constants
 from ablib.core.console import rprint
@@ -31,7 +32,32 @@ _MAX_CALLS_PER_TOOL: int = 5
 MCP_ACCEPT_SCORE: int = 95
 
 
-def _auth_headers() -> dict[str, str]:
+# Statuses another endpoint might not share, so they are worth retrying
+# elsewhere: quota/rate limit, a bad or missing key, and server-side errors.
+# 400 and 404 are the model or request being wrong and would fail identically.
+_RETRYABLE_STATUS = frozenset({401, 402, 403, 408, 409, 429, 500, 502, 503, 504})
+
+
+def _endpoint_label(endpoint: Optional[str]) -> str:
+    """Name the endpoint in log lines by host.
+
+    Everything used to be reported as "LM Studio", so a quota error from a
+    hosted provider read as though the local server had rejected it -- see the
+    field report of "LM Studio returned HTTP 429: ... free-models-per-day",
+    which came from OpenRouter.
+    """
+    if not endpoint:
+        return "LLM"
+    try:
+        host = urlsplit(endpoint).hostname or endpoint
+    except ValueError:
+        return endpoint
+    if host in {"127.0.0.1", "localhost", "::1", "0.0.0.0"}:
+        return "local LLM"
+    return host
+
+
+def _auth_headers(api_key: Optional[str] = None) -> dict[str, str]:
     """Headers for the completions request.
 
     Hosted OpenAI-compatible providers (OpenRouter and friends) need a bearer
@@ -39,7 +65,7 @@ def _auth_headers() -> dict[str, str]:
     all was why only local endpoints ever worked.
     """
     headers = {"Content-Type": "application/json"}
-    key = (CONFIG.llm_api_key or "").strip()
+    key = (CONFIG.llm_api_key if api_key is None else api_key or "").strip()
     if key:
         headers["Authorization"] = f"Bearer {key}"
         # OpenRouter attributes requests with these; harmless elsewhere.
@@ -55,9 +81,25 @@ def _call_llm(
     tools: Optional[List[dict[str, Any]]] = None,
     max_tokens: Optional[int] = None,
     attempt: int = 0,
+    endpoint: Optional[str] = None,
+    model: Optional[str] = None,
+    api_key: Optional[str] = None,
+    on_retryable_failure: Optional[List[str]] = None,
 ) -> Optional[str]:
-    if not CONFIG.llm_endpoint or not CONFIG.llm_model_name:
+    """Call an OpenAI-compatible endpoint. `endpoint`/`model` default to the
+    primary configuration, so the same function serves the local fallback.
+
+    `on_retryable_failure` is an out-parameter: when the call fails for a
+    reason another endpoint might not share -- a quota or rate limit, a bad or
+    missing key, a server-side error, an unreachable host -- the reason is
+    appended to it. A model that answered but answered badly is *not*
+    retryable, and leaves it untouched.
+    """
+    endpoint = endpoint or CONFIG.llm_endpoint
+    model = model or CONFIG.llm_model_name
+    if not endpoint or not model:
         return None
+    where = _endpoint_label(endpoint)
 
     token_budget = max_tokens or CONFIG.llm_max_tokens
     sys_prompt = system_prompt or constants.LLM_SYSTEM_PROMPT
@@ -72,10 +114,10 @@ def _call_llm(
     while True:
         if tool_iterations > _MAX_TOOL_ITERATIONS:
             if CONFIG.debug:
-                rprint(f"  [yellow]- LM Studio tool loop exceeded {_MAX_TOOL_ITERATIONS} iterations; aborting[/]")
+                rprint(f"  [yellow]- {where} tool loop exceeded {_MAX_TOOL_ITERATIONS} iterations; aborting[/]")
             return None
         payload: dict[str, Any] = {
-            "model": CONFIG.llm_model_name,
+            "model": model,
             "messages": convo,
             "temperature": 0.0,
             "max_tokens": token_budget,
@@ -86,27 +128,30 @@ def _call_llm(
             payload["tool_choice"] = "auto"
         try:
             resp = SESSION.post(
-                CONFIG.llm_endpoint,
+                endpoint,
                 json=payload,
-                headers=_auth_headers(),
+                headers=_auth_headers(api_key),
                 timeout=CONFIG.llm_timeout,
             )
         except requests.RequestException as exc:  # pragma: no cover
             if CONFIG.debug:
-                rprint(f"  [yellow]- LM Studio request failed: {exc}[/]")
+                rprint(f"  [yellow]- {where} request failed: {exc}[/]")
+            if on_retryable_failure is not None:
+                on_retryable_failure.append(f"{where} unreachable: {exc}")
             return None
         if resp.status_code >= 400:
+            detail = resp.text[:200]
             if CONFIG.debug:
-                rprint(
-                    f"  [yellow]- LM Studio returned HTTP {resp.status_code}: {resp.text[:200]}[/]"
-                )
+                rprint(f"  [yellow]- {where} returned HTTP {resp.status_code}: {detail}[/]")
+            if on_retryable_failure is not None and resp.status_code in _RETRYABLE_STATUS:
+                on_retryable_failure.append(f"{where} HTTP {resp.status_code}: {detail}")
             return None
 
         try:
             data = resp.json()
         except ValueError:
             if CONFIG.debug:
-                rprint("  [yellow]- LM Studio response was not valid JSON[/]")
+                rprint(f"  [yellow]- {where} response was not valid JSON[/]")
             return None
 
         choices = data.get("choices")
@@ -176,7 +221,7 @@ def _call_llm(
             new_budget = max(token_budget, min(token_budget * 2, 16384))
             if CONFIG.debug:
                 rprint(
-                    f"  [yellow]- LM Studio response hit max_tokens={token_budget}; retrying with {new_budget}[/]"
+                    f"  [yellow]- {where} response hit max_tokens={token_budget}; retrying with {new_budget}[/]"
                 )
             token_budget = new_budget
             length_retry = 1
@@ -186,6 +231,68 @@ def _call_llm(
             return None
         convo.append({"role": "assistant", "content": str(content)})
         return str(content)
+
+
+def _call_llm_with_fallback(prompt: str, **kwargs: Any) -> tuple[Optional[str], bool]:
+    """Try the primary endpoint, then the local fallback. (raw, used_fallback).
+
+    Only failures another endpoint might not share trigger the second attempt
+    -- a quota or rate limit, a rejected key, a server error, an unreachable
+    host. A model that answered badly is not retried: the fallback would answer
+    just as badly and the run would take twice as long doing it.
+    """
+    reasons: List[str] = []
+    raw = _call_llm(prompt, on_retryable_failure=reasons, **kwargs)
+    if raw is not None or not reasons:
+        return raw, False
+
+    endpoint = (CONFIG.llm_fallback_endpoint or "").strip()
+    model = (CONFIG.llm_fallback_model or "").strip()
+    if not endpoint or not model:
+        return None, False
+    if endpoint == (CONFIG.llm_endpoint or "").strip():
+        return None, False   # the fallback *is* the endpoint that just failed
+
+    # In debug the failure was already printed in full by _call_llm; repeating
+    # it here just doubles the noise on every book of a rate-limited run.
+    if not CONFIG.debug:
+        rprint(f"  [yellow]- {reasons[0]}[/]")
+    rprint(f"  [cyan]- falling back to {_endpoint_label(endpoint)} ({model})[/]")
+    raw = _call_llm(prompt, endpoint=endpoint, model=model, api_key="", **kwargs)
+    return raw, raw is not None
+
+
+def fallback_confidence(
+    meta: Optional[Dict[str, Optional[str]]],
+    guess: Optional[Dict[str, Any]],
+) -> int:
+    """How well a fallback answer agrees with the evidence on disk, 0-100.
+
+    A local model asked "which audiobook is this folder?" will answer even when
+    it has no idea, and the answer looks exactly like a good one. There is no
+    provider score to lean on here, so the folder's own guess is the only
+    independent evidence -- if the model's title and author do not resemble it,
+    the answer is not trustworthy enough to write into a library.
+
+    Returns 0 when there is nothing to compare against, so an unverifiable
+    answer is never treated as confident.
+    """
+    if not meta or not meta.get("title"):
+        return 0
+    if not guess:
+        return 0
+
+    guess_title = (guess.get("title") or "").strip()
+    if not guess_title:
+        return 0
+    title_score = fuzz.token_set_ratio(meta["title"].lower(), guess_title.lower())
+
+    guess_author = (guess.get("author") or "").strip()
+    meta_author = (meta.get("author") or "").strip()
+    if guess_author and meta_author and guess_author.lower() != "unknown author":
+        author_score = fuzz.token_set_ratio(meta_author.lower(), guess_author.lower())
+        return int(round(0.7 * title_score + 0.3 * author_score))
+    return int(round(title_score))
 
 
 def _strip_fence(text: str) -> str:
@@ -320,7 +427,7 @@ def generate_metadata_via_llm(
             payload = json.loads(cleaned)
         except json.JSONDecodeError:
             if CONFIG.debug:
-                rprint("  [yellow]- LM Studio returned non-JSON metadata[/]")
+                rprint("  [yellow]- LLM returned non-JSON metadata[/]")
             return None
         if not isinstance(payload, dict):
             return None
@@ -361,7 +468,7 @@ def generate_metadata_via_llm(
             if not (str(meta.get(key)).strip() if meta.get(key) is not None else "")
         }
 
-    primary_raw = _call_llm(
+    primary_raw, used_fallback = _call_llm_with_fallback(
         prompt,
         system_prompt=constants.MCP_SYSTEM_PROMPT,
         tools=constants.MCP_TOOLS,
@@ -369,10 +476,28 @@ def generate_metadata_via_llm(
     )
     if primary_raw is None:
         if CONFIG.debug:
-            rprint("  [yellow]- LM Studio metadata request returned no content[/]")
+            rprint("  [yellow]- LLM metadata request returned no content[/]")
         return None
 
     result = parse_llm_raw(primary_raw)
+
+    if used_fallback:
+        # The fallback has no provider score behind it and no quota discipline
+        # keeping it honest, so it is checked against the folder before use.
+        score = fallback_confidence(result, guess)
+        threshold = CONFIG.llm_fallback_min_score
+        if score < threshold:
+            rprint(
+                f"  [yellow]- local LLM answer scores {score} against the folder "
+                f"(needs {threshold}); leaving untagged[/]"
+            )
+            review_log(
+                folder,
+                f"local LLM fallback rejected: score {score} < {threshold}",
+            )
+            return None
+        rprint(f"  [green]- local LLM answer accepted (score {score})[/]")
+
     missing_fields = missing_optional(result)
 
     if missing_fields:
@@ -384,9 +509,23 @@ def generate_metadata_via_llm(
             + ". Please research reputable audiobook sources (Audible, Open Library, Google Books, publisher sites) and try again."
         )
 
+        # Stay on whichever endpoint actually answered. Sending the gap-filling
+        # retry back to the primary meant that after a successful fallback it
+        # hit the same quota error that caused the fallback in the first place.
+        retry_kwargs: Dict[str, Any] = {}
+        if used_fallback:
+            retry_kwargs = {
+                "endpoint": CONFIG.llm_fallback_endpoint,
+                "model": CONFIG.llm_fallback_model,
+                "api_key": "",
+            }
+        retry_where = _endpoint_label(
+            retry_kwargs.get("endpoint") or CONFIG.llm_endpoint
+        )
+
         if CONFIG.debug:
             rprint(
-                "  [cyan]- retrying LM Studio metadata request to fill: "
+                f"  [cyan]- retrying {retry_where} metadata request to fill: "
                 + missing_list
                 + "[/]"
             )
@@ -397,6 +536,7 @@ def generate_metadata_via_llm(
             tools=constants.MCP_TOOLS,
             max_tokens=1024,
             attempt=1,
+            **retry_kwargs,
         )
         retry_result = parse_llm_raw(retry_raw)
         if retry_result:
@@ -525,7 +665,7 @@ def refine_metadata_via_mcp(
         return combined
 
     try:
-        stage1_raw = _call_llm(
+        stage1_raw, _ = _call_llm_with_fallback(
             stage1_prompt,
             system_prompt=constants.MCP_SYSTEM_PROMPT,
             tools=constants.MCP_TOOLS,
@@ -618,7 +758,7 @@ def refine_metadata_via_mcp(
             }
         ]
 
-        stage2_raw = _call_llm(
+        stage2_raw, _ = _call_llm_with_fallback(
             stage2_prompt,
             system_prompt=constants.MCP_SYSTEM_PROMPT,
             tools=sequential_tools,

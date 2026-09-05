@@ -185,3 +185,35 @@ True and the code correctly returned None. Only a mount produces "same parent,
 different child", and tests cannot mount -- so that test stubs the parent
 identity check and the traversal is what is under test, with the real-system
 result recorded in the docstring.
+
+## 2026-09-05 — 4.17: local LLM fallback when the hosted quota runs out
+
+Field report: OpenRouter's free tier returned 429 partway through a run and
+every remaining book was abandoned with "no metadata found".
+
+- `_call_llm` now takes an explicit endpoint/model/api_key and reports failures
+  through an `on_retryable_failure` out-parameter. **Only** 401/402/403/408/409/
+  429/5xx and transport errors are retryable. 400 and 404 are deliberately not:
+  a malformed request or missing model fails identically anywhere, and a model
+  that merely answered *badly* would answer badly twice.
+- `_call_llm_with_fallback()` retries on `llm_fallback_endpoint`. The
+  gap-filling retry now stays on whichever endpoint answered — it used to go
+  back to the primary and hit the same quota error.
+- `_endpoint_label()` names the host. Everything used to say "LM Studio", which
+  is why the field report read as though the local server produced the 429.
+- **combobook passed no `guess`** to generate_metadata_via_llm, so nothing could
+  check an answer. Fixed — without it the gate below can never pass.
+
+The gate the user asked for: a local model asked "which audiobook is this?"
+answers confidently either way, and there is no provider score on this path.
+`fallback_confidence()` compares title/author against the folder guess
+(0.7*title + 0.3*author) and returns **0 when there is nothing to compare
+against**, so unverifiable answers are never confident. Below
+`llm_fallback_min_score` (85) the book is left untagged with a review-log entry.
+
+Verified with two throwaway HTTP endpoints: local agreeing -> score 100,
+accepted; local inventing "The Hobbit" -> score 33, left untagged. One call to
+each endpoint, no wasted retries.
+
+Also widened the --show-config columns, which wrapped once the longer
+`llm_fallback_*` names appeared.

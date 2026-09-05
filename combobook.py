@@ -991,7 +991,21 @@ def process(folder: Path, src: Path, lib: Path, dry: bool, yes: bool, copy: bool
         chosen_meta = hit
         llm_used = False
         if not chosen_meta:
-            llm_payload = tagger.generate_metadata_via_llm(folder, audio_files)
+            # Pass the folder guess: it is the only independent evidence the
+            # LLM answer can be checked against, and a fallback answer with
+            # nothing to check it against is refused rather than trusted.
+            llm_payload = tagger.generate_metadata_via_llm(
+                folder,
+                audio_files,
+                guess={
+                    "path": str(folder),
+                    "title": guess.title,
+                    "author": None if guess.author == "Unknown Author" else guess.author,
+                    "year": guess.year,
+                    "series": guess.series,
+                    "series_index": guess.seq,
+                },
+            )
             if llm_payload:
                 author = (llm_payload.get("author") or "").strip()
                 title = (llm_payload.get("title") or "").strip()
@@ -1156,6 +1170,15 @@ if __name__=="__main__":
                     help="OpenAI-compatible endpoint for LM Studio fallback (use 'none' to disable)")
     ap.add_argument("--llm-model", default=None,
                     help="Model name to request from the LM Studio endpoint")
+    ap.add_argument("--llm-fallback-endpoint", default=None, metavar="URL",
+                    help="Local OpenAI-compatible endpoint to use when the main "
+                         "one cannot answer (quota, rejected key, server error). "
+                         "Pass 'none' to disable.")
+    ap.add_argument("--llm-fallback-model", default=None, metavar="NAME",
+                    help="Model to request from the fallback endpoint")
+    ap.add_argument("--llm-fallback-min-score", type=int, default=None, metavar="SCORE",
+                    help="How closely a fallback answer must match the folder "
+                         "before it is written, 0-100 (default 85)")
     ap.add_argument("--copy-buffer-mb", type=int, default=None,
                     help="Override chunk size for copy/move (MiB); default sourced from environment or 16")
     ap.add_argument("--copy-workers", type=int, default=None,
@@ -1201,6 +1224,17 @@ if __name__=="__main__":
             tagger.CONFIG.llm_endpoint = None
         else:
             tagger.CONFIG.llm_endpoint = val
+    if args.llm_fallback_endpoint is not None:
+        val = args.llm_fallback_endpoint.strip()
+        tagger.CONFIG.llm_fallback_endpoint = (
+            None if val.lower() in {"", "none", "null"} else val
+        )
+    if args.llm_fallback_model:
+        tagger.CONFIG.llm_fallback_model = args.llm_fallback_model.strip() or None
+    if args.llm_fallback_min_score is not None:
+        tagger.CONFIG.llm_fallback_min_score = max(
+            0, min(100, args.llm_fallback_min_score)
+        )
     if args.llm_model:
         tagger.CONFIG.llm_model_name = args.llm_model.strip() or tagger.CONFIG.llm_model_name
     AUTO_YES = args.yes

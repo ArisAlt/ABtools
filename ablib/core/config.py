@@ -93,6 +93,23 @@ class RuntimeConfig:
             or os.environ.get("OPENROUTER_API_KEY")
         )
     )
+    # A local model to fall back to when the primary endpoint cannot answer.
+    # A hosted free tier runs out ("HTTP 429: Rate limit exceeded:
+    # free-models-per-day") partway through a large run, and every remaining
+    # book was then simply left with no metadata. A local server has no quota.
+    llm_fallback_endpoint: Optional[str] = field(
+        default_factory=lambda: _env_str("LLM_FALLBACK_ENDPOINT", DEFAULT_LLM_ENDPOINT)
+    )
+    llm_fallback_model: Optional[str] = field(
+        default_factory=lambda: _env_str("LLM_FALLBACK_MODEL", DEFAULT_LLM_MODEL_NAME)
+    )
+    # How closely a fallback answer must match the folder before it is written.
+    # A small local model asked "what book is this?" will confidently invent
+    # one, so its answer is only accepted when it agrees with the evidence on
+    # disk; below this the book is left untagged rather than tagged wrongly.
+    llm_fallback_min_score: int = field(
+        default_factory=lambda: _env_int("LLM_FALLBACK_MIN_SCORE", 85)
+    )
 
 
 config = RuntimeConfig()
@@ -104,6 +121,9 @@ ENV_SETTINGS = (
     ("llm_timeout", "LLM_TIMEOUT", False),
     ("llm_max_tokens", "LLM_MAX_TOKENS", False),
     ("llm_api_key", "LLM_API_KEY", True),
+    ("llm_fallback_endpoint", "LLM_FALLBACK_ENDPOINT", False),
+    ("llm_fallback_model", "LLM_FALLBACK_MODEL", False),
+    ("llm_fallback_min_score", "LLM_FALLBACK_MIN_SCORE", False),
     ("debug", "DEBUG", False),
 )
 

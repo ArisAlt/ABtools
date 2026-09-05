@@ -37,6 +37,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 | P2 | [4.14](#414-restructure_for_audiobookshelfpy-no-leave-in-place-for-books-it-cannot-identify) | restructure still sweeps unidentified books into `Unknown Author/` | 🛠️ **Fixed (2026-09-05)** |
 | P2 | [4.15](#415-booknfo-and-metadatajson-described-the-same-book-differently) | The two sidecars for one book disagreed | 🛠️ **Fixed (2026-09-05)** |
 | **P1** | [6.4](#64-abtoolsguipy-the-folder-browser-shows-nothing-for-a-network-share) | Folder browser empty for a network share or a mount-shadowed path | 🛠️ **Fixed (2026-09-05)** |
+| **P1** | [4.17](#417-a-hosted-quota-error-abandoned-every-remaining-book) | A hosted 429 gave up on every remaining book; no local fallback | 🛠️ **Fixed (2026-09-05)** |
 | **P1** | [4.16](#416-the-schema-fix-never-reached-libraries-already-on-disk) | 4.9 fixed the writer; books already tagged kept the old schema | 🛠️ **Fixed (2026-09-05)** |
 | P2 | [4.9](#49-metadatajson-does-not-match-audiobookshelfs-schema) | Sidecar schema likely ignored by Audiobookshelf | 🛠️ **Fixed (2026-09-05)** |
 | — | [8](#8-mcp-tool-runtime-verification) | MCP tools executed for real: 3 working, 2 blocked by the remote host | Verified |
@@ -623,6 +624,43 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
   $ restructure_for_audiobookshelf.py lib_old --refresh-sidecars --commit
   Inspected 1 books (applied) - refreshed: 0, already current: 1
   ```
+
+### 4.17 A Hosted Quota Error Abandoned Every Remaining Book
+- **Status**: 🛠️ **FIXED (2026-09-05)** — reported from the field, mid-run against OpenRouter's free tier:
+  ```
+   guess: Homeward Bound by Worldwar - Colonization (?)
+     - no match
+    - LM Studio returned HTTP 429: {"error":{"message":"Rate limit exceeded:
+      free-models-per-day. Add 10 credits to unlock 1000 free model requests per day"...
+    - LM Studio metadata request returned no content
+    - no metadata found
+  ```
+- **Files**: [`ablib/metadata/llm.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/metadata/llm.py), [`ablib/core/config.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/core/config.py), [`combobook.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py)
+- **Error**: `_call_llm` returned `None` for *every* failure alike, and the caller then gave up on the book. A hosted free tier exhausts its daily quota partway through a large run, so from that point on every remaining book was reported "no metadata found" — even though a local model was sitting there able to answer. Three further faults were visible in that one log excerpt:
+  1. Every message said **"LM Studio"** regardless of endpoint, so a quota error from `openrouter.ai` read as though the local server had produced it.
+  2. `combobook` called `generate_metadata_via_llm(folder, audio_files)` with **no `guess`**, so nothing downstream had anything to check an answer against.
+  3. The gap-filling retry always went back to the primary endpoint, so after any successful failover it hit the same quota error again.
+- **Fix applied**:
+  - `_call_llm` takes an explicit `endpoint` / `model` / `api_key` and reports failures through an `on_retryable_failure` out-parameter. Only statuses another endpoint might not share are retryable — `401, 402, 403, 408, 409, 429, 500, 502, 503, 504` and transport errors. **400 and 404 are not**: a malformed request or a missing model fails identically anywhere, and a model that answered badly would answer badly twice.
+  - `_call_llm_with_fallback()` retries on `llm_fallback_endpoint` (default `http://127.0.0.1:8888/v1/chat/completions`), and the gap-filling retry now stays on whichever endpoint actually answered.
+  - `_endpoint_label()` names the host, so the line reads `openrouter.ai HTTP 429` or `local LLM`.
+  - `combobook.process()` now passes the folder guess.
+  - The MCP refinement stages use the same fallback; their results are already gated on `MCP_ACCEPT_SCORE`.
+- **The gate on fallback answers**: there is no provider score on this path, and a small local model asked *"which audiobook is this folder?"* answers confidently whether or not it knows. `fallback_confidence()` compares its title and author against the folder guess (`0.7 × title + 0.3 × author`, title alone when no author is known) and returns **0 when there is nothing to compare against**, so an unverifiable answer is never treated as confident. Below `llm_fallback_min_score` (default 85, `--llm-fallback-min-score`, **Min score** in the GUI) the book is **left untagged** and the reason written to the review log.
+- **Verification** — two fake endpoints, a rate-limited "hosted" one and a local one:
+  ```
+  A. local agrees with the folder
+    - openrouter HTTP 429 ... - falling back to local LLM (local/model)
+    - local LLM answer accepted (score 100)
+    RESULT : {'title': 'Homeward Bound', 'author': 'Harry Turtledove', 'series': 'Worldwar', ...}
+    calls  : hosted=1 local=1
+
+  B. local invents "The Hobbit"
+    - falling back to local LLM (local/model)
+    - local LLM answer scores 33 against the folder (needs 85); leaving untagged
+    RESULT : None
+  ```
+  Covered by `tests/test_llm_fallback.py` (10 tests), including that a merely *bad* answer never triggers the fallback and that a fallback pointed at the failing endpoint is skipped rather than asked twice.
 
 ## 5. Metadata, Providers & Tagging Logic Errors
 

@@ -308,6 +308,25 @@ Folders are moved to `<library>/Author/Series?/Title (Year)/`.
 
 
 
+### Local LLM fallback
+
+A hosted free tier runs out partway through a large run (`HTTP 429: Rate limit exceeded: free-models-per-day`), and every remaining book would otherwise be
+abandoned with "no metadata found". When the main endpoint cannot answer — a quota or rate limit, a rejected key, a server error, an unreachable host — the
+question is retried against a local model:
+
+```bash
+python combobook.py "source" "library" --commit \
+  --llm-endpoint https://openrouter.ai/api/v1/chat/completions \
+  --llm-fallback-endpoint http://127.0.0.1:8888/v1/chat/completions \
+  --llm-fallback-model ibm/granite-4-h-tiny
+```
+
+Only those failures trigger it; a model that answered badly is not asked twice. Pass `--llm-fallback-endpoint none` to disable it.
+
+A local model has no provider score behind it and will answer confidently whether or not it knows the book, so its answer is compared against the folder before
+anything is written. Below `--llm-fallback-min-score` (default 85) the book is **left untagged** and the reason recorded in `review_log.txt`, rather than tagged
+from an unverified guess. The GUI exposes all of this as **Local fallback**, **Fallback model** and **Min score** on the Model card.
+
 Sidecars are only written when a book is tagged, and the organisers move them rather than rewriting them — so a library tagged before the Audiobookshelf schema fix keeps the old flat `metadata.json`. Bring one up to date without moving anything:
 
 ```bash
