@@ -319,10 +319,10 @@ def _style_widgets() -> None:
               bordercolor=[("selected", ACCENT), ("active", ACCENT), ("!selected", BORDER)],
               checkcolor=[("selected", ON_ACCENT)])
 
-    # Elevated cards: flat surface with a crisp hairline border and quiet section headings.
-    style.configure("Card.TFrame", background=SURFACE, bordercolor=BORDER,
-                    lightcolor=BORDER, darkcolor=BORDER, relief="solid", borderwidth=1)
-    style.configure("CardBody.TFrame", background=SURFACE, borderwidth=0)
+    # Flat cards: clean surface matching tab framing, without outer border lines.
+    style.configure("Card.TFrame", background=SURFACE, bordercolor=SURFACE,
+                    lightcolor=SURFACE, darkcolor=SURFACE, relief="flat", borderwidth=0)
+    style.configure("CardBody.TFrame", background=SURFACE, borderwidth=0, relief="flat")
     style.configure("CardHeading.TLabel", background=SURFACE, foreground=MUTED,
                     font=FONT_SECTION)
     style.configure("Title.TLabel", background=BG, foreground=FG, font=FONT_TITLE)
@@ -778,6 +778,9 @@ tip(ttk.Button(paths_frame, text="Browse", command=browse_dst),
 commit_var = tk.BooleanVar()
 copy_var = tk.BooleanVar()
 yes_var = tk.BooleanVar()
+# Default off: an unidentifiable folder keeps more meaning where it sits in the
+# source tree than it does in a flat _unmatched/ bucket. See bug.md 4.10.
+move_unmatched_var = tk.BooleanVar(value=False)
 network_var = tk.BooleanVar()
 timeout_var = tk.IntVar(value=30)
 compare_by_var = tk.StringVar(value="hash")
@@ -922,6 +925,12 @@ tip(ttk.Checkbutton(tag_opts, text="Auto-accept", variable=yes_var),
     "Accept every metadata match without asking (--yes).\n\nFaster for a big "
     "run, but a wrong match is written without you seeing it."
     ).grid(row=0, column=2, sticky="w")
+tip(ttk.Checkbutton(tag_opts, text="Move unmatched", variable=move_unmatched_var),
+    "Move books that nothing could identify into <library>/_unmatched/.\n\n"
+    "Left off (the default) they stay exactly where they are in the source "
+    "tree, untouched \u2014 for a folder with no usable tags, its path is the "
+    "last clue about what it is."
+    ).grid(row=1, column=0, sticky="w", pady=(PAD_Y // 2, 0))
 tip(ttk.Checkbutton(tag_opts, text="Auto-decline", variable=no_var),
     "Decline every match that would otherwise prompt (--no).\n\nUse it to "
     "sweep a library and collect the uncertain books in the review log "
@@ -1592,6 +1601,7 @@ def _run_combobook(mode: str) -> None:
     commit_flag = commit_var.get()
     copy_flag = copy_var.get()
     auto_yes_flag = yes_var.get()
+    move_unmatched_flag = move_unmatched_var.get()
     skip_move = mode == "tag_only"
     skip_tags = mode == "move_only"
     dry_run = skip_move or not commit_var.get()
@@ -1646,6 +1656,13 @@ def _run_combobook(mode: str) -> None:
                 elif skip_move:
                     combobook.rprint("[cyan]Moves are disabled (tag-only mode).[/]")
 
+                combobook.MOVE_UNMATCHED = move_unmatched_flag
+                if not move_unmatched_flag:
+                    combobook.rprint(
+                        "[cyan]Unmatched folders will be left in place "
+                        "(tick 'Move unmatched' to collect them).[/]"
+                    )
+
                 leaves = combobook.leaf_dirs(src)
                 total = len(leaves)
                 combobook.rprint(f"[cyan]Discovered {total} leaf folder(s) to handle.[/]")
@@ -1688,7 +1705,7 @@ def _run_combobook(mode: str) -> None:
                 combobook.rprint(f"  processed    : {summary['total']}")
                 combobook.rprint(f"  {action_word:12}: {summary['moved']}")
                 combobook.rprint(f"  would_move   : {summary['would_move']}")
-                for key in ("exists", "skip", "unmatched"):
+                for key in ("exists", "skip", "unmatched", "left_in_place"):
                     combobook.rprint(f"  {key:12}: {summary[key]}")
                 if skip_move:
                     combobook.rprint("  moves skipped (tag-only mode)")
