@@ -38,6 +38,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 | P2 | [4.15](#415-booknfo-and-metadatajson-described-the-same-book-differently) | The two sidecars for one book disagreed | 🛠️ **Fixed (2026-09-05)** |
 | **P1** | [6.4](#64-abtoolsguipy-the-folder-browser-shows-nothing-for-a-network-share) | Folder browser empty for a network share or a mount-shadowed path | 🛠️ **Fixed (2026-09-05)** |
 | **P1** | [4.17](#417-a-hosted-quota-error-abandoned-every-remaining-book) | A hosted 429 gave up on every remaining book; no local fallback | 🛠️ **Fixed (2026-09-05)** |
+| **P0** | [4.18](#418-the-provider-layer-sent-work-to-the-llm-that-it-could-answer-itself) | 14/15 books went to the LLM that providers could answer; 3 wrong books chosen | 🛠️ **Fixed (2026-09-05)** |
 | **P1** | [4.16](#416-the-schema-fix-never-reached-libraries-already-on-disk) | 4.9 fixed the writer; books already tagged kept the old schema | 🛠️ **Fixed (2026-09-05)** |
 | P2 | [4.9](#49-metadatajson-does-not-match-audiobookshelfs-schema) | Sidecar schema likely ignored by Audiobookshelf | 🛠️ **Fixed (2026-09-05)** |
 | — | [8](#8-mcp-tool-runtime-verification) | MCP tools executed for real: 3 working, 2 blocked by the remote host | Verified |
@@ -661,6 +662,35 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
     RESULT : None
   ```
   Covered by `tests/test_llm_fallback.py` (10 tests), including that a merely *bad* answer never triggers the fallback and that a fallback pointed at the failing endpoint is skipped rather than asked twice.
+
+### 4.18 The Provider Layer Sent Work to the LLM That It Could Answer Itself
+- **Status**: 🛠️ **FIXED (2026-09-05)** — measured against a real library, `/home/citizenzero/Downloads/Harry Turtledove` (15 books, `<Author>/<Series (years)>/<N - Title (Year)>`).
+
+  | | before | after |
+  |---|---|---|
+  | matched by a provider | 15/15 | 15/15 |
+  | scored **below** the 85 threshold, i.e. handed to the LLM | **14/15** | **0/15** |
+  | wrong book chosen | 3 | 0 |
+  | wall clock | 91s | 36s |
+
+- **Files**: [`ablib/metadata/utils.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/metadata/utils.py) (`guess_from_path`), [`ablib/providers/http.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/providers/http.py), [`ablib/core/http.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/core/http.py), [`combobook.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py)
+- **Errors** — five faults, compounding:
+  1. **The series folder was read as the author.** `guess_from_path` took the immediate parent unconditionally, so `Harry Turtledove/Worldwar - Colonization (1994-2004)/8 - Homeward Bound (2004)` was queried as *author* `"Worldwar - Colonization"` — and its year `(2004)` and index `8` were dropped entirely. A nonexistent author suppressed every correct hit and let unrelated books by real authors outrank them: *Homeward Bound* by **Elaine Tyler May**, *Aftershocks* by **Catherine Coulter**, *Second Contact* by **Craig A. Falconer** all won at 80-84. `combobook.guess_from_folder` had this right via `PARENT_RANGE_RX`; the CLI path did not.
+  2. **Goodreads had never worked.** The shared session identified as `python-requests/2.34.2`; Goodreads answers **403** to that, and the helper called `.text` with no `raise_for_status()`, so it parsed the error page and returned `None` — silently, on every book since the tier existed. It is queried *first*, so this cost one wasted request per book and lost the only provider that names the series inline.
+  3. **Scoring was deflated when no author was known.** Fixed weights meant a *perfect* title match scored `100 × 0.7 = 70` — below `ACCEPT_SCORE` (85) *and* the default `--llm-threshold` (85). Every untagged book went to the LLM even when a provider had already returned exactly the right book.
+  4. **Rip debris went straight into the query.** `"Daughter of the Empire 128kbps"` matched nothing at all; `"Magicians End (Unabridged)"` scored 45.
+  5. **One query, one chance.** If the first form found nothing, nothing else was tried.
+- **Fix applied**:
+  - `guess_from_path` reads the leaf with the shared `parse_book_folder_name`, then recognises a parent named `<Series> (YYYY[-YYYY])` as a series level and takes the author from above it (`split_parent_series`). All five fields are now recovered.
+  - The shared `SESSION` sends a browser User-Agent and retries `429/5xx` twice with backoff.
+  - `score_candidate()` weights each dimension only when there is something to compare against, so title alone decides when no author is known.
+  - `clean_query_title()` strips `(Unabridged)`, `[Audiobook]`, bitrates, `NN of NN`, disc/part markers, bare `(YYYY)`, and unbalanced trailing parentheticals — the last for `"2 - West and East (20109"`, a real folder whose year is a typo.
+  - `best_match()` runs a short ladder: as guessed → without the guessed author (a directory name is a guess, the title rarely is) → with the series appended. Each rung only runs if the previous found nothing at/above `ACCEPT_SCORE`, so a confident first hit still costs one request.
+  - Providers return `series`/`series_index`/`isbn`/`language`. `split_series_suffix()` lifts a series out of the title (`Silverthorn (The Riftwar Saga, #3)`, `(Colonization, Book 2)`, `(Worldwar Series, Volume 2)`, `Book One`), and `strip_edition_tail()` removes a `by <Author> (1996-12-05)` reissue tail — which would otherwise have become the folder name.
+  - Results are cached per query, bounded at 512.
+  - Goodreads throttles with **HTTP 202 and an empty body**, which `raise_for_status()` does not catch; three consecutive refusals now disable it for the rest of the run instead of wasting a request per book.
+  - `combobook` uses the same `clean_query_title`, and its folder guess strips a leading `N - ` index even when the trailing year is malformed.
+- **Verification**: `tests/test_provider_queries.py` (30 tests, no network). Full suite 86.
 
 ## 5. Metadata, Providers & Tagging Logic Errors
 

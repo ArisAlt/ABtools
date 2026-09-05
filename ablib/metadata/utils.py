@@ -53,57 +53,65 @@ def extract_series_and_title(text: str) -> tuple[Optional[str], Optional[str], s
     return None, None, working
 
 
+# A series folder announces itself with a year or a year range:
+#   Harry Turtledove/Worldwar - Colonization (1994-2004)/8 - Homeward Bound (2004)
+# Reading that middle level as the author -- which is what the immediate-parent
+# rule did -- sent "Worldwar - Colonization" to the catalogues as an author. It
+# suppressed every correct hit, let unrelated books by real authors outrank
+# them, and guaranteed a sub-threshold score, so the whole tree fell through to
+# the LLM. See combobook.PARENT_RANGE_RX, which had this right.
+PARENT_SERIES_RX = re.compile(
+    r"^(?P<series>.+?)\s*\(\s*\d{4}\s*(?:-\s*\d{4}\s*)?\)\s*$"
+)
+
+
+def split_parent_series(name: str) -> Optional[str]:
+    """"Worldwar - Colonization (1994-2004)" -> "Worldwar - Colonization"."""
+    match = PARENT_SERIES_RX.match((name or "").strip())
+    return match.group("series").strip() if match else None
+
+
 def guess_from_path(
     path: Path,
 ) -> tuple[Optional[str], str, Optional[str], Optional[str], Optional[str]]:
-    """Derive author and title hints from the folder structure."""
+    """Derive author, title, year, series and index hints from the folder tree.
 
-    leaf = clean_tail(path.stem if path.is_file() else path.name)
-    year: Optional[str] = None
-    series: Optional[str] = None
-    series_index: Optional[str] = None
+    Reads the leaf with the shared `parse_book_folder_name`, then looks one
+    level up: a parent named "<Series> (YYYY-YYYY)" is a series level, and the
+    author is the level above it.
+    """
+    leaf_name = path.stem if path.is_file() else path.name
+    folder = path.parent if path.is_file() else path
 
-    match = constants.YEAR_RX.match(leaf)
+    parsed = parse_book_folder_name(leaf_name)
+    title = parsed["title"] or strip_annotations(clean_tail(leaf_name)) or leaf_name
+    year = parsed["year"]
+    series = parsed["series"]
+    series_index = parsed["series_index"]
+    author = parsed["author"]
+
+    # A leading "YYYY - " prefix, which parse_book_folder_name leaves alone.
+    match = constants.YEAR_RX.match(title)
     if match:
-        year = match.group(1)
-        leaf = leaf[match.end() :].lstrip(" -_")
+        year = year or match.group(1)
+        title = title[match.end():].lstrip(" -_")
 
-    parts = [segment.strip() for segment in leaf.split(" - ")]
-
-    if parts and re.fullmatch(r"\d+", parts[0]):
-        parts = parts[1:]
-
-    if parts and re.fullmatch(r"\d{4}", parts[-1]) and year is None:
-        year = parts.pop()
-
-    author: Optional[str] = None
-    if not parts:
-        title = leaf
-    elif len(parts) >= 2:
-        # The last segment is the title. Everything before it is author and/or
-        # series, and is only ever mined for series metadata -- previously a
-        # series pattern matching inside `combined` overwrote `title` with a
-        # fragment of the author text, silently discarding the real title.
-        combined = " - ".join(parts[:-1])
-        series, series_index, _ = extract_series_and_title(combined)
-        title = parts[-1]
-        if not series:
-            author_candidate = strip_annotations(combined.strip())
-            if (
-                author_candidate
-                and not any(ch.isdigit() for ch in author_candidate)
-                and sum(ch.isalpha() for ch in author_candidate) >= 2
-            ):
-                author = author_candidate
+    parent_series = split_parent_series(folder.parent.name)
+    if parent_series:
+        series = series or parent_series
+        author_dir = folder.parent.parent
     else:
-        series, series_index, title = extract_series_and_title(parts[0])
+        author_dir = folder.parent
 
     if not author:
-        parent = strip_annotations(clean_tail(path.parent.name))
-        author = parent if " " in parent else None
+        candidate = strip_annotations(clean_tail(author_dir.name))
+        # A series folder without a year range would otherwise arrive here and
+        # be filed as the author.
+        if candidate and " " in candidate and is_plausible_author(candidate):
+            if not split_parent_series(author_dir.name):
+                author = candidate
 
-    title = strip_annotations(title)
-    return author, title, year, series, series_index
+    return normalise_author(author), strip_annotations(title), year, series, series_index
 
 
 def determine_best_author(

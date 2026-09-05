@@ -1,4 +1,4 @@
-<!-- ABtools/scaffold.md - v2.39 - 2026-09-05 -->
+<!-- ABtools/scaffold.md - v2.40 - 2026-09-05 -->
 # Audiobook Tagging & Organization - Scaffold
 
 ## Project Layout
@@ -50,7 +50,7 @@ AudioBooks_tools/
 ## LLM and MCP Metadata Pipeline
 
 - `ablib.metadata.llm` falls back to a local endpoint (`llm_fallback_endpoint`) when the primary returns a retryable failure - quota, auth, server error, unreachable - and gates the local answer on `fallback_confidence()` against the folder guess. It implements staged fallbacks: provider merge (accepts matches >=90), `refine_metadata_via_mcp` for MCP-driven research, a SequentialThinking reasoning pass, and a final tag evaluator that logs confidence scores.
-- `ablib.metadata.utils` owns the resolvers both organisers share: `parse_book_folder_name` (reads `<Author> - <Series> - Book <N> - <Title>`), `is_plausible_author` (rejects disc markers, track indices and filename echoes), `normalise_author` and `primary_author`. `ablib.providers.http` and `ablib.providers.mcp` consolidate HTTP requests, scoring, and MCP tool definitions. The MCP prompt enforces running Goodreads before Audible and pulls DuckDuckGo snippets when needed.
+- `ablib.metadata.utils` owns the resolvers both organisers share: `parse_book_folder_name` (reads `<Author> - <Series> - Book <N> - <Title>`), `is_plausible_author` (rejects disc markers, track indices and filename echoes), `normalise_author` and `primary_author`. `ablib.providers.http` cleans the query (`clean_query_title`), scores each dimension only when there is something to compare against (`score_candidate`), runs a ladder of progressively looser queries, lifts inline series out of catalogue titles (`split_series_suffix`), caches per query and disables Goodreads once it throttles. `ablib.providers.mcp` holds the MCP tool definitions. The MCP prompt enforces running Goodreads before Audible and pulls DuckDuckGo snippets when needed.
 - DuckDuckGo search support is enabled by providing `DUCKDUCKGO_MCP` (or the literal "no key required") so the metadata refiner can fetch live web excerpts.
 - Experimental behaviour toggles live in `~/.abclient.json` and are loaded through `abclient.AbClient`.
 
@@ -62,6 +62,7 @@ AudioBooks_tools/
 
 ## Testing and Utilities
 
+- `tests/test_provider_queries.py` (30 tests, no network) pins query hygiene, the scoring weights, the ladder, inline-series parsing and the Goodreads circuit breaker.
 - `tests/test_llm_fallback.py` (10 tests) drives the local-LLM failover against throwaway HTTP endpoints: which failures are retryable, and the confidence gate that leaves a book untagged rather than writing an unverified answer.
 - `tests/test_organiser_resolution.py` (46 tests) pins how a book's identity is resolved: the author guard against rip debris, self-describing folder names, album-vs-track titles, and end-to-end parity between the two organisers starting from files on disk.
 - The `output/` directory is available for runtime artifacts if needed but is empty by default.

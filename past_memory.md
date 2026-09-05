@@ -217,3 +217,36 @@ each endpoint, no wasted retries.
 
 Also widened the --show-config columns, which wrapped once the longer
 `llm_fallback_*` names appeared.
+
+## 2026-09-05 — 4.18: providers now answer what the LLM was doing
+
+Goal: better initial queries, less LLM. Measured on the user's real
+/home/citizenzero/Downloads/Harry Turtledove (15 books):
+**14/15 -> 0/15 handed to the LLM**, 3 wrong books -> 0, 91s -> 36s.
+
+Five compounding faults, the first two being the big ones:
+
+1. `guess_from_path` took the **immediate parent as the author**, so
+   `Harry Turtledove/Worldwar - Colonization (1994-2004)/8 - Homeward Bound
+   (2004)` queried "Worldwar - Colonization" as an author and dropped the year
+   and index. That both suppressed correct hits and let unrelated real authors
+   win (Homeward Bound by Elaine Tyler May, Aftershocks by Catherine Coulter).
+   `combobook.guess_from_folder` had it right via PARENT_RANGE_RX all along --
+   the CLI path never did.
+2. **Goodreads had never once worked.** The shared SESSION sent
+   `python-requests/2.34.2`; Goodreads 403s that, and the helper read `.text`
+   with no `raise_for_status()`. Silent, on every book, in the *first* tier.
+3. Fixed scoring weights: a perfect title with no author scored 70, under both
+   ACCEPT_SCORE and --llm-threshold (both 85). Same class of bug I had already
+   fixed in combobook's `_similarity` but not here.
+4. Rip debris went into the query ("Daughter of the Empire 128kbps" -> nothing).
+5. One query form, one chance.
+
+Operational note worth keeping: **Goodreads throttles with HTTP 202 and an
+empty body**, not 403/429 — `raise_for_status()` sails past it. Added a circuit
+breaker after 3 consecutive refusals. It works well when fresh (it is the only
+provider naming the series inline) but cannot be leaned on for a bulk run;
+openlib + audible carried all 15 on their own.
+
+Benchmark script kept at /tmp/claude-1000/bench2.py — worth recreating as a
+tests/ opt-in if provider quality regresses again.

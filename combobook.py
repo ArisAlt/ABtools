@@ -36,6 +36,7 @@ import errno
 import stat
 
 import ablib.metadata.llm as tagger
+from ablib.providers.http import clean_query_title
 from ablib.metadata.utils import (
     extract_series_and_title,
     format_canonical_dest,
@@ -501,10 +502,18 @@ def guess_from_folder(leaf: Path) -> Meta:
         year  = m.group("year")
     else:
         # Fallback: strip common tails and try to find a year anywhere
-        seq = None
         raw = PAREN_RX.sub("", clean_tail(leaf.name)).strip()
         y   = YEAR_RX.search(raw)
         year = y.group(1) if y else None
+        # A leading "2 - " is the position in the series, not part of the
+        # title. LEAF_RX only strips it when a well-formed "(YYYY)" follows,
+        # so a typo'd year ("2 - West and East (20109") left it in place and
+        # the index went into the catalogue query.
+        seq = None
+        lead = re.match(r"^\s*(?P<seq>\d{1,3})\s*[-_.]\s*(?P<rest>\S.*)$", raw)
+        if lead:
+            seq = lead.group("seq")
+            raw = lead.group("rest").strip()
         title = raw
 
     # 2) Look at parent folder for a "<Series> (YYYY-YYYY)" pattern
@@ -562,7 +571,8 @@ def _query_author(meta: Meta) -> Optional[str]:
 def ol_search_all(meta: Meta) -> List[Meta]:
     try:
         author = _query_author(meta)
-        q = f"title:{meta.title} author:{author}" if author else f"title:{meta.title}"
+        title = clean_query_title(meta.title) or meta.title
+        q = f"title:{title} author:{author}" if author else f"title:{title}"
         r = requests.get(
             "https://openlibrary.org/search.json",
             params={"q": q, "limit": 5}, timeout=10,
@@ -605,7 +615,8 @@ def gb_search_all(meta: Meta) -> List[Meta]:
 def audible_search_all(meta: Meta) -> List[Meta]:
     try:
         author = _query_author(meta)
-        q = f"{meta.title} {author}" if author else meta.title
+        title = clean_query_title(meta.title) or meta.title
+        q = f"{title} {author}" if author else title
         html = requests.get(
             "https://www.audible.com/search",
             params={"keywords": q},

@@ -308,6 +308,22 @@ Folders are moved to `<library>/Author/Series?/Title (Year)/`.
 
 
 
+### Provider lookups come first
+
+The LLM is a fallback, not the first stop. Measured on a real 15-book library laid out as `<Author>/<Series (years)>/<N - Title (Year)>`, the provider layer now
+answers **15/15** without the LLM; previously 14 of those 15 scored below the confidence threshold and were handed to the model, and three of them picked the
+wrong book entirely.
+
+What the lookup does before giving up:
+
+- reads the **series level** of the tree correctly, so `Harry Turtledove/Worldwar - Colonization (1994-2004)/8 - Homeward Bound (2004)` yields author, series,
+  index, title and year rather than querying `Worldwar - Colonization` as an author
+- strips rip debris from the query - `(Unabridged)`, `[Audiobook]`, `128kbps`, `01 of 14`, disc markers, a bare `(2004)`, and unclosed parentheticals
+- runs a short **ladder**: as guessed, then without the guessed author (a directory name is a guess; the title rarely is), then with the series appended - each
+  rung only if the one before found nothing confident
+- lifts the series out of catalogue titles: `Silverthorn (The Riftwar Saga, #3)`, `(Colonization, Book 2)`, `(Worldwar Series, Volume 2)`
+- caches per query, and stops asking Goodreads once it starts throttling
+
 ### Local LLM fallback
 
 A hosted free tier runs out partway through a large run (`HTTP 429: Rate limit exceeded: free-models-per-day`), and every remaining book would otherwise be
