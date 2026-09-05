@@ -21,7 +21,7 @@ AudioBooks_tools/
 |-- abclient.py                   # Feature flag client reading ~/.abclient.json
 |-- abclient.json                 # Sample client configuration
 |-- search_and_tag.py             # Legacy shim invoking ablib.cli.main
-|-- ab_encode.py                  # Audiobook M4B Builder with Auto-Verification & Cleanup
+|-- ab_encode.py                  # Audiobook builder: output profiles, verification, cleanup
 |-- README.md
 |-- scaffold.md
 |-- bug.md                         # Logic error & bug audit report
@@ -45,7 +45,7 @@ AudioBooks_tools/
 - **`repair_m4b.py`** detects the `MP4StreamInfoError` zero-length atom issue and rewrites the file via FFmpeg, keeping a `.bak` when `--overwrite` is used.
 - **`catalog.py`** maintains the SQLite database used by duplicate detection.
 - **`mcp_server/server.py`** hosts the FastMCP server that powers the LM Studio fallback (`search_*_tool`, `tag_books_tool`).
-- **`ab_encode.py`** acts as an Audiobook M4B Builder with Auto-Verification & Cleanup.
+- **`ab_encode.py`** joins each folder's audio into one audiobook file. Its `PROFILES` table is the single source of both front ends' format menu; the default is AAC-LC `.m4b`, the one combination that plays on iPhone as well as Android, Audiobookshelf and CarPlay. Nothing is deleted until the output has been matched against its sources for codec, total duration and a clean full decode.
 
 ## LLM and MCP Metadata Pipeline
 
@@ -74,11 +74,11 @@ AudioBooks_tools/
 |-----------|---------|----------|
 | Tagging CLI | 2.30 | `ablib/core/constants.py` |
 | combobook | 1.20 | `combobook.py` |
-| AbtoolsGui | 0.17 | `AbtoolsGui.py` |
+| AbtoolsGui | 0.18 | `AbtoolsGui.py` |
 | flatten_discs | 1.5 | `flatten_discs.py` |
 | find_duplicates | 0.5 | `find_duplicates.py` |
 | abclient | 0.2 | `abclient.py` |
 | restructure | 5.8 | `restructure_for_audiobookshelf.py` |
 | repair_m4b | 1.1 | `repair_m4b.py` |
 | MCP server | 1.1.0 | `mcp_server/server.py` |
-| ab_encode | 1.3 | `ab_encode.py` |
+| ab_encode | 2.0 | `ab_encode.py` |

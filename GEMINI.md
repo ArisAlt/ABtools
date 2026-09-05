@@ -5,6 +5,7 @@ It includes:
 - Tagging automation using metadata providers (Audible, Goodreads, Google Books, Open Library).
 - LLM integration for refining metadata and handling edge cases (with dynamic model auto-discovery and provider presets).
 - Duplicate detection and file restructuring tools.
+- Audiobook encoding (`ab_encode.py`) with output profiles for iPhone, Android and legacy hardware, chapter marks, and source deletion gated on full verification.
 - A GUI front-end (`AbtoolsGui.py`) with 9 curated dark and light themes, seamless flat tab framing, and session persistence.
 
 ## Key Files
@@ -16,6 +17,7 @@ It includes:
 - `combobook.py`: main tag + restructure orchestrator.
 - `AbtoolsGui.py`: graphical user interface front-end.
 - `ablib/`: core logic package (cli, core, metadata, providers, tagging).
+- `ab_encode.py`: encoder. Its `PROFILES` table is the single source of the format menu for both the CLI and the GUI.
 
 ## User Rules
 - Maintain `GEMINI.md` and `past_memory.md`.

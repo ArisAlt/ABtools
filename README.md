@@ -15,6 +15,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 
 
 - Automatically tags `.mp3`, `.m4a`, and `.m4b` files with metadata
+- Joins each folder into one audiobook file, defaulting to AAC-LC `.m4b` with chapter marks so it plays on an iPhone as readily as on Android — with Opus and MP3 targets available, and source deletion gated on a full verification
 
 - Uses data from Audible, Goodreads, OpenLibrary, and Google Books
 
@@ -179,12 +180,12 @@ pip install -r requirements.txt
 
 
 | `combobook.py` | v1.20 | `combobook.py` |
-| `AbtoolsGui.py` | v0.17 | `AbtoolsGui.py` |
+| `AbtoolsGui.py` | v0.18 | `AbtoolsGui.py` |
 | `flatten_discs.py` | v1.5 | `flatten_discs.py` |
 | `restructure_for_audiobookshelf.py` | v5.5 | `restructure_for_audiobookshelf.py` |
 | `repair_m4b.py` | v1.1 | `repair_m4b.py` |
 | `search_and_tag.py` | v2.30 | `search_and_tag.py` |
-| `ab_encode.py` | v1.3 | `ab_encode.py` |
+| `ab_encode.py` | v2.0 | `ab_encode.py` |
 | `find_duplicates.py` | v0.5 | `find_duplicates.py` |
 | `abclient.py` | v0.2 | `abclient.py` |
 | `catalog.py` | v0.1 | `catalog.py` |
@@ -490,6 +491,92 @@ python restructure_for_audiobookshelf.py "Downloads" "Audiobooks" --commit
 
 
 ```
+
+
+
+## `ab_encode.py`
+
+`ab_encode.py` joins each folder's audio files into one audiobook file with ffmpeg, verifies the result against its sources, and only then -- optionally -- deletes the originals.
+
+
+
+### Output profiles
+
+The default is **AAC-LC in an `.m4b`**, chosen for reach rather than efficiency: it is the one combination that plays natively on iPhone, iPad and Apple Books *and* on Android, Audiobookshelf, Plex and CarPlay. Encode once and the library stays portable to whatever player comes next.
+
+
+
+| profile | output | plays on | why |
+| --- | --- | --- | --- |
+| `iphone` *(default)* | AAC-LC `.m4b` | iPhone, iPad, Apple Books, Android, Audiobookshelf, CarPlay | the portable choice |
+| `android-aac` | AAC-LC `.m4a` | Android, iPhone | identical audio, different suffix -- for Android players and media scanners that ignore `.m4b` |
+| `android-opus` | Opus `.opus` | Android 5+, Audiobookshelf, VLC, Plex | about half the size at matching speech quality. **Not iPhone** -- Apple ships no Opus decoder -- and Ogg carries no chapter atom |
+| `mp3` | MP3 `.mp3` | anything, including pre-2010 car stereos | least efficient, most universally understood |
+| `copy` | remux `.m4b` | whatever already played the sources | lossless join, no re-encode. Refused unless every source is AAC at one sample rate and channel count |
+
+
+
+`python ab_encode.py --list-profiles` prints the table and marks any profile this ffmpeg build cannot produce (Opus needs `libopus`, MP3 needs `libmp3lame`).
+
+
+
+The `.m4b` and `.m4a` profiles write **one chapter mark per source file**, named from each file's title tag and falling back to its filename. Without them the result is a single unbroken file: Apple Books and most Android players show no chapter list and resume badly. Pass `--no-chapters` to skip.
+
+
+
+### Verification, and what gets deleted
+
+`--cleanup` deletes the source audio after encoding. Before anything is removed the output must pass **all** of:
+
+
+
+- the expected codec for the chosen profile;
+- a total duration matching the sum of the sources, within 4 s or 0.5% (capped at 60 s) -- far narrower than one chapter;
+- a full decode from end to end with no errors on stderr.
+
+
+
+That last check reads stderr rather than the exit code, because **ffmpeg returns 0 after dropping an undecodable packet**. `--cleanup` implies `--deep-verify` and cannot be separated from it.
+
+
+
+A folder containing a file ffmpeg cannot decode is **refused outright** rather than encoded without it, and the message names each bad file and what is wrong with it. Two kinds of damage are detected before encoding starts:
+
+
+
+- a file whose head is 64 KiB of NUL bytes -- preallocated and never filled;
+- a file whose size far exceeds the audio it claims to hold. ffprobe skips the leading junk in a part-download and reports a valid stream with a short duration, and ffmpeg then decodes that remnant without a single complaint; only the size-to-duration ratio gives it away. Measured over a 353-file library, every healthy file scored exactly 1.00 against a limit of 3.0.
+
+
+
+`--skip-unreadable` encodes the readable files anyway, and **forces cleanup off for that folder** -- the output is knowingly not a faithful copy, so the sources stay as the only record of what was dropped.
+
+
+
+### CLI options of interest
+
+- `-p, --profile {iphone,android-aac,android-opus,mp3,copy}`: output format (default `iphone`)
+- `-b, --bitrate`: encoder bitrate; defaults to the profile's own
+- `-c, --channels {1,2}`: mono (default) or stereo
+- `-w, --workers N`: folders encoded at once (default 4)
+- `--no-chapters`, `--skip-unreadable`, `--deep-verify`, `--cleanup`, `--list-profiles`
+
+
+
+```bash
+# The default: one .m4b per folder, chapters, sources kept
+python ab_encode.py ~/Audiobooks
+
+# Smallest files for an Android phone
+python ab_encode.py ~/Audiobooks -p android-opus -b 32k
+
+# Reclaim the space, but only where the result is provably intact
+python ab_encode.py ~/Audiobooks --cleanup
+```
+
+
+
+Sources already in the target format at the right sample rate and channel count are stream-copied losslessly rather than re-encoded, and a folder whose only file is already the finished article is skipped.
 
 
 

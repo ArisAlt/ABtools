@@ -2,7 +2,7 @@
 
 Comprehensive inventory of logic errors, runtime crashes, protocol incompatibilities, and silent failure modes discovered during the codebase audit of **ABtools**.
 
-**Last updated:** 2026-09-05 — merged findings from a second independent audit; every entry re-verified, three claims refuted. **19 of 32 entries fixed**, covering everything that affects a normal run. Still open: [2.3](#23-ablibclimainpy-preview-mode-fails-to-inspect-or-preview-metadata) (preview shows no metadata), [4.5](#45-ab_encodepy-arbitrary-m4b-selection-and-an-unreachable-branch), [6.1](#61-find_duplicatespy---only-src-log-is-dead-code-in-cli), [7.3](#73-combobookpy-unsafe-index-access-in-tags_from_track), [8.1](#81-audible-two-different-selector-sets-for-the-same-site) and [8.2](#82-provider-tools-return-a-list-on-success-but-a-dict-on-failure) — all either cosmetic, narrow edge cases, or unverifiable from this host.
+**Last updated:** 2026-09-06 — added [section 9](#9-encoder-output-formats--deletion-safety) from the encoder work: output profiles, and the deletion-safety path. [9.2](#92-ab_encodepy-verify_audio-was-far-too-weak-to-authorise-deleting-anything) is the significant one — `--cleanup` deleted sources on the strength of a positive duration, and was reproduced deleting a book's only copy of four damaged chapters. [4.5](#45-ab_encodepy-arbitrary-m4b-selection-and-an-unreachable-branch) closed with it. Still open and deliberately so: [7.3](#73-combobookpy-unsafe-index-access-in-tags_from_track) and [8.2](#82-provider-tools-return-a-list-on-success-but-a-dict-on-failure) (low severity), [7.2](#72-catalogpy-calc_signature-crashes-on-none-or-decimal-duration) (unreachable module), and [8.1](#81-audible-two-different-selector-sets-for-the-same-site) (cannot be validated from this host — Audible returns 503).
 
 ## Verification legend
 
@@ -338,7 +338,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
   - **Also added:** `flatten()` now computes every destination up front and refuses the whole set if any already exists, printing `! refusing to flatten - N destination file(s) already exist`. Previously `safe_move`'s uncaught `FileExistsError` aborted mid-loop, after some tracks had already moved. Verified: the pre-existing file survives and no traceback is raised.
 
 ### 4.5 `ab_encode.py`: Arbitrary `.m4b` Selection and an Unreachable Branch
-- **Status**: ✅ **Verified** by inspection. *(Newly added — not in the original report.)*
+- **Status**: 🛠️ **FIXED (2026-09-06)** — the whole `existing_m4b` scan is gone. Source selection is now `every audio file except the one we are about to write`, so `.m4b` parts are ordinary sources and the canonical `<folder><ext>` output can never be one of its own inputs. The dead `elif` went with it. A lone file already in the target codec *and* container is skipped whatever it is called, which preserves the old "AAC M4B exists" behaviour without depending on `os.listdir` order. See [9.1](#91-ab_encodepy-folders-of-m4b-parts-were-invisible-not-skipped).
 - **File**: [`ab_encode.py:110-132`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ab_encode.py#L110-L132), [`ab_encode.py:40`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ab_encode.py#L40)
 - **Code**:
   ```python
@@ -1007,6 +1007,86 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 - **Observation**: each search tool ends with `return results or {"error": "No results"}` — a `list` when it succeeds, a `dict` when it fails.
 - **Impact**: a consumer must type-check the response before iterating; an LLM client reading the raw payload can easily mistake the error dict for a result. It also conflates "the site returned nothing" with "our parser matched nothing" (see 8.1).
 - **Suggested fix**: always return a consistent envelope, e.g. `{"results": [...], "error": None}`.
+
+---
+
+## 9. Encoder Output Formats & Deletion Safety
+
+Found while adding output profiles to `ab_encode.py` on 2026-09-06. Evidence throughout is the user's own library at `~/Downloads/Harry Turtledove` (353 MP3s, 3 M4Bs across 15 books), which turns out to contain 8 MP3s and 2 M4Bs that are part-finished downloads — an unplanned but ideal test set.
+
+### 9.1 `ab_encode.py`: Folders of `.m4b` parts were invisible, not skipped
+- **Status**: 🛠️ **FIXED (2026-09-06)**
+- **File**: [`ab_encode.py:40`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ab_encode.py#L40)
+- **Error**: `EXTENSIONS = (".mp3", ".wav", ".flac", ".m4a", ".ogg")` — no `.m4b`, no `.opus`, no `.mp4`. `main()` queues a folder only when `any(f.lower().endswith(EXTENSIONS))`, so a folder holding only `.m4b` files produced **no task at all**: no encode, no skip message, no line in the final report.
+- **Impact**: reproduced against the real library. `The War That Came Early/2 - West and East (20109/` holds `1.m4b` and `2.m4b`, a two-part book that was never joined and never mentioned:
+  ```
+  EXTENSIONS: ('.mp3', '.wav', '.flac', '.m4a', '.ogg')
+  folders ffmpeg would process: 13
+  folders WITH audio that are NOT in the task list:
+     The War That Came Early (2009-2014)/2 - West and East (20109 -> ['1.m4b', '2.m4b']
+     Through Darkest Europe (2018) -> ['Through Darkest Europe.m4b']
+  ```
+- **Fix applied**: `EXTENSIONS` now covers `.mp3 .m4a .m4b .mp4 .aac .opus .ogg .oga .flac .wav .wma .aiff .aif`, and the output file is excluded from its own source list by name.
+- **Verification**: `test_a_folder_of_m4b_parts_is_now_visible_to_the_walker`. On the real folder the run now reports the true problem — both parts are NUL-padded downloads — instead of silence.
+
+### 9.2 `ab_encode.py`: `verify_audio` was far too weak to authorise deleting anything
+- **Status**: 🛠️ **FIXED (2026-09-06)** — the one entry in this report with a live data-loss path.
+- **File**: [`ab_encode.py:61-75`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ab_encode.py#L61-L75), `process_folder`
+- **Error**: the gate on `--cleanup` was `float(ffprobe format=duration) > 0`. A truncated, half-empty or wrong-codec output reports a positive duration just as happily as a correct one. Nothing compared the output against its sources.
+- **Impact**: reproduced end to end. `3 - The Big Switch (2011)` holds 26 MP3s, 4 of which are part-downloads (15.5 MB of NUL bytes then ~1.5 MB of real frames):
+  ```
+  sum of readable source durations : 25621 s
+  ffmpeg exit code                 : 0
+  verify_audio(output)             : True
+  reported status                  : "✅ Success"
+  ```
+  With `--cleanup` all 26 originals would have been deleted, leaving a book whose four damaged chapters can no longer be re-derived from anything.
+- **Fix applied**: `verify_output()` replaces it for every decision that matters, and fails closed. It requires the profile's expected codec, a duration matching the sum of the sources within `max(4s, min(60s, 0.5%))`, and — when deleting — a full end-to-end decode. `cleanup` now *implies* `deep_verify` and the two cannot be separated. `verify_audio` survives only as the shallow smoke test it always was.
+- **Verification**: `test_a_damaged_source_is_refused_and_nothing_is_deleted`, `test_cleanup_cannot_be_combined_with_a_shallow_verify`, `test_verify_output_rejects_an_output_shorter_than_its_sources`.
+
+### 9.3 `ab_encode.py`: ffmpeg's exit code is not a success signal, and its stderr was discarded
+- **Status**: 🛠️ **FIXED (2026-09-06)**
+- **File**: [`ab_encode.py:168-185`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ab_encode.py#L168-L185)
+- **Error**: three compounding problems in one command.
+  1. `-err_detect ignore_err -fflags +discardcorrupt` told ffmpeg to **silently drop** corrupt input rather than fail on it.
+  2. `stderr=subprocess.DEVNULL` threw away the only place ffmpeg explains itself.
+  3. Success was taken from `check=True`, but ffmpeg **returns 0 after dropping an undecodable packet**. Demonstrated directly:
+     ```
+     $ ffmpeg -v error -i "Ch 05.mp3" -f null -
+     [mp3float] Header missing
+     [aist#0:0/mp3] Error submitting packet to decoder: Invalid data found
+     decode exit: 0
+     ```
+- **Fix applied**: both tolerance flags are gone from the default path; `stderr` is captured and its first line becomes the reported `detail`; and `decodes_cleanly()` judges a decode by **empty stderr at `-v error`**, with `-xerror` to stop at the first fault rather than grinding through a seven-hour file.
+- **Verification**: `test_decodes_cleanly_reads_stderr_not_the_exit_code`.
+
+### 9.4 `ab_encode.py`: a part-download that ffmpeg *can* partly read defeats every obvious check
+- **Status**: 🛠️ **FIXED (2026-09-06)** — found while writing the test for 9.2, which initially failed for the wrong reason.
+- **Error**: the assumption was that an undecodable file is caught by probing or by decoding. It is not, once the padding is small enough to fit inside ffprobe's default 5 MB `probesize`. ffprobe then skips the junk and reports a **completely plausible** stream — right codec, right sample rate, positive duration — and ffmpeg decodes the surviving tail **without a single error**:
+  ```
+  Probe(duration=0.39, codec='mp3', sample_rate=44100, channels=1)
+  readable          : True
+  decodes_cleanly   : (True, '')
+  actual content    : 0.39 s of a 4 s file
+  ```
+  Duration checking cannot help either, because the *sources'* durations are what the output is measured against, and they are already wrong.
+- **Fix applied**: two cheap pre-encode signals, neither of which depends on the decoder.
+  - **Padding ratio** — file size over the size its own audio should occupy (`duration × bit_rate / 8`). Limit 3.0. Measured across all 353 MP3s in the real library: *every* healthy file scored exactly `1.000` (min 1.000, p50 1.000, max 1.000); the broken ones score 10 or more.
+  - **Leading NUL run** — 64 KiB of zeros at the head of the file. One small read, no subprocess, and the only signal left when ffprobe cannot describe the file at all.
+- **Verification**: `test_a_part_download_is_caught_by_padding_not_by_decoding`, `test_a_preallocated_file_is_caught_without_any_probe`, `test_a_healthy_file_is_never_called_damaged`.
+
+### 9.5 `ab_encode.py`: stream-copy passthrough ignored mismatched stream parameters
+- **Status**: 🛠️ **FIXED (2026-09-06)**
+- **File**: [`ab_encode.py:150-166`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ab_encode.py#L150-L166)
+- **Error**: `can_copy` required only that every source be an AAC file in an MP4-family container. The concat demuxer does **not** renegotiate stream parameters between files, so copying across a sample-rate or channel-count change yields output that plays at the wrong speed from the switch onwards — and at the right *duration*, so no length check would ever catch it.
+- **Fix applied**: `_can_stream_copy()` requires one codec, one sample rate and one channel count across all sources, and returns the reason when it refuses.
+- **Verification**: `test_stream_copy_is_refused_when_the_parameters_differ`, `test_the_copy_profile_refuses_mp3_sources_rather_than_garbling_them`.
+
+### 9.6 `ab_encode.py`: one hard-coded output, and no chapter marks
+- **Status**: 🛠️ **FIXED (2026-09-06)** — feature work rather than a defect, recorded here because it changed the same code path.
+- **Error**: the encoder had a single hard-coded target (`aac`, `44100`, `.m4b`) with no way to ask for anything else, and never wrote chapter marks. An M4B without them is one unbroken seven-hour file: Apple Books and most Android players show no chapter list and resume badly.
+- **Fix applied**: a `PROFILES` table read by both the CLI and the GUI, so they cannot drift into offering different encoders. Default `iphone` = AAC-LC `.m4b` with `-profile:a aac_low` and `+faststart` — the one combination that plays on iOS, Android, Audiobookshelf and CarPlay alike. Added `android-aac` (`.m4a`, for Android players that do not index `.m4b`), `android-opus` (about half the size, no Apple decoder), `mp3`, and `copy`. Chapters are derived from the source files' own durations and title tags, one per file.
+- **Verification**: all four re-encoding profiles produce a correct file from the same sources; the `.m4b` output probes as `mp4a.40.2` (AAC-LC exactly), carries three chapters at the right boundaries, and still opens and tags cleanly in mutagen. `--list-profiles` marks anything this ffmpeg build cannot produce.
 
 ---
 

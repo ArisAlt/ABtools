@@ -29,7 +29,7 @@ from ablib.core.constants import (
     DEFAULT_LLM_MODEL_NAME as CLI_DEFAULT_LLM_MODEL,
 )
 
-VERSION = "0.17"
+VERSION = "0.18"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -968,10 +968,19 @@ llm_threshold_var = tk.IntVar(value=DEFAULT_MATCH_THRESHOLD)  # --llm-threshold
 debug_var = tk.BooleanVar()                    # search_and_tag --debug
 show_files_var = tk.BooleanVar()               # find_duplicates --show-files
 overwrite_var = tk.BooleanVar()                # repair_m4b --overwrite
+# Output format. The default profile is AAC-LC in an .m4b, the one combination
+# that plays on an iPhone as well as on Android, Audiobookshelf and CarPlay;
+# the Android-specific and legacy targets are opt-in. The table itself lives in
+# ab_encode so the GUI and the CLI cannot offer different encoders.
+profile_var = tk.StringVar(
+    value=ab_encode.PROFILES[ab_encode.DEFAULT_PROFILE].label)   # ab_encode -p
 bitrate_var = tk.StringVar(value="64k")        # ab_encode -b
 channels_var = tk.StringVar(value="1")         # ab_encode -c
 workers_var = tk.IntVar(value=4)               # ab_encode -w
 cleanup_var = tk.BooleanVar()                  # ab_encode --cleanup
+chapters_var = tk.BooleanVar(value=True)       # ab_encode (no --no-chapters)
+deep_verify_var = tk.BooleanVar(value=True)    # ab_encode --deep-verify
+skip_unreadable_var = tk.BooleanVar()          # ab_encode --skip-unreadable
 api_key_var = tk.StringVar(value=CONFIG.llm_api_key or "")   # --llm-api-key
 # Local model to fall back to when the main endpoint cannot answer. A hosted
 # free tier runs out mid-run ("Rate limit exceeded: free-models-per-day") and
@@ -1417,32 +1426,111 @@ tip(ttk.Checkbutton(dupe_opts, text="Show files", variable=show_files_var),
 
 # ── Encode ──────────────────────────────────────────────────────────────────
 ttk.Label(encode_tab,
-          text="Combine each folder's audio into a single .m4b (needs ffmpeg).",
+          text="Combine each folder's audio into one audiobook file (needs ffmpeg).",
           style="Muted.TLabel").grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, PAD_Y))
 
-ttk.Label(encode_tab, text="Bitrate:").grid(row=1, column=0, sticky="w")
+ttk.Label(encode_tab, text="Format:").grid(row=1, column=0, sticky="w")
+profile_combo = ttk.Combobox(encode_tab, textvariable=profile_var,
+                             values=ab_encode.profile_labels(),
+                             state="readonly", width=34)
+profile_combo.grid(row=1, column=1, columnspan=3, sticky="w", pady=(0, PAD_Y))
+
+# Live description of the selected profile, so the trade-off is on screen
+# rather than in a tooltip nobody hovers.
+profile_note = ttk.Label(encode_tab, style="Muted.TLabel", wraplength=560,
+                         justify="left")
+profile_note.grid(row=2, column=0, columnspan=4, sticky="w", pady=(0, PAD_Y))
+
+ttk.Label(encode_tab, text="Bitrate:").grid(row=3, column=0, sticky="w")
 bitrate_combo = ttk.Combobox(encode_tab, textvariable=bitrate_var,
                              values=("32k", "48k", "64k", "96k", "128k"), width=8)
-bitrate_combo.grid(row=1, column=1, sticky="w", padx=(0, PAD_X * 2))
+bitrate_combo.grid(row=3, column=1, sticky="w", padx=(0, PAD_X * 2))
 Tooltip(bitrate_combo,
-        "AAC bitrate for re-encoding. 64k mono is ample for speech.\n\n"
-        "Ignored when the sources are already AAC, which are copied losslessly.")
+        "Encoder bitrate. 64k mono is ample for speech; Opus needs about half "
+        "that for the same quality.\n\n"
+        "Ignored when the sources are already in the target format, which are "
+        "copied losslessly.")
 
-ttk.Label(encode_tab, text="Channels:").grid(row=1, column=2, sticky="w", padx=(0, PAD_X))
+ttk.Label(encode_tab, text="Channels:").grid(row=3, column=2, sticky="w", padx=(0, PAD_X))
 channels_combo = ttk.Combobox(encode_tab, textvariable=channels_var,
                               values=("1", "2"), state="readonly", width=4)
-channels_combo.grid(row=1, column=3, sticky="w")
+channels_combo.grid(row=3, column=3, sticky="w")
 Tooltip(channels_combo, "1 = mono (right for almost all audiobooks), 2 = stereo.")
 
-ttk.Label(encode_tab, text="Workers:").grid(row=2, column=0, sticky="w", pady=(PAD_Y, 0))
+ttk.Label(encode_tab, text="Workers:").grid(row=4, column=0, sticky="w", pady=(PAD_Y, 0))
 workers_spin = ttk.Spinbox(encode_tab, from_=1, to=16, textvariable=workers_var, width=5)
-workers_spin.grid(row=2, column=1, sticky="w", pady=(PAD_Y, 0))
+workers_spin.grid(row=4, column=1, sticky="w", pady=(PAD_Y, 0))
 Tooltip(workers_spin, "How many folders to encode at once.")
 
-tip(ttk.Checkbutton(encode_tab, text="Delete sources after verify", variable=cleanup_var),
-    "DANGER: removes the original audio files once the .m4b has been written "
-    "and verified by ffprobe.\n\nLeave off unless you have a backup."
-    ).grid(row=2, column=2, columnspan=2, sticky="w", pady=(PAD_Y, 0))
+chapters_check = tip(
+    ttk.Checkbutton(encode_tab, text="Chapter marks", variable=chapters_var),
+    "Write one chapter mark per source file, named from its title tag.\n\n"
+    "Without them the result is a single unbroken file: Apple Books and most "
+    "Android players show no chapter list and resume badly.\n\n"
+    "Only the .m4b and .m4a formats can carry chapters.")
+chapters_check.grid(row=4, column=2, columnspan=2, sticky="w", pady=(PAD_Y, 0))
+
+deep_verify_check = tip(
+    ttk.Checkbutton(encode_tab, text="Deep verify (full decode)",
+                    variable=deep_verify_var),
+    "After encoding, decode the whole output to prove it is not corrupt, and "
+    "check its length against the sources.\n\n"
+    "Roughly doubles the time. Always on when 'Delete sources' is ticked -- "
+    "nothing is deleted on the strength of an unverified file.")
+deep_verify_check.grid(row=5, column=0, columnspan=2, sticky="w", pady=(PAD_Y, 0))
+
+tip(ttk.Checkbutton(encode_tab, text="Delete sources after verify",
+                    variable=cleanup_var),
+    "DANGER: removes the original audio files, but only after the output has "
+    "been fully decoded, matched against the sources' total length, and "
+    "confirmed to be the expected codec.\n\nLeave off unless you have a backup."
+    ).grid(row=5, column=2, columnspan=2, sticky="w", pady=(PAD_Y, 0))
+
+tip(ttk.Checkbutton(encode_tab, text="Encode past damaged files",
+                    variable=skip_unreadable_var),
+    "By default a folder holding a file ffmpeg cannot decode -- usually a "
+    "part-finished download -- is refused outright, because the result would "
+    "be a book quietly missing those chapters.\n\n"
+    "Tick this to encode the readable files anyway. Sources are never deleted "
+    "for such a folder, whatever 'Delete sources' says."
+    ).grid(row=6, column=0, columnspan=4, sticky="w", pady=(PAD_Y, 0))
+
+
+def _profile_changed(*_args) -> None:
+    """Keep the bitrate list, the note, and the chapter box true to the format."""
+    profile = ab_encode.profile_for_label(profile_var.get())
+
+    available, why = ab_encode.profile_available(profile)
+    note = f"{profile.note}  Plays on: {profile.plays_on}."
+    if not available:
+        note = f"UNAVAILABLE -- {why}. {note}"
+    profile_note.configure(text=note)
+
+    if profile.bitrates:
+        bitrate_combo.configure(values=profile.bitrates, state="normal")
+        if bitrate_var.get() not in profile.bitrates:
+            bitrate_var.set(profile.default_bitrate)
+    else:
+        # The copy profile re-encodes nothing, so a bitrate is meaningless.
+        bitrate_combo.configure(state="disabled")
+
+    if profile.supports_chapters:
+        chapters_check.state(["!disabled"])
+    else:
+        chapters_check.state(["disabled"])
+
+
+def _cleanup_changed(*_args) -> None:
+    """Deleting sources requires a deep verify; show that rather than imply it."""
+    if cleanup_var.get():
+        deep_verify_var.set(True)
+        deep_verify_check.state(["disabled"])
+    else:
+        deep_verify_check.state(["!disabled"])
+
+
+profile_var.trace_add("write", _profile_changed)
+cleanup_var.trace_add("write", _cleanup_changed)
 
 # The tag colours themselves live in the active theme and are applied by
 # _restyle_log(), so switching theme recolours existing log output too.
@@ -2413,33 +2501,54 @@ def repair_run() -> None:
 
 
 def encode_run() -> None:
-    """ab_encode.py -- builds one .m4b per folder."""
+    """ab_encode.py -- builds one audiobook file per folder."""
     src = _require_source()
     if src is None:
         return
+    profile = ab_encode.profile_for_label(profile_var.get())
+
+    available, why = ab_encode.profile_available(profile)
+    if not available:
+        messagebox.showerror("Format unavailable",
+                             f"{profile.label} cannot be produced: {why}.")
+        return
+
     if cleanup_var.get() and not messagebox.askyesno(
         "Delete sources",
         "'Delete sources after verify' is on: the original audio files will be "
-        "removed once each .m4b is written and verified.\n\nContinue?",
+        "removed once each output is written and fully verified -- correct "
+        "codec, matching total length, and a clean decode end to end.\n\n"
+        "A folder that fails any of those keeps its sources.\n\nContinue?",
     ):
         return
-    _begin_run("encode m4b")
+    _begin_run("encode audiobooks")
     # Snapshot every setting on the UI thread before the worker starts.
     bitrate, channels = bitrate_var.get(), channels_var.get()
     workers, cleanup = max(1, workers_var.get()), cleanup_var.get()
+    chapters, skip_unreadable = chapters_var.get(), skip_unreadable_var.get()
+    deep_verify = deep_verify_var.get() or cleanup
 
     def job() -> None:
         import os
         folders = [r for r, _, files in os.walk(src)
                    if any(f.lower().endswith(ab_encode.EXTENSIONS) for f in files)]
-        print(f"Encoding {len(folders)} folder(s) at {bitrate}, "
-              f"{'mono' if channels == '1' else 'stereo'}")
+        print(f"Encoding {len(folders)} folder(s) as {profile.label}")
+        print(f"  plays on: {profile.plays_on}")
+        if profile.bitrates:
+            print(f"  {bitrate}, {'mono' if channels == '1' else 'stereo'}"
+                  f"{', chapter marks' if chapters and profile.supports_chapters else ''}")
+        print(f"  deep verify: {'on' if deep_verify else 'off'}"
+              f" | delete sources: {'ON' if cleanup else 'off'}")
         done = 0
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {pool.submit(ab_encode.process_folder, f,
+                                   profile=profile,
                                    bitrate=bitrate,
                                    channels=channels,
-                                   cleanup=cleanup): f for f in folders}
+                                   cleanup=cleanup,
+                                   chapters=chapters,
+                                   skip_unreadable=skip_unreadable,
+                                   deep_verify=deep_verify): f for f in folders}
             for future in as_completed(futures):
                 if stop_event.is_set():
                     for pending in futures:
@@ -2448,7 +2557,11 @@ def encode_run() -> None:
                     break
                 result = future.result()
                 done += 1
-                print(f"  [{done}/{len(folders)}] {result['status']} - {result['folder']}")
+                # The reason a folder was refused is the useful half of the
+                # message, so it goes to the log rather than only the dict.
+                detail = f"  -- {result['detail']}" if result.get("detail") else ""
+                print(f"  [{done}/{len(folders)}] {result['status']} - "
+                      f"{result['folder']}{detail}")
                 output_queue.put(("progress", (done, len(folders), 0)))
     _run_in_worker(job)
 
@@ -2508,11 +2621,12 @@ dup_button, = _actions(dupes_tab, 3, [
      "duplicate_log.txt - nothing is ever deleted."),
 ])
 
-encode_button, = _actions(encode_tab, 3, [
-    ("\u2699  Encode to M4B", "Primary.TButton", lambda: encode_run(),
-     "Combine each folder's audio into one .m4b via ffmpeg, verifying the "
-     "result with ffprobe.\n\nAlready-AAC sources are copied losslessly "
-     "rather than re-encoded."),
+encode_button, = _actions(encode_tab, 7, [
+    ("\u2699  Encode audiobooks", "Primary.TButton", lambda: encode_run(),
+     "Combine each folder's audio into one file in the chosen format, then "
+     "verify it against the sources before anything is replaced or deleted."
+     "\n\nSources already in the target format are copied losslessly rather "
+     "than re-encoded, and a folder with undecodable files is refused."),
 ])
 
 action_buttons.extend([tag_button, move_button, restructure_button, flatten_button,
@@ -2566,7 +2680,8 @@ if __name__ == "__main__":
     for _key, _var in (("copy", copy_var), ("yes", yes_var), ("recurse", recurse_var),
                        ("network", network_var), ("only_src_log", only_src_log_var),
                        ("use_llm", use_llm_var), ("no", no_var), ("debug", debug_var),
-                       ("show_files", show_files_var), ("overwrite", overwrite_var)):
+                       ("show_files", show_files_var), ("overwrite", overwrite_var),
+                       ("chapters", chapters_var), ("deep_verify", deep_verify_var)):
         if isinstance(_saved.get(_key), bool):
             _var.set(_saved[_key])
     for _key, _var in (("timeout", timeout_var), ("threads", threads_var),
@@ -2577,6 +2692,12 @@ if __name__ == "__main__":
                        ("provider", provider_var)):
         if isinstance(_saved.get(_key), str) and _saved[_key]:
             _var.set(_saved[_key])
+    # Restored by label so a renamed profile falls back to the default rather
+    # than leaving the combobox showing something that no longer exists.
+    if isinstance(_saved.get("encode_profile"), str) and _saved["encode_profile"]:
+        profile_var.set(ab_encode.profile_for_label(_saved["encode_profile"]).label)
+    # `cleanup` and `skip_unreadable` are never restored: one deletes audio and
+    # the other drops chapters, so both should be a fresh decision each run.
     if isinstance(_saved.get("compare_by"), str) and _saved["compare_by"] in ("hash", "name"):
         compare_by_var.set(_saved["compare_by"])
     if isinstance(_saved.get("geometry"), str):
@@ -2585,6 +2706,11 @@ if __name__ == "__main__":
         except tk.TclError:
             pass
     toggle_llm_controls()
+    # Both traces fire only on later writes, so run them once now to bring the
+    # profile note, the bitrate list and the deep-verify lock into line with
+    # whatever was just restored.
+    _profile_changed()
+    _cleanup_changed()
 
     def _persist_and_close() -> None:
         save_settings(
@@ -2599,6 +2725,8 @@ if __name__ == "__main__":
             debug=debug_var.get(), show_files=show_files_var.get(),
             overwrite=overwrite_var.get(), bitrate=bitrate_var.get(),
             channels=channels_var.get(), workers=workers_var.get(),
+            encode_profile=profile_var.get(), chapters=chapters_var.get(),
+            deep_verify=deep_verify_var.get(),
             provider=provider_var.get(),
             geometry=root.winfo_geometry(),
         )

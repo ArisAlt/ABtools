@@ -285,3 +285,70 @@ accepted and skip the SequentialThinking stage instead of being discarded.
 Caveat recorded in the docs: with no author known the score saturates at 100
 whether right or wrong, because there is nothing left to disagree about. The
 ambiguity guard covers that, not the threshold.
+
+---
+
+## [2026-09-06] Encoder: output profiles, and closing the deletion data-loss path
+
+The ask was a default that plays on an iPhone, Android options, and "ensure
+that nothing is deleted before verify that the m4b file is correct and not
+corrupted". The last clause turned out to be the real work.
+
+**The reported symptom -- "I think it is bypassing some files" -- was exact.**
+`EXTENSIONS` had no `.m4b`/`.m4a`, and `main()` only queues a folder when
+something in it matches, so a folder of `.m4b` parts produced no task, no
+status line, nothing. In the user's own library that hid a two-part book
+(`West and East`, `1.m4b` + `2.m4b`) that had never been joined. Not skipped --
+invisible. Bug 4.5 had noticed the missing extension in 2026-09-05's audit but
+described it as a listing-order problem; the invisibility was the bigger half.
+
+**The data-loss path, reproduced end to end.** `--cleanup` deleted sources on
+the strength of `ffprobe format=duration > 0`. Ran the old code over a real
+book (`The Big Switch`, 26 MP3s, 4 of them NUL-padded part-downloads):
+ffmpeg exit 0, verify_audio True, status "Success". With cleanup on, all 26
+originals gone and four chapters unrecoverable. Three separate things had to
+be true at once for that: `-fflags +discardcorrupt` told ffmpeg to drop bad
+input silently, `stderr=DEVNULL` threw away the explanation, and the exit code
+was trusted -- but **ffmpeg returns 0 after "Error submitting packet to
+decoder"**, which I verified directly. Now: no tolerance flags, stderr
+captured and surfaced as `detail`, and `decodes_cleanly()` judges by *empty
+stderr at -v error*, not by returncode. `cleanup` implies `deep_verify` and
+cannot be separated from it.
+
+**The subtle one, found because my own test failed for the wrong reason.**
+I wrote a fixture that padded a small file with NULs, expecting the decoder to
+reject it. It did not: under ffprobe's 5 MB default probesize the junk is
+simply skipped, and the file reports a *plausible* codec, sample rate and a
+short duration, then decodes without one error. Duration checking cannot help
+either, since the sources' own durations are already wrong. What catches it is
+**size against the audio it claims to hold** (`duration x bit_rate / 8`).
+Measured over all 353 MP3s in the library: every healthy file scored exactly
+1.000 (min = p50 = max = 1.000); broken ones score 10+. Limit set at 3.0, plus
+a 64 KiB leading-NUL check that needs no probe at all and is the only signal
+left when ffprobe cannot describe the file. Damaged folders are now **refused**
+rather than half-encoded, naming each file and what is wrong with it.
+
+**Profiles.** One `PROFILES` table in `ab_encode.py`, read by the CLI and the
+GUI so they cannot drift. Default `iphone` = AAC-LC `.m4b`, `-profile:a
+aac_low` + `+faststart`; verified the output probes as `mp4a.40.2`, which is
+AAC-LC exactly. Deliberately chose reach over efficiency: the honest answer is
+that the iPhone profile is also the best Android profile, so `android-aac`
+differs only in suffix (for Android scanners that ignore `.m4b`) and
+`android-opus` is the one genuinely different trade -- half the size, no Apple
+decoder, no chapters in Ogg. Chapters are written per source file from title
+tags; without them an M4B is one unbroken blob that Apple Books resumes badly.
+
+**A bug I introduced and caught by testing the passthrough for real:** profile
+flags were one list, so `-profile:a aac_low` was appended to `-c:a copy`
+commands. ffmpeg tries to evaluate `aac_low` as an expression and exits 234 --
+so the already-correct-AAC case, the one passthrough exists for, was the one
+case that broke. Split into `encoder_flags` / `muxer_flags` with a test that
+keeps them apart. Worth noting the new stderr capture is what made this
+diagnosable in one run instead of guessing.
+
+Also tightened `_can_stream_copy` to require one sample rate and one channel
+count, not just AAC everywhere: the concat demuxer does not renegotiate
+between files, so a rate change plays the remainder at the wrong speed at the
+*correct* duration -- invisible to any length check.
+
+120 tests, pyflakes clean. `ab_encode` v2.0, GUI v0.18.
