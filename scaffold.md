@@ -1,4 +1,4 @@
-<!-- ABtools/scaffold.md - v2.40 - 2026-09-05 -->
+<!-- ABtools/scaffold.md - v2.41 - 2026-09-05 -->
 # Audiobook Tagging & Organization - Scaffold
 
 ## Project Layout
@@ -56,13 +56,13 @@ AudioBooks_tools/
 
 ## Configuration and Logging
 
-- `ablib.core.config` exposes runtime configuration shared across modules, including LLM endpoint/model defaults (Granite 4 H Tiny on `http://127.0.0.1:8888`), timeouts, and log locations (`tag_log.txt`, `review_log.txt`).
+- `ablib.core.constants.DEFAULT_MATCH_THRESHOLD` (83) is the single confidence bar every match decision reads. `ablib.core.config` exposes runtime configuration shared across modules, including LLM endpoint/model defaults (Granite 4 H Tiny on `http://127.0.0.1:8888`), timeouts, and log locations (`tag_log.txt`, `review_log.txt`).
 - `ablib.core.logging` writes timestamped status messages and review entries; GUI and CLI surfaces reuse these helpers.
 - `ablib.core.console` wraps rich-printing and interactive confirmations (`--yes` auto accepts prompts).
 
 ## Testing and Utilities
 
-- `tests/test_provider_queries.py` (30 tests, no network) pins query hygiene, the scoring weights, the ladder, inline-series parsing and the Goodreads circuit breaker.
+- `tests/test_provider_queries.py` (33 tests, no network) pins query hygiene, the scoring weights, the ladder, inline-series parsing and the Goodreads circuit breaker.
 - `tests/test_llm_fallback.py` (10 tests) drives the local-LLM failover against throwaway HTTP endpoints: which failures are retryable, and the confidence gate that leaves a book untagged rather than writing an unverified answer.
 - `tests/test_organiser_resolution.py` (46 tests) pins how a book's identity is resolved: the author guard against rip debris, self-describing folder names, album-vs-track titles, and end-to-end parity between the two organisers starting from files on disk.
 - The `output/` directory is available for runtime artifacts if needed but is empty by default.

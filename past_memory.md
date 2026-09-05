@@ -250,3 +250,34 @@ openlib + audible carried all 15 on their own.
 
 Benchmark script kept at /tmp/claude-1000/bench2.py — worth recreating as a
 tests/ opt-in if provider quality regresses again.
+
+## 2026-09-05 — 4.19: one threshold, 83, measured not guessed
+
+User asked "what is the threshold for a good score, 70 to 80?". Measured it
+rather than answering from intuition, using real candidates from the audited
+library and `score_candidate` (0-100):
+
+    100  correct - exact, superset title, surname-only folder, missing initial
+     97  correct, one-character title typo
+     81  RIGHT TITLE, WRONG AUTHOR  (Elaine Tyler May / Catherine Coulter / ...)
+     78-80  different book, overlapping words
+     53-65  wrong book, or query title is a subset of the hit
+
+So **70-80 is exactly the wrong-answer band**; the gap is 81 -> 97 and 83 sits
+in it. Set `constants.DEFAULT_MATCH_THRESHOLD = 83` and pointed every decision
+at it: ACCEPT_SCORE, --llm-threshold, --auto-accept-score,
+llm_fallback_min_score, both GUI spinboxes.
+
+Found while measuring: **combobook graded on a different scale** (0-1
+SequenceMatcher blend) whose bands *overlapped* -- correct 0.82-1.00, wrong
+0.75-0.79, floor 0.75 sitting inside the wrong band, so `--yes` accepted
+wrong-author matches. No number could fix it; the scorer had to go. It now
+delegates to the shared `score_candidate`, giving 100 / 81 / 53 and rejecting
+what it used to accept.
+
+Left `MCP_ACCEPT_SCORE = 95` alone: it gates an LLM refinement, not a provider
+match, and lowering it would accept weaker LLM output.
+
+Caveat recorded in the docs: with no author known the score saturates at 100
+whether right or wrong, because there is nothing left to disagree about. The
+ambiguity guard covers that, not the threshold.

@@ -220,3 +220,56 @@ def test_results_are_cached_per_query(monkeypatch):
     P.openlib("Harry Turtledove", "Homeward Bound")
     P.openlib("Harry Turtledove", "Homeward Bound")
     assert len(calls) == 1
+
+
+# ── one threshold, one meaning ──────────────────────────────────────────────
+
+def test_every_match_threshold_is_the_shared_constant():
+    """These drifted before: combobook graded on 0-1 with a 0.75 floor while
+    the CLI graded on 0-100 with 85, so "the threshold" meant two things."""
+    import combobook
+    from ablib.core.config import config
+    from ablib.core.constants import DEFAULT_MATCH_THRESHOLD
+
+    assert P.ACCEPT_SCORE == DEFAULT_MATCH_THRESHOLD
+    assert combobook.MIN_AUTO_SCORE == DEFAULT_MATCH_THRESHOLD
+    assert config.llm_fallback_min_score == DEFAULT_MATCH_THRESHOLD
+
+
+def test_the_threshold_sits_between_the_measured_bands():
+    """Right and wrong answers must fall either side of it, or the number is
+    decoration. Cases are real results from the audited library."""
+    from ablib.core.constants import DEFAULT_MATCH_THRESHOLD as T
+
+    correct = [
+        ({"title": "Homeward Bound", "authors": ["Harry Turtledove"]},
+         "Homeward Bound", "Harry Turtledove"),
+        ({"title": "Worldwar: In the Balance", "authors": ["Harry Turtledove"]},
+         "In The Balance", "Harry Turtledove"),
+        ({"title": "Homeward Bound", "authors": ["Harry Turtledove"]},
+         "Homeward Bound", "Turtledove"),          # surname only on disk
+    ]
+    wrong = [
+        ({"title": "Homeward Bound", "authors": ["Elaine Tyler May"]},
+         "Homeward Bound", "Harry Turtledove"),
+        ({"title": "Aftershocks", "authors": ["Catherine Coulter"]},
+         "Aftershocks", "Harry Turtledove"),
+        ({"title": "Guns of the South", "authors": ["Harry Turtledove"]},
+         "Homeward Bound", "Harry Turtledove"),
+    ]
+    for hit, title, author in correct:
+        assert P.score_candidate(hit, title, author) >= T, (hit, title)
+    for hit, title, author in wrong:
+        assert P.score_candidate(hit, title, author) < T, (hit, title)
+
+
+def test_combobook_grades_on_the_same_scale():
+    import combobook
+
+    guess = combobook.Meta(author="Harry Turtledove", title="Homeward Bound")
+    right = combobook.Meta(author="Harry Turtledove", title="Homeward Bound")
+    wrong = combobook.Meta(author="Elaine Tyler May", title="Homeward Bound")
+
+    assert combobook._similarity(guess, right) >= combobook.MIN_AUTO_SCORE
+    # this one used to score 0.79 against a 0.75 floor -- and be accepted
+    assert combobook._similarity(guess, wrong) < combobook.MIN_AUTO_SCORE

@@ -39,6 +39,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 | **P1** | [6.4](#64-abtoolsguipy-the-folder-browser-shows-nothing-for-a-network-share) | Folder browser empty for a network share or a mount-shadowed path | 🛠️ **Fixed (2026-09-05)** |
 | **P1** | [4.17](#417-a-hosted-quota-error-abandoned-every-remaining-book) | A hosted 429 gave up on every remaining book; no local fallback | 🛠️ **Fixed (2026-09-05)** |
 | **P0** | [4.18](#418-the-provider-layer-sent-work-to-the-llm-that-it-could-answer-itself) | 14/15 books went to the LLM that providers could answer; 3 wrong books chosen | 🛠️ **Fixed (2026-09-05)** |
+| **P1** | [4.19](#419-two-scoring-scales-and-combobooks-floor-sat-inside-the-wrong-answer-band) | combobook's `--yes` floor sat inside the wrong-answer band; two scoring scales | 🛠️ **Fixed (2026-09-05)** |
 | **P1** | [4.16](#416-the-schema-fix-never-reached-libraries-already-on-disk) | 4.9 fixed the writer; books already tagged kept the old schema | 🛠️ **Fixed (2026-09-05)** |
 | P2 | [4.9](#49-metadatajson-does-not-match-audiobookshelfs-schema) | Sidecar schema likely ignored by Audiobookshelf | 🛠️ **Fixed (2026-09-05)** |
 | — | [8](#8-mcp-tool-runtime-verification) | MCP tools executed for real: 3 working, 2 blocked by the remote host | Verified |
@@ -691,6 +692,35 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
   - Goodreads throttles with **HTTP 202 and an empty body**, which `raise_for_status()` does not catch; three consecutive refusals now disable it for the rest of the run instead of wasting a request per book.
   - `combobook` uses the same `clean_query_title`, and its folder guess strips a leading `N - ` index even when the trailing year is malformed.
 - **Verification**: `tests/test_provider_queries.py` (30 tests, no network). Full suite 86.
+
+### 4.19 Two Scoring Scales, and combobook's Floor Sat Inside the Wrong-Answer Band
+- **Status**: 🛠️ **FIXED (2026-09-05)** — one constant, `constants.DEFAULT_MATCH_THRESHOLD = 83`, now read by every match decision.
+- **Files**: [`ablib/core/constants.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/core/constants.py), [`combobook.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/combobook.py), [`ablib/providers/http.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/providers/http.py), [`ablib/core/config.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/core/config.py), [`ablib/cli/main.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/cli/main.py), [`AbtoolsGui.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/AbtoolsGui.py)
+- **Error**: "the threshold" meant two different things. `combobook._similarity` graded 0-1 with its own SequenceMatcher blend and a `MIN_AUTO_SCORE` floor of **0.75**; everything else graded 0-100 via `score_candidate` with a bar of 85. Worse, combobook's scale compressed the bands until they **overlapped**:
+  ```
+  1.00  ACCEPTED   CORRECT exact
+  0.82  ACCEPTED   CORRECT superset title
+  0.79  ACCEPTED   WRONG author, right title   <- accepted
+  0.75  ACCEPTED   WRONG author, right title   <- accepted, exactly at the floor
+  0.53  rejected   WRONG book
+  ```
+  Correct answers ran 0.82-1.00 and wrong ones 0.75-0.79 — a 0.03 gap with the floor *inside* the wrong band, so `--yes` would write a confidently wrong author. No choice of number could fix it: 0.82 is a correct case.
+- **Measured bands** on `score_candidate` (0-100), from the audited library:
+
+  | score | what it is |
+  |---|---|
+  | 100 | correct — exact title, superset title, surname-only folder, missing initial |
+  | 97 | correct, one-character typo in the title |
+  | *81* | *right title, **wrong author*** — Homeward Bound / Elaine Tyler May, Aftershocks / Catherine Coulter, Second Contact / Craig A. Falconer |
+  | 80 | title padded, different book |
+  | 78 | words reordered, different book |
+  | 65 | query title is a subset of the hit |
+  | 53 | right author, wrong book |
+
+  **70-80 is the wrong-answer band.** The gap is 81 → 97.
+- **Fix applied**: `combobook._similarity` delegates to the shared `score_candidate`, so both tools grade identically; its bands become 100 / 81 / 53 and the wrong-author cases are now **rejected**. Every threshold reads `DEFAULT_MATCH_THRESHOLD`: `ACCEPT_SCORE`, `--llm-threshold`, `--auto-accept-score`, `llm_fallback_min_score`, and both GUI spinboxes. `--auto-accept-score` changed scale from 0-1 to 0-100, and the ambiguity guard's tie window from 0.02 to 2.0.
+- **Deliberately not changed**: `MCP_ACCEPT_SCORE = 95` gates an *LLM refinement*, not a provider match — a different decision on a different scale, and loosening it would accept weaker LLM output, the opposite of the intent.
+- **Verification**: `test_the_threshold_sits_between_the_measured_bands` asserts real correct results land at/above 83 and real wrong ones below it; `test_every_match_threshold_is_the_shared_constant` stops them drifting apart again.
 
 ## 5. Metadata, Providers & Tagging Logic Errors
 

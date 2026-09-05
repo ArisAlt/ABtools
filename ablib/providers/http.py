@@ -10,8 +10,11 @@ from typing import Optional
 _log = logging.getLogger(__name__)
 
 # Score at which a single provider is trusted outright, short-circuiting the
-# remaining lookups.
-ACCEPT_SCORE = 85
+# remaining lookups. See constants.DEFAULT_MATCH_THRESHOLD for the measured
+# bands this sits between.
+from ablib.core.constants import DEFAULT_MATCH_THRESHOLD
+
+ACCEPT_SCORE = DEFAULT_MATCH_THRESHOLD
 
 from abclient import AbClient
 from bs4 import BeautifulSoup

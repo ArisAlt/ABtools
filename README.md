@@ -324,6 +324,28 @@ What the lookup does before giving up:
 - lifts the series out of catalogue titles: `Silverthorn (The Riftwar Saga, #3)`, `(Colonization, Book 2)`, `(Worldwar Series, Volume 2)`
 - caches per query, and stops asking Goodreads once it starts throttling
 
+### The confidence threshold
+
+One number, `DEFAULT_MATCH_THRESHOLD = 83`, governs every "is this the right book?" decision: the provider short-circuit, `--llm-threshold`,
+`--auto-accept-score`, the local-LLM fallback gate, and both GUI spinboxes.
+
+83 is not arbitrary. Scored against a real library:
+
+| score | what it is |
+|---|---|
+| 100 | correct - exact title, superset title, surname-only folder, missing middle initial |
+| 97 | correct, with a one-character typo in the title |
+| **81** | **right title, wrong author** - the failure mode that matters |
+| 78-80 | different book with overlapping words |
+| 53-65 | wrong book, or the query title is only a subset |
+
+The gap is 81 to 97, so 83 sits above every wrong answer observed and below every correct one. **70-80 is the wrong-answer band** - lowering the threshold into
+it admits books by the wrong author that happen to share a title.
+
+One caveat: when no author can be determined, the score saturates at 100 whether the match is right or wrong, because there is nothing left to disagree about.
+That case is caught by the ambiguity check - two candidates by different authors tying on the same title are refused rather than decided by sort order - not by
+this number.
+
 ### Local LLM fallback
 
 A hosted free tier runs out partway through a large run (`HTTP 429: Rate limit exceeded: free-models-per-day`), and every remaining book would otherwise be

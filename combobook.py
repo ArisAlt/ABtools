@@ -31,12 +31,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
-from difflib import SequenceMatcher
 import errno
 import stat
 
 import ablib.metadata.llm as tagger
-from ablib.providers.http import clean_query_title
+from ablib.providers.http import clean_query_title, score_candidate
+from ablib.core.constants import DEFAULT_MATCH_THRESHOLD
 from ablib.metadata.utils import (
     extract_series_and_title,
     format_canonical_dest,
@@ -57,11 +57,12 @@ FLATTEN_DISCS = True
 RENAME_TRACKS = False          # Track 001.*, Track 002.* …
 WRITE_TAGS    = True           # needs ffmpeg on PATH
 AUTO_YES      = False          # --yes overrides per-run
-MIN_AUTO_SCORE = 0.75          # --yes means "do not ask me", not "accept anything".
-                               # Without a floor, AUTO_YES took the top-ranked candidate
-                               # at any similarity at all - a 0.47 match wrote a wholly
-                               # unrelated author into the library. Override with
-                               # --auto-accept-score.
+# --yes means "do not ask me", not "accept anything". Without a floor, AUTO_YES
+# took the top-ranked candidate at any similarity at all, and a 0.47 match wrote
+# a wholly unrelated author into the library. Now on the shared 0-100 scale, so
+# this is the same bar the CLI and the provider short-circuit use.
+# Override with --auto-accept-score.
+MIN_AUTO_SCORE = DEFAULT_MATCH_THRESHOLD
 UNMATCHED_DIR = "_unmatched"   # destination for folders with no metadata match
 MOVE_UNMATCHED = False         # when False, folders with no metadata match are LEFT IN PLACE.
                                # Moving them into <library>/_unmatched/ strips the one piece of
@@ -663,46 +664,29 @@ def _seq_in_text(seq: str, text: str) -> bool:
     ]
     return any(re.search(p, t) for p in patterns)
 
-def _author_similarity(guess_author: str, hit_author: str) -> float:
-    """Compare two author strings, tolerating partial credits.
-
-    Folder names routinely carry a surname only ("Feist"), and a straight
-    character ratio against "Raymond E. Feist" scores ~0.48 -- low enough to
-    sink the correct book. A name that is wholly contained in the other is the
-    same person, so treat it as a match.
-    """
-    g = set(re.findall(r"[a-z]+", guess_author.lower()))
-    h = set(re.findall(r"[a-z]+", hit_author.lower()))
-    if g and h and (g <= h or h <= g):
-        return 1.0
-    return SequenceMatcher(None, guess_author.lower(), hit_author.lower()).ratio()
-
-
 def _similarity(a: Meta, b: Meta) -> float:
-    """Score a candidate against the guess.
+    """Score a candidate against the guess, 0-100.
 
-    Title and author are compared separately. Concatenating them meant that an
-    unknown author dominated the diff: "Unknown Author Silverthorn" against
-    "Raymond E. Feist Silverthorn" scored 0.44 even though the titles are
-    identical. When the guess has no usable author, the title alone decides.
+    Delegates to the shared `score_candidate` so combobook and the CLI grade a
+    match identically and one threshold means one thing. The local scorer this
+    replaced blended SequenceMatcher ratios and compressed the bands until they
+    overlapped: a *correct* superset title scored 0.82 while a wrong-author hit
+    scored 0.79, so no auto-accept floor could separate them. The shared scorer
+    puts the same cases at 100 and 81.
     """
-    title_score = SequenceMatcher(
-        None, (a.title or "").lower(), (b.title or "").lower()
-    ).ratio()
+    return float(
+        score_candidate(
+            {
+                "title": b.title or "",
+                "authors": [b.author] if b.author else [],
+                "series": b.series,
+            },
+            a.title or "",
+            _query_author(a),
+            a.series,
+        )
+    )
 
-    guess_author = _query_author(a)
-    if guess_author and b.author:
-        base = 0.7 * title_score + 0.3 * _author_similarity(guess_author, b.author)
-    else:
-        base = title_score
-
-    # Reward a matching sequence number, but never penalise its absence:
-    # providers return a bare book title and almost never carry the index, so
-    # the old -0.12 penalty applied to essentially every correct match.
-    seq = str(a.seq or "").strip()
-    if seq and _seq_in_text(seq, getattr(b, "title", "") or ""):
-        base = min(1.0, base + 0.08)
-    return base
 
 def choose_meta(guess: Meta) -> Optional[Meta]:
     candidates = (
@@ -745,14 +729,14 @@ def choose_meta(guess: Meta) -> Optional[Meta]:
         top = _similarity(guess, candidates[0])
         runner_up = _similarity(guess, candidates[1])
         if (
-            abs(top - runner_up) < 0.02
+            abs(top - runner_up) < 2.0
             and (candidates[0].author or "").lower() != (candidates[1].author or "").lower()
         ):
             ambiguous = True
             rprint(
                 f"  [yellow]ambiguous: {candidates[0].author} and "
                 f"{candidates[1].author} both match '{guess.title}' at "
-                f"{top:.2f}; not guessing[/]"
+                f"{top:.0f}; not guessing[/]"
             )
 
     for hit in candidates:
@@ -763,15 +747,15 @@ def choose_meta(guess: Meta) -> Optional[Meta]:
             f"  guess: [italic]{guess.title}[/] by {guess.author} ({guess.year or '?'})"
         )
         rprint(
-            f"  match: [bold]{hit.title}[/] by {hit.author} ({hit.year or '?'})  score: {score:.2f}"
+            f"  match: [bold]{hit.title}[/] by {hit.author} ({hit.year or '?'})  score: {score:.0f}"
         )
-        default_yes = score > 0.85
+        default_yes = score >= DEFAULT_MATCH_THRESHOLD
         if AUTO_YES:
             if score >= MIN_AUTO_SCORE:
                 return hit
             rprint(
-                f"  [yellow]score {score:.2f} below auto-accept floor "
-                f"{MIN_AUTO_SCORE:.2f}; not taking this match[/]"
+                f"  [yellow]score {score:.0f} below auto-accept floor "
+                f"{MIN_AUTO_SCORE}; not taking this match[/]"
             )
             continue
         if Confirm.ask("  use this metadata?", default=default_yes):
@@ -1171,9 +1155,9 @@ if __name__=="__main__":
     ap.add_argument("--commit", action="store_true")
     ap.add_argument("--yes",    action="store_true")
     ap.add_argument("--copy",   action="store_true", help="Copy instead of move when used with --commit")
-    ap.add_argument("--auto-accept-score", type=float, default=None, metavar="0..1",
-                    help=f"Minimum similarity --yes will accept without asking "
-                         f"(default {MIN_AUTO_SCORE})")
+    ap.add_argument("--auto-accept-score", type=float, default=None, metavar="0..100",
+                    help=f"Minimum match score --yes will accept without asking, "
+                         f"0-100 (default {MIN_AUTO_SCORE})")
     ap.add_argument("--move-unmatched", action="store_true",
                     help=f"Move folders with no metadata match into <library>/{UNMATCHED_DIR}/ "
                          "(default: leave them untouched in the source tree)")
@@ -1189,7 +1173,7 @@ if __name__=="__main__":
                     help="Model to request from the fallback endpoint")
     ap.add_argument("--llm-fallback-min-score", type=int, default=None, metavar="SCORE",
                     help="How closely a fallback answer must match the folder "
-                         "before it is written, 0-100 (default 85)")
+                         "before it is written, 0-100 (default 83)")
     ap.add_argument("--copy-buffer-mb", type=int, default=None,
                     help="Override chunk size for copy/move (MiB); default sourced from environment or 16")
     ap.add_argument("--copy-workers", type=int, default=None,
@@ -1201,7 +1185,7 @@ if __name__=="__main__":
 
     MOVE_UNMATCHED = args.move_unmatched
     if args.auto_accept_score is not None:
-        MIN_AUTO_SCORE = max(0.0, min(1.0, args.auto_accept_score))
+        MIN_AUTO_SCORE = max(0.0, min(100.0, args.auto_accept_score))
     if args.copy_buffer_mb is not None:
         COPY_BUFFER_SIZE = max(1, args.copy_buffer_mb) * 1024 * 1024
     if args.copy_workers is not None:

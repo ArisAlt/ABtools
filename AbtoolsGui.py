@@ -20,6 +20,7 @@ from types import SimpleNamespace
 from typing import Callable, Optional
 import importlib
 import combobook, find_duplicates, restructure_for_audiobookshelf
+from ablib.core.constants import DEFAULT_MATCH_THRESHOLD
 import flatten_discs, repair_m4b, ab_encode
 tag_cli = importlib.import_module("ablib.cli.main")
 from ablib.core import config as core_config
@@ -963,7 +964,7 @@ llm_model_var = tk.StringVar(value=DEFAULT_LLM_MODEL)
 use_llm_var = tk.BooleanVar(value=bool(DEFAULT_LLM_ENDPOINT))
 # Flags that previously existed only on the command line.
 no_var = tk.BooleanVar()                       # search_and_tag --no
-llm_threshold_var = tk.IntVar(value=85)        # search_and_tag --llm-threshold
+llm_threshold_var = tk.IntVar(value=DEFAULT_MATCH_THRESHOLD)  # --llm-threshold
 debug_var = tk.BooleanVar()                    # search_and_tag --debug
 show_files_var = tk.BooleanVar()               # find_duplicates --show-files
 overwrite_var = tk.BooleanVar()                # repair_m4b --overwrite
@@ -1128,9 +1129,12 @@ threshold_spin.grid(row=1, column=1, sticky="w", pady=(PAD_Y, 0))
 Tooltip(threshold_spin,
         "Providers are searched first. A best score BELOW this goes to the LLM "
         "fallback, and if that cannot help either you are asked to confirm.\n\n"
-        "85 (default) trusts only strong matches. 70 accepts weaker ones "
-        "without asking. 0 disables the LLM entirely and uses providers only; "
-        "100 sends everything short of a perfect match to the LLM.")
+        "83 (default) sits in the measured gap between right and wrong: on a "
+        "real library, correct matches scored 97-100 and every wrong book "
+        "scored 78-81.\n\n70-80 is the wrong-answer band \u2014 lowering it "
+        "there admits books by the wrong author with the right title. 0 "
+        "disables the LLM entirely and uses providers only; 100 sends "
+        "everything short of a perfect match to the LLM.")
 tip(ttk.Checkbutton(tag_tab, text="Debug output", variable=debug_var),
     "Print full tracebacks and LLM diagnostics to the log."
     ).grid(row=1, column=2, sticky="w", pady=(PAD_Y, 0))
@@ -1637,7 +1641,7 @@ def apply_llm_settings(settings: dict[str, object]) -> None:
         CONFIG.llm_fallback_model = str(settings.get("fallback_model") or "") or None
     else:
         CONFIG.llm_fallback_endpoint = None
-    CONFIG.llm_fallback_min_score = max(0, min(100, int(settings.get("fallback_score", 85))))
+    CONFIG.llm_fallback_min_score = max(0, min(100, int(settings.get("fallback_score", DEFAULT_MATCH_THRESHOLD))))
 
     CONFIG.debug = bool(settings.get("debug", False))
     # An empty box leaves whatever the environment supplied.

@@ -13,6 +13,7 @@ from mutagen import MutagenError
 from mutagen.mp4 import MP4StreamInfoError
 
 from ablib.core import config, constants
+from ablib.core.constants import DEFAULT_MATCH_THRESHOLD
 from ablib.core.console import Confirm, rprint
 from ablib.core.logging import log, review_log
 from ablib.metadata.llm import (
@@ -34,9 +35,9 @@ AB = AbClient()
 
 def process_leaf(path: Path, args: argparse.Namespace) -> None:
     try:
-        llm_threshold = int(getattr(args, "llm_threshold", 85))
+        llm_threshold = int(getattr(args, "llm_threshold", DEFAULT_MATCH_THRESHOLD))
     except (TypeError, ValueError):
-        llm_threshold = 85
+        llm_threshold = DEFAULT_MATCH_THRESHOLD
     # Clamped to 0-100, not 80-100. The old floor silently raised any request
     # below 80 -- asking for 70 quietly became 80 and the LLM fired far more
     # often than intended. 0 disables the fallback entirely (no score is below
@@ -374,7 +375,7 @@ def build_parser() -> argparse.ArgumentParser:
               --striptags   delete *all* tags instead of adding
               --llm-endpoint URL   OpenAI-compatible endpoint (default: {config.config.llm_endpoint})
               --llm-model NAME     model to request from the endpoint (default: {config.config.llm_model_name})
-              --llm-threshold SCORE  confidence score before using the LLM (default: 85)
+              --llm-threshold SCORE  confidence score before using the LLM (default: 83)
               --llm-api-key KEY    bearer token for a hosted endpoint (e.g. OpenRouter)
             """
         ),
@@ -401,11 +402,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--llm-threshold",
         type=int,
-        default=85,
+        default=DEFAULT_MATCH_THRESHOLD,
         metavar="SCORE",
         help=(
             "Use the LLM when the best provider score falls below SCORE "
-            "(default: 85, range 0-100). 0 never uses it; 100 uses it for "
+            "(default: 83, range 0-100). 0 never uses it; 100 uses it for "
             "anything short of a perfect match."
         ),
     )
@@ -442,7 +443,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--llm-fallback-min-score", type=int, default=None, metavar="SCORE",
         help=(
             "How closely a fallback answer must match the folder before it is "
-            "written, 0-100 (default 85). Below this the book is left "
+            "written, 0-100 (default 83). Below this the book is left "
             "untagged rather than tagged from an unverified guess."
         ),
     )

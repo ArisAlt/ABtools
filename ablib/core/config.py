@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from .constants import (
+    DEFAULT_MATCH_THRESHOLD,
     DEFAULT_LLM_ENDPOINT,
     DEFAULT_LLM_MODEL_NAME,
     LLM_MAX_TOKENS_DEFAULT,
@@ -108,7 +109,7 @@ class RuntimeConfig:
     # one, so its answer is only accepted when it agrees with the evidence on
     # disk; below this the book is left untagged rather than tagged wrongly.
     llm_fallback_min_score: int = field(
-        default_factory=lambda: _env_int("LLM_FALLBACK_MIN_SCORE", 85)
+        default_factory=lambda: _env_int("LLM_FALLBACK_MIN_SCORE", DEFAULT_MATCH_THRESHOLD)
     )
 
 

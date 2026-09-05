@@ -25,6 +25,29 @@ SERIES_PATTERNS = [
 # LLM / MCP defaults ---------------------------------------------------------
 DEFAULT_LLM_ENDPOINT = "http://127.0.0.1:8888/v1/chat/completions"
 DEFAULT_LLM_MODEL_NAME = "ibm/granite-4-h-tiny"
+
+# The single confidence bar for "this provider hit is the right book", 0-100.
+# Everything that decides whether to trust a match reads it, so the tools
+# cannot drift apart.
+#
+# Measured against a real library (Harry Turtledove, 15 books) with
+# ablib.providers.http.score_candidate:
+#
+#     100   correct - exact title, superset title ("In The Balance" ->
+#           "Worldwar: In the Balance"), surname-only folder, missing initial
+#      97   correct, one-character typo in the title
+#   -- the gap --
+#      81   right title, WRONG author (Homeward Bound / Elaine Tyler May,
+#           Aftershocks / Catherine Coulter, Second Contact / Craig A. Falconer)
+#      78   words reordered, different book
+#      65   query title is a subset of the hit
+#      53   right author, wrong book
+#
+# 83 sits inside the gap: above every wrong answer observed, below every
+# correct one. Note the score saturates at 100 when no author is known, since
+# there is then nothing to disagree about -- that case is guarded by the
+# ambiguity check in combobook.choose_meta, not by this number.
+DEFAULT_MATCH_THRESHOLD = 83
 LLM_TIMEOUT_DEFAULT = 90
 LLM_MAX_TOKENS_DEFAULT = 8000
 
