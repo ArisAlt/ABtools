@@ -282,6 +282,67 @@ def natural_sort_key(s: str) -> List[int | str]:
     return [int(tok) if tok.isdigit() else tok.lower() for tok in re.split(r"(\d+)", s)]
 
 
+#: Sample rates AAC-LC and MPEG audio both define, and every iOS and Android
+#: decoder accepts. Used to avoid upsampling: see `_output_sample_rate`.
+STANDARD_SAMPLE_RATES: frozenset[int] = frozenset(
+    (8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000)
+)
+
+
+#: `--channels source` keeps whatever the sources have. It is the default
+#: because this tool's common job is now joining files that are *already*
+#: encoded: 930 of the 1290 audio files in the library it was measured against
+#: are .m4b, a mix of mono and stereo AAC. Forcing mono there would re-encode a
+#: finished audiobook and throw a channel away, and with --cleanup the original
+#: is gone. Mono remains one flag away for raw MP3 rips, where it halves the
+#: size and speech loses nothing.
+KEEP_SOURCE_CHANNELS = "source"
+
+
+def _output_channels(mode: str, probes: Sequence["Probe"]) -> Optional[str]:
+    """The channel count to encode at, or None to leave the sources alone.
+
+    With mixed sources the widest count wins, so nothing is downmixed on the
+    strength of one file in the folder happening to be mono.
+    """
+    if mode in ("1", "2"):
+        return mode
+    counts = {p.channels for p in probes if p.channels > 0}
+    if len(counts) <= 1:
+        return None                     # uniform: let ffmpeg pass it through
+    return str(max(counts))
+
+
+def _output_sample_rate(profile: EncodeProfile, probes: Sequence["Probe"]) -> Optional[str]:
+    """The rate to encode at: the sources' own, unless they force a choice.
+
+    Resampling is never free. Upsampling cannot add information and, at a
+    fixed bitrate, spends part of the budget describing a band that was never
+    recorded; downsampling throws away one that was. So the source rate is
+    kept whenever it is one every decoder defines, and the profile's rate is
+    the fallback for mixed or unusual sources.
+
+    Compatibility is not the trade it looks like: AAC-LC and MPEG audio both
+    define every rate in STANDARD_SAMPLE_RATES, and iOS and Android decode all
+    of them. It matters in practice -- across two real libraries the sources
+    run 12, 22.05, 24, 32, 44.1 and 48 kHz, with 24 kHz alone accounting for
+    283 of 345 files in one of them. A fixed 44100 resampled nearly all of
+    that for nothing.
+    """
+    if profile.sample_rate is None:
+        return None
+    if profile.codec == "libopus":
+        # Opus runs at 48 kHz internally whatever it is handed.
+        return profile.sample_rate
+    rates = {p.sample_rate for p in probes}
+    if len(rates) != 1:
+        return profile.sample_rate      # mixed sources must be unified
+    source = rates.pop()
+    if source in STANDARD_SAMPLE_RATES:
+        return str(source)
+    return profile.sample_rate
+
+
 #: How much larger than its own audio a file may be before we call it padding.
 #: Measured over a real 353-file library: every healthy file scored exactly
 #: 1.000, so 3.0 is a wide moat. Cover art and container overhead push a
@@ -537,6 +598,61 @@ def _escape_ffmetadata(text: str) -> str:
     return text.replace("\n", " ").strip()
 
 
+def chapter_labels(probes: Sequence[Probe]) -> list[str]:
+    """One name per source file, chosen so the names actually distinguish them.
+
+    Title tags are the nicer source but cannot be trusted to differ. A real
+    two-part book carried the *same* tag in both halves ("The Eye of the World
+    (The Wheel of Time Book 1)", on a copy of The Shadow Rising no less), which
+    would have produced a chapter list of two identical entries -- worse than
+    no names at all. So the tags are used only when every one of them is
+    distinct; otherwise filenames, which are unique within a folder by
+    definition, and finally a plain index.
+    """
+    tags = [p.title.strip() for p in probes]
+    if all(tags) and len(set(tags)) == len(tags):
+        return tags
+    stems = [os.path.splitext(os.path.basename(p.path))[0] for p in probes]
+    if len(set(stems)) == len(stems):
+        return _trim_shared_prefix(stems)
+    return [f"Chapter {i}" for i in range(1, len(probes) + 1)]
+
+
+#: Below this, a trimmed label has been cut back to noise and the full
+#: filename is more use. Both bounds come from real folders: a 76-part
+#: Audible rip where every name opens with the same 55 characters trims to
+#: "01 - Opening Credits" (worth doing), and a two-part book trims to "1.2"
+#: (not worth losing the title over).
+_MIN_TRIMMED_LABEL = 6
+_MIN_SHARED_PREFIX = 8
+
+
+def _trim_shared_prefix(stems: Sequence[str]) -> list[str]:
+    """Drop the boilerplate every filename in the folder repeats.
+
+    A chapter list where all 76 entries begin "Not Till We Are Lost: Bobiverse,
+    Book 5 [B0CW23CC7L] - " is unreadable on a phone, and the part that varies
+    is the only part worth showing.
+    """
+    if len(stems) < 2:
+        return list(stems)
+    prefix = os.path.commonprefix(list(stems))
+    # Pull back to a word boundary. The raw common prefix happily stops mid
+    # token -- four files numbered 01-04 share the leading "0", so cutting
+    # there turns "01 - Opening Credits" into "1 - Opening Credits" and eats
+    # part of the index. Only whole words are worth removing.
+    cut = max((prefix.rfind(c) for c in " -_.([{"), default=-1)
+    prefix = prefix[:cut + 1]
+    if len(prefix) < _MIN_SHARED_PREFIX:
+        return list(stems)
+    trimmed = [stem[len(prefix):].lstrip(" -_.") for stem in stems]
+    if any(len(t) < _MIN_TRIMMED_LABEL for t in trimmed):
+        return list(stems)
+    if len(set(trimmed)) != len(trimmed):
+        return list(stems)
+    return trimmed
+
+
 def build_chapter_metadata(probes: Sequence[Probe], *, title: str) -> str:
     """An ffmetadata document marking one chapter per source file.
 
@@ -545,14 +661,14 @@ def build_chapter_metadata(probes: Sequence[Probe], *, title: str) -> str:
     are already one file per chapter, so the marks cost nothing to derive.
     """
     lines = [";FFMETADATA1", f"title={_escape_ffmetadata(title)}"]
+    labels = chapter_labels(probes)
     start_ms = 0
-    for item in probes:
+    for item, label in zip(probes, labels):
         if item.duration is None:
             continue
         end_ms = start_ms + int(round(item.duration * 1000))
         if end_ms <= start_ms:
             continue
-        label = item.title.strip() or os.path.splitext(os.path.basename(item.path))[0]
         lines += [
             "",
             "[CHAPTER]",
@@ -612,7 +728,7 @@ def process_folder(
     root: str,
     *,
     bitrate: str = "",
-    channels: str = "1",
+    channels: str = KEEP_SOURCE_CHANNELS,
     cleanup: bool = False,
     profile: "EncodeProfile | str" = DEFAULT_PROFILE,
     chapters: bool = True,
@@ -631,7 +747,7 @@ def process_folder(
     if isinstance(profile, str):
         profile = PROFILES.get(profile, PROFILES[DEFAULT_PROFILE])
     # A stale settings file should not crash a worker thread mid-run.
-    channels = channels if channels in ("1", "2") else "1"
+    channels = channels if channels in ("1", "2") else KEEP_SOURCE_CHANNELS
     if deep_verify is None:
         deep_verify = cleanup
     if cleanup and not deep_verify:
@@ -725,12 +841,14 @@ def process_folder(
         # Smart passthrough: when the sources are already exactly the codec and
         # parameters we would produce, re-encoding only loses quality and time.
         can_copy, _ = _can_stream_copy(probes)
+        target_rate = _output_sample_rate(profile, probes)
+        target_channels = _output_channels(channels, probes)
         same_target = (
             profile.probe_codec == "aac"
             and can_copy
-            and (profile.sample_rate is None
-                 or probes[0].sample_rate == int(profile.sample_rate))
-            and probes[0].channels == int(channels)
+            and (target_rate is None or probes[0].sample_rate == int(target_rate))
+            and (target_channels is None
+                 or probes[0].channels == int(target_channels))
         )
         if same_target:
             log.info("Smart passthrough for '%s': streams copied losslessly.", root)
@@ -741,9 +859,10 @@ def process_folder(
             audio_flags = ["-c:a", profile.codec]
             if bitrate:
                 audio_flags += ["-b:a", bitrate]
-            audio_flags += ["-ac", channels]
-            if profile.sample_rate:
-                audio_flags += ["-ar", profile.sample_rate]
+            if target_channels:
+                audio_flags += ["-ac", target_channels]
+            if target_rate:
+                audio_flags += ["-ar", target_rate]
             audio_flags += [*profile.encoder_flags, *profile.muxer_flags]
 
     temp_output_path = output_path + ".tmp"
@@ -885,8 +1004,12 @@ def main() -> None:
         help="Encoder bitrate, e.g. 64k. Defaults to the profile's own.",
     )
     parser.add_argument(
-        "-c", "--channels", default="1", choices=["1", "2"],
-        help="Audio channels: 1=mono, 2=stereo (default: %(default)s).",
+        "-c", "--channels", default=KEEP_SOURCE_CHANNELS,
+        choices=[KEEP_SOURCE_CHANNELS, "1", "2"],
+        help="Audio channels: 'source' keeps what the files already have "
+             "(default), 1=mono, 2=stereo. Mono halves the size of a raw MP3 "
+             "rip and speech loses nothing, but forcing it on an existing "
+             "stereo audiobook re-encodes it and throws a channel away.",
     )
     parser.add_argument(
         "-w", "--workers", type=int, default=4,

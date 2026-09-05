@@ -351,4 +351,46 @@ count, not just AAC everywhere: the concat demuxer does not renegotiate
 between files, so a rate change plays the remainder at the wrong speed at the
 *correct* duration -- invisible to any length check.
 
-120 tests, pyflakes clean. `ab_encode` v2.0, GUI v0.18.
+**A second library the user pointed me at (`~/pi_share/audiobooks`, 1294 audio
+files over sshfs) made the scale plain.** The old encoder saw **11 of 704**
+folders; 693 were invisible, and 43 of those hold books split across several
+files that had never been joined -- Wheel of Time volumes in two parts, a
+Bobiverse book in 76 chapter m4bs, Hamilton in five. It was effectively doing
+nothing on 98% of that collection.
+
+Also validated the damage detector there: over a 200-file random sample, **zero
+false positives** (padding ratio min 1.000, max 1.049, against a limit of 3.0)
+and one true catch -- a `Track 1.m4b` with a 64 KiB NUL head, found by the
+head check because no bitrate was computable for the ratio.
+
+Two defaults changed after seeing that data, both because the tool's common job
+is now joining files that are *already encoded*:
+
+- **`--channels source`** (was mono). 930 of 1294 files are .m4b, a mix of mono
+  and stereo AAC. Forcing mono would re-encode a finished audiobook and discard
+  a channel; with --cleanup the original is gone. Proof it matters: the
+  two-part 41-hour Shadow Rising now **stream-copies** -- 1178 MB in, 1175 MB
+  out, duration exact to the second, deep-verified, **58.6 s total**. Under the
+  old default it would have been hours of lossy re-encoding, and under the old
+  EXTENSIONS it was invisible.
+- **Chapter naming.** That same book exposed two problems in one go. Both
+  halves carry the *identical* title tag ("The Eye of the World (The Wheel of
+  Time Book 1)" -- on a copy of The Shadow Rising), so tags are now used only
+  when all of them are distinct. And the Bobiverse rip has no tags at all, with
+  76 filenames that each open with the same 55 characters, so the shared prefix
+  is trimmed at a word boundary. Watch the boundary: the raw commonprefix stops
+  mid-token (four files numbered 01-04 share the leading "0", turning "01 - "
+  into "1 - "), and trimming is abandoned when what survives is too short to
+  read, which is what keeps WoT from becoming "1.2" and "2.2".
+
+Last thing, spotted from the sources rather than from the code: the profile
+hard-codes 44100, but **283 of the 345 healthy files in the library are 24 kHz**
+(stereo, ~59 kbps). So the default was upsampling 82% of a real collection --
+no added information, a wasted resample, and part of a fixed 64k budget spent
+on a band that was never recorded. Sample rate is now a *ceiling*: when every
+source in a folder shares one standard rate below the profile's, that rate is
+kept. Costs no compatibility (AAC-LC and MPEG both define 8-48 kHz and every
+iOS/Android decoder takes them); mixed or odd rates fall back to the profile's
+own; Opus is exempt since it resamples to 48 kHz internally regardless.
+
+134 tests, pyflakes clean. `ab_encode` v2.0, GUI v0.18.

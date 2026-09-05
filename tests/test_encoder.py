@@ -411,6 +411,91 @@ def test_the_copy_profile_refuses_mp3_sources_rather_than_garbling_them(tmp_path
     assert "not all AAC" in result["detail"]
 
 
+# ── channels ───────────────────────────────────────────────────────────────
+
+def test_the_channel_count_is_left_alone_by_default():
+    """Forcing mono would re-encode every stereo .m4b just to join its parts.
+
+    930 of the 1290 audio files in the library this was measured against are
+    already .m4b, a mix of mono and stereo AAC. Downmixing them is lossy, and
+    with --cleanup the original is gone.
+    """
+    stereo = [_probe(channels=2), _probe(channels=2)]
+    assert E._output_channels(E.KEEP_SOURCE_CHANNELS, stereo) is None
+    assert E._output_channels("1", stereo) == "1"
+    assert E._output_channels("2", stereo) == "2"
+
+
+def test_mixed_channel_counts_resolve_upward_not_downward():
+    """One mono file in a folder must not silently downmix the rest."""
+    mixed = [_probe(channels=1), _probe(channels=2)]
+    assert E._output_channels(E.KEEP_SOURCE_CHANNELS, mixed) == "2"
+
+
+@needs_ffmpeg
+def test_stereo_aac_parts_are_joined_losslessly_rather_than_downmixed(tmp_path):
+    """The case the default exists for: joining an already-encoded book."""
+    book = tmp_path / "Two Part Book"
+    make_tone(book / "p1.m4b", seconds=4, codec="aac", channels=2, title="One")
+    make_tone(book / "p2.m4b", seconds=4, freq=660, codec="aac", channels=2,
+              title="Two")
+    before = sum(f.stat().st_size for f in book.glob("*.m4b"))
+
+    result = E.process_folder(str(book), bitrate="64k")
+    assert "Success" in result["status"], result
+
+    out = E.probe(str(book / "Two Part Book.m4b"))
+    assert out.channels == 2, "a stereo book came back mono"
+    # A copy, not a re-encode: the audio is carried over near byte for byte.
+    assert out.size > before * 0.9
+
+
+# ── sample rate ────────────────────────────────────────────────────────────
+
+def test_the_encoder_does_not_resample_a_standard_rate_at_all():
+    """Resampling is never free in either direction.
+
+    Real sources run 12, 22.05, 24, 32, 44.1 and 48 kHz; 24 kHz alone was 82%
+    of one measured library, so a fixed 44100 resampled nearly all of it.
+    """
+    iphone = E.PROFILES["iphone"]
+    for rate in sorted(E.STANDARD_SAMPLE_RATES):
+        got = E._output_sample_rate(iphone, [_probe(rate=rate), _probe(rate=rate)])
+        assert got == str(rate), f"{rate} was resampled to {got}"
+
+
+def test_an_unusual_or_mixed_source_rate_falls_back_to_the_profile():
+    """Both cases must land on something universally playable."""
+    iphone = E.PROFILES["iphone"]
+    # Mixed sources have to be unified, and the profile rate is the safe one.
+    assert E._output_sample_rate(iphone, [_probe(rate=24000),
+                                          _probe(rate=44100)]) == "44100"
+    # A rate no decoder is guaranteed to define is not adopted.
+    assert E._output_sample_rate(iphone, [_probe(rate=37000)]) == "44100"
+    assert E._output_sample_rate(iphone, [_probe(rate=96000)]) == "44100"
+    assert E._output_sample_rate(iphone, [_probe(rate=0)]) == "44100"
+
+
+def test_opus_is_left_at_48k_whatever_the_source():
+    """Opus resamples internally, so matching the source achieves nothing."""
+    opus = E.PROFILES["android-opus"]
+    assert E._output_sample_rate(opus, [_probe(rate=24000)]) == "48000"
+
+
+def test_the_copy_profile_has_no_rate_to_choose():
+    assert E._output_sample_rate(E.PROFILES["copy"], [_probe(rate=24000)]) is None
+
+
+@needs_ffmpeg
+def test_a_24k_source_stays_24k_end_to_end(tmp_path):
+    book = tmp_path / "Quiet Book"
+    make_tone(book / "01.mp3", seconds=3, rate=24000)
+    make_tone(book / "02.mp3", seconds=3, freq=660, rate=24000)
+    result = E.process_folder(str(book), bitrate="64k", channels="1")
+    assert "Success" in result["status"], result
+    assert E.probe(str(book / "Quiet Book.m4b")).sample_rate == 24000
+
+
 # ── chapters ───────────────────────────────────────────────────────────────
 
 def test_chapters_tile_the_book_without_gaps_or_overlaps():
@@ -428,9 +513,67 @@ def test_chapters_tile_the_book_without_gaps_or_overlaps():
     assert ends == [5000, 15000, 30000]
     assert starts[1:] == ends[:-1]          # no gap, no overlap
 
-    # A file with no title tag falls back to its stem rather than going blank.
-    assert "title=Opening" in text
-    assert "title=02" in text
+    # One file lacking a tag makes the whole set fall back to filenames, so
+    # the chapter list reads consistently instead of half-named.
+    assert "title=01" in text and "title=02" in text and "title=03" in text
+
+
+def test_chapter_names_come_from_tags_only_when_they_distinguish_the_files():
+    """Identical tags are worse than no names: the list becomes unusable.
+
+    Taken from a real two-part book whose halves both carried the tag "The Eye
+    of the World (The Wheel of Time Book 1)" -- on a copy of The Shadow Rising,
+    at that. Naming both chapters the same helps nobody.
+    """
+    same = "The Eye of the World (The Wheel of Time Book 1)"
+    probes = [
+        E.Probe("/x/p1.2.m4b", 100.0, "aac", 22050, 2, same),
+        E.Probe("/x/p2.2.m4b", 100.0, "aac", 22050, 2, same),
+    ]
+    assert E.chapter_labels(probes) == ["p1.2", "p2.2"]
+
+    distinct = [
+        E.Probe("/x/01.mp3", 10.0, "mp3", 44100, 1, "The Ravens"),
+        E.Probe("/x/02.mp3", 10.0, "mp3", 44100, 1, "Whirlpools in the Pattern"),
+    ]
+    assert E.chapter_labels(distinct) == ["The Ravens", "Whirlpools in the Pattern"]
+
+
+def test_chapter_names_drop_the_boilerplate_every_filename_repeats():
+    """From a real 76-part Audible rip: every name opens the same way.
+
+    A chapter list where all 76 entries begin "Not Till We Are Lost:
+    Bobiverse, Book 5 [B0CW23CC7L] - " is unreadable on a phone, and the part
+    that varies is the only part worth showing.
+    """
+    stems = [f"Not Till We Are Lost: Bobiverse, Book 5 [B0CW23CC7L] - {n} - {t}"
+             for n, t in [("01", "Opening Credits"), ("02", "Dedication"),
+                          ("03", "Epigraph"),
+                          ("04", "1. Destination Galactic Center")]]
+    assert E._trim_shared_prefix(stems) == [
+        "01 - Opening Credits", "02 - Dedication", "03 - Epigraph",
+        "04 - 1. Destination Galactic Center",
+    ]
+
+
+def test_trimming_stops_when_it_would_leave_nothing_worth_reading():
+    """Two real books, opposite answers, same rule."""
+    # Trimming here leaves "1.2"/"2.2" -- less use than the title it cost.
+    wot = ["WoT 04 - The Shadow Rising p1.2", "WoT 04 - The Shadow Rising p2.2"]
+    assert E._trim_shared_prefix(wot) == wot
+
+    # Nothing shared worth removing.
+    assert E._trim_shared_prefix(["01", "02", "03"]) == ["01", "02", "03"]
+
+    # A single file has no shared prefix by definition.
+    assert E._trim_shared_prefix(["only one"]) == ["only one"]
+
+
+def test_chapter_names_fall_back_to_an_index_as_a_last_resort():
+    """Filenames are unique within a folder, but the caller need not be one."""
+    probes = [E.Probe("/a/x.mp3", 5.0, "mp3", 44100, 1, ""),
+              E.Probe("/b/x.mp3", 5.0, "mp3", 44100, 1, "")]
+    assert E.chapter_labels(probes) == ["Chapter 1", "Chapter 2"]
 
 
 def test_chapter_titles_escape_ffmetadata_syntax():

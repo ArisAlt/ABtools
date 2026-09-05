@@ -975,7 +975,9 @@ overwrite_var = tk.BooleanVar()                # repair_m4b --overwrite
 profile_var = tk.StringVar(
     value=ab_encode.PROFILES[ab_encode.DEFAULT_PROFILE].label)   # ab_encode -p
 bitrate_var = tk.StringVar(value="64k")        # ab_encode -b
-channels_var = tk.StringVar(value="1")         # ab_encode -c
+# "source" keeps whatever the files already have. Defaulting to mono would
+# re-encode every existing stereo .m4b just to join it -- see ab_encode.
+channels_var = tk.StringVar(value=ab_encode.KEEP_SOURCE_CHANNELS)   # ab_encode -c
 workers_var = tk.IntVar(value=4)               # ab_encode -w
 cleanup_var = tk.BooleanVar()                  # ab_encode --cleanup
 chapters_var = tk.BooleanVar(value=True)       # ab_encode (no --no-chapters)
@@ -1452,10 +1454,17 @@ Tooltip(bitrate_combo,
         "copied losslessly.")
 
 ttk.Label(encode_tab, text="Channels:").grid(row=3, column=2, sticky="w", padx=(0, PAD_X))
-channels_combo = ttk.Combobox(encode_tab, textvariable=channels_var,
-                              values=("1", "2"), state="readonly", width=4)
+channels_combo = ttk.Combobox(
+    encode_tab, textvariable=channels_var,
+    values=(ab_encode.KEEP_SOURCE_CHANNELS, "1", "2"), state="readonly", width=8)
 channels_combo.grid(row=3, column=3, sticky="w")
-Tooltip(channels_combo, "1 = mono (right for almost all audiobooks), 2 = stereo.")
+Tooltip(channels_combo,
+        "source = leave the channel count alone (default).\n"
+        "1 = mono, 2 = stereo.\n\n"
+        "Mono halves the size of a raw MP3 rip and speech loses nothing by it. "
+        "Forcing it on a book that is already an AAC .m4b, though, re-encodes "
+        "the whole thing and throws a channel away -- where leaving it alone "
+        "would have joined the parts losslessly.")
 
 ttk.Label(encode_tab, text="Workers:").grid(row=4, column=0, sticky="w", pady=(PAD_Y, 0))
 workers_spin = ttk.Spinbox(encode_tab, from_=1, to=16, textvariable=workers_var, width=5)

@@ -516,11 +516,35 @@ The default is **AAC-LC in an `.m4b`**, chosen for reach rather than efficiency:
 
 
 
+### Sample rate and channels
+
+Neither is forced. Each profile names a sample rate, but it is a **fallback, not a target**: when every source in a folder shares one standard rate, that rate is kept. Resampling is never free -- upsampling cannot add information and, at a fixed bitrate, spends part of the budget on a band that was never recorded, while downsampling throws away one that was. AAC-LC and MPEG audio both define 8/11.025/12/16/22.05/24/32/44.1/48 kHz and every iOS and Android decoder accepts them, so keeping the source rate costs no compatibility. Mixed or non-standard rates fall back to the profile's own, and Opus is exempt because it resamples to 48 kHz internally regardless.
+
+
+
+`--channels` likewise defaults to `source`, leaving the channel count alone. Mono halves the size of a raw MP3 rip and speech loses nothing by it, but forcing mono on a book that is *already* an AAC `.m4b` re-encodes the whole thing and throws a channel away, where leaving it alone joins the parts losslessly. Pass `-c 1` when you want mono. With mixed sources the widest count wins, so one mono file in a folder cannot downmix the rest.
+
+
+
+Both matter in practice. Across two real libraries the sources run 12, 22.05, 24, 32, 44.1 and 48 kHz in a mix of mono and stereo -- 24 kHz alone was 283 of 345 files in one of them, and 930 of 1294 files in the other are already `.m4b`.
+
+
+
 `python ab_encode.py --list-profiles` prints the table and marks any profile this ffmpeg build cannot produce (Opus needs `libopus`, MP3 needs `libmp3lame`).
 
 
 
-The `.m4b` and `.m4a` profiles write **one chapter mark per source file**, named from each file's title tag and falling back to its filename. Without them the result is a single unbroken file: Apple Books and most Android players show no chapter list and resume badly. Pass `--no-chapters` to skip.
+The `.m4b` and `.m4a` profiles write **one chapter mark per source file**. Without them the result is a single unbroken file: Apple Books and most Android players show no chapter list and resume badly. Pass `--no-chapters` to skip.
+
+
+
+Names are chosen to be useful rather than merely present:
+
+
+
+- title tags are used **only when every one of them is distinct** -- a real two-part book carried the same tag in both halves, which would have produced a chapter list of two identical entries;
+- otherwise filenames, with the boilerplate every name in the folder repeats trimmed off at a word boundary, so a 76-part Audible rip reads `01 - Opening Credits` rather than `Not Till We Are Lost: Bobiverse, Book 5 [B0CW23CC7L] - 01 - Opening Credits`;
+- trimming is abandoned when it would leave too little to read, so a two-part book keeps its full names rather than becoming `1.2` and `2.2`.
 
 
 
@@ -557,7 +581,7 @@ A folder containing a file ffmpeg cannot decode is **refused outright** rather t
 
 - `-p, --profile {iphone,android-aac,android-opus,mp3,copy}`: output format (default `iphone`)
 - `-b, --bitrate`: encoder bitrate; defaults to the profile's own
-- `-c, --channels {1,2}`: mono (default) or stereo
+- `-c, --channels {source,1,2}`: keep the source layout (default), mono, or stereo
 - `-w, --workers N`: folders encoded at once (default 4)
 - `--no-chapters`, `--skip-unreadable`, `--deep-verify`, `--cleanup`, `--list-profiles`
 
