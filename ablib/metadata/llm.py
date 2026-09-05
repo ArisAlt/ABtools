@@ -24,6 +24,12 @@ CONFIG = config.config
 _MAX_TOOL_ITERATIONS: int = 20
 _MAX_CALLS_PER_TOOL: int = 5
 
+# Score at which an MCP refinement is considered good enough to use. Shared with
+# ablib.cli.main so the two cannot drift: refine_metadata_via_mcp used to stop
+# early at 90 while its caller only accepted 95, so a stage-1 result scoring
+# 90-94 skipped the SequentialThinking stage and was then discarded anyway.
+MCP_ACCEPT_SCORE: int = 95
+
 
 def _call_llm(
     prompt: str,
@@ -143,7 +149,11 @@ def _call_llm(
             continue
 
         if finish_reason == "length" and length_retry == 0:
-            new_budget = min(token_budget * 2, 2048)
+            # max() so the retry can never *shrink* the budget: with the
+            # CONFIG.llm_max_tokens default of 8000, min(16000, 2048) handed
+            # the retry 2048 -- a 4x cut on the very call meant to give the
+            # model more room.
+            new_budget = max(token_budget, min(token_budget * 2, 16384))
             if CONFIG.debug:
                 rprint(
                     f"  [yellow]- LM Studio response hit max_tokens={token_budget}; retrying with {new_budget}[/]"
@@ -393,7 +403,15 @@ def generate_metadata_via_llm(
         )
         retry_result = parse_llm_raw(retry_raw)
         if retry_result:
-            result = retry_result
+            # Merge, do not replace. This retry exists solely to fill fields the
+            # primary response lacked, but overwriting wholesale meant a retry
+            # that found `series` while omitting `narrator`/`publisher` threw
+            # away values the primary had already established -- leaving less
+            # metadata than before the retry ran. Primary wins any conflict;
+            # the retry only supplies gaps.
+            merged = dict(retry_result)
+            merged.update({k: v for k, v in result.items() if v} if result else {})
+            result = merged
 
     return result
 
@@ -535,7 +553,7 @@ def refine_metadata_via_mcp(
         if CONFIG.debug:
             rprint(f"  [cyan]- Stage 1 refinement score: {stage1_score}[/]")
 
-        if stage1_score >= 90:
+        if stage1_score >= MCP_ACCEPT_SCORE:
             return stage1_meta
 
         if CONFIG.debug:
@@ -637,4 +655,4 @@ def refine_metadata_via_mcp(
         return None
 
 
-__all__ = ["_call_llm", "generate_metadata_via_llm", "refine_metadata_via_mcp"]
+__all__ = ["_call_llm", "generate_metadata_via_llm", "refine_metadata_via_mcp", "MCP_ACCEPT_SCORE"]

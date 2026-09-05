@@ -9,6 +9,10 @@ from typing import Optional
 
 _log = logging.getLogger(__name__)
 
+# Score at which a single provider is trusted outright, short-circuiting the
+# remaining lookups.
+ACCEPT_SCORE = 85
+
 from abclient import AbClient
 from bs4 import BeautifulSoup
 from rapidfuzz import fuzz
@@ -179,20 +183,29 @@ def best_match(
         candidates.append(pair)
         results[name] = pair
 
-    # Query in order, stopping as soon as one provider is confident enough.
-    # openlib/gbooks were previously never consulted here at all, so a book
-    # they could have matched fell through to the LLM fallback whenever
-    # Goodreads and Audible both missed -- despite README listing all four.
-    providers: list[tuple[str, object]] = []
+    # Tier 1: Goodreads alone. A confident hit here costs a single request,
+    # which keeps the common case cheap and is gentle on the scraped sites.
     if client.is_on("use_goodreads", default=True):
-        providers.append(("goodreads", goodreads))
-    providers += [("audible", audible), ("openlib", openlib), ("gbooks", gbooks)]
-
-    for name, lookup in providers:
-        add_result(name, lookup(author, title))
-        best = results.get(name)
-        if best and best[0] >= 85:
+        add_result("goodreads", goodreads(author, title))
+        best = results.get("goodreads")
+        if best and best[0] >= ACCEPT_SCORE:
             return best, results
+
+    # Tier 2: the rest concurrently. openlib/gbooks were previously never
+    # consulted here at all, so a book they could have matched fell through to
+    # the LLM fallback -- but adding them sequentially made a miss cost up to
+    # four chained 10s lookups. Fanning out bounds a miss at roughly one
+    # timeout instead of four, and matches the "parallel" fetch the README
+    # already advertised. add_result runs in this thread, as as_completed
+    # yields here, so `candidates`/`results` need no locking.
+    remaining = {"audible": audible, "openlib": openlib, "gbooks": gbooks}
+    with ThreadPoolExecutor(max_workers=len(remaining)) as pool:
+        futures = {pool.submit(fn, author, title): name for name, fn in remaining.items()}
+        for future in as_completed(futures):
+            try:
+                add_result(futures[future], future.result())
+            except Exception as exc:  # provider helpers already swallow their own
+                _log.debug("provider %s raised: %s", futures[future], exc)
 
     if not candidates:
         return None, results

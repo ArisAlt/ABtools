@@ -15,7 +15,11 @@ from mutagen.mp4 import MP4StreamInfoError
 from ablib.core import config, constants
 from ablib.core.console import Confirm, rprint
 from ablib.core.logging import log, review_log
-from ablib.metadata.llm import generate_metadata_via_llm, refine_metadata_via_mcp
+from ablib.metadata.llm import (
+    MCP_ACCEPT_SCORE,
+    generate_metadata_via_llm,
+    refine_metadata_via_mcp,
+)
 from ablib.metadata.utils import (
     format_metadata_summary,
     guess_from_path,
@@ -100,7 +104,7 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
             mcp_meta = refine_metadata_via_mcp(
                 folder, a_guess, t_guess, s_guess, si_guess, 0
             )
-            if mcp_meta and mcp_meta.get("score", 0) >= 95:
+            if mcp_meta and mcp_meta.get("score", 0) >= MCP_ACCEPT_SCORE:
                 rprint(
                     f"  [magenta]- metadata refined via MCP (score: {mcp_meta['score']})[/]"
                 )
@@ -170,7 +174,7 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
                     best_score or 0,
                     meta,
                 )
-                if mcp_meta and mcp_meta.get("score", 0) >= 95:
+                if mcp_meta and mcp_meta.get("score", 0) >= MCP_ACCEPT_SCORE:
                     rprint(
                         f"  [magenta]- metadata refined via MCP (score: {mcp_meta['score']})[/]"
                     )

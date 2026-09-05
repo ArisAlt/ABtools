@@ -25,7 +25,7 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 | P0 | [1.2](#12-abtoolsguipy-incompatible-main-call-when-clicking-restructure-folders) | GUI Restructure button always errors | 🛠️ Fixed |
 | P1 | [4.1](#41-combobookpy-leaf_dirs-treats-disc-subfolders-as-separate-audiobooks) / [4.4](#44-flatten_discspy-folders-starting-with-disc-prefix-collide-under-empty-string-) | Multi-disc books lose discs; unrelated books merged together | 🛠️ Fixed |
 | P1 | [1.3](#13-mcp_serverserverpy-standard-output-banners-violate-mcp-json-rpc-protocol) | MCP server unusable by any stdio client | 🛠️ Fixed |
-| P2 | [5.x](#5-metadata-providers--tagging-logic-errors) | Metadata corruption and crashes on specific inputs | 🛠️ Fixed (5.1-5.8) |
+| P2 | [5.x](#5-metadata-providers--tagging-logic-errors) | Metadata corruption and crashes on specific inputs | 🛠️ Fixed (5.1-5.12) |
 | P3 | [7.x](#7-edge-cases-type-errors--performance-issues) | Latent / narrow edge cases | Mostly closed — [7.3](#73-combobookpy-unsafe-index-access-in-tags_from_track) open |
 | — | [8](#8-mcp-tool-runtime-verification) | MCP tools executed for real: 3 working, 2 blocked by the remote host | Verified |
 
@@ -441,6 +441,32 @@ Comprehensive inventory of logic errors, runtime crashes, protocol incompatibili
 - **Fix**: Skip candidates without a title when building the result lists, or coerce with `(c.title or "").lower()` in the dedup key.
 
 ---
+
+### 5.9 `ablib/metadata/llm.py`: Gap-Filling Retry Replaces Instead of Merging
+- **Status**: 🛠️ **FIXED (2026-09-05)** — the retry result is merged over the primary, primary winning conflicts. *(Found in a follow-up pass over `ablib/`; not in either earlier audit.)*
+- **File**: [`ablib/metadata/llm.py:394-396`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/metadata/llm.py#L394-L396)
+- **Error**: `generate_metadata_via_llm` issues a second LLM call whose *sole purpose* is to fill optional fields the first response omitted, then did `result = retry_result` — discarding everything the primary had established.
+- **Impact**: the retry could leave **less** metadata than before it ran. Reproduced: a primary carrying `year`, `narrator`, `publisher` and `description` but missing `series`, followed by a retry supplying `series` but omitting the rest, produced `{'title', 'author', 'series', 'series_index'}` — `year`, `narrator`, `publisher` and `description` all silently lost.
+- **Fix applied**: `merged = dict(retry_result)` then `merged.update({k: v for k, v in result.items() if v})`, so the retry supplies only gaps. Verified: all four primary fields survive and `series` is still gained.
+
+### 5.10 `ablib/`: Three Different Bars for Accepting an MCP Refinement
+- **Status**: 🛠️ **FIXED (2026-09-05)** — unified as `MCP_ACCEPT_SCORE`. *(Follow-up pass.)*
+- **Files**: [`ablib/metadata/llm.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/metadata/llm.py), [`ablib/cli/main.py`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/cli/main.py)
+- **Error**: `refine_metadata_via_mcp` returned early once stage 1 scored **≥90**, but both callers only accepted **≥95** (a third path accepted any result). A stage-1 result scoring 90-94 therefore skipped the SequentialThinking stage *and* was then thrown away by the caller.
+- **Impact**: books in that band lost the benefit of stage 2 and fell through to the plain LLM path — the expensive refinement ran and its output was binned.
+- **Fix applied**: one exported `MCP_ACCEPT_SCORE = 95` used by the stage-1 gate and both callers, so they cannot drift again. The validation-recovery path at `main.py:264` still accepts any result deliberately, because it re-validates immediately afterwards.
+
+### 5.11 `ablib/providers/http.py`: Provider Lookups Were Serial Despite the Advertised Parallel Fetch
+- **Status**: 🛠️ **FIXED (2026-09-05)** — tiered, with the second tier concurrent. *(Follow-up pass.)*
+- **File**: [`ablib/providers/http.py:145-199`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/providers/http.py#L145-L199)
+- **Error**: every lookup was sequential at a 10s timeout each. `ThreadPoolExecutor`/`as_completed` were imported but unused — flagged by pyflakes — and `README.md` advertised "Fetches metadata in parallel for faster tagging", which was untrue of `ablib`. Adding openlib/gbooks in [5.3](#53-ablibprovidershttppy-openlib-and-gbooks-never-called-in-best_match) had made a miss cost up to four chained timeouts.
+- **Fix applied**: tier 1 queries Goodreads alone and short-circuits at ≥85, so a confident hit still costs one request and the scraped sites are not hit four times unnecessarily; tier 2 fans the remaining three out concurrently. Verified with 1s stub providers: **2.00s** vs ~4.0s serial, all four queried, and a confident Goodreads hit still returns in 0.00s having queried only Goodreads.
+
+### 5.12 `ablib/providers/mcp.py`: `MCP_RESULT_CACHE` Grew Without Bound
+- **Status**: 🛠️ **FIXED (2026-09-05)** — capped at 512 entries, oldest evicted first. *(Follow-up pass.)*
+- **File**: [`ablib/providers/mcp.py:25-26`](file:///home/citizenzero/Documents/Key/Abtools/ABtools/ablib/providers/mcp.py#L25-L26)
+- **Error**: `mcp_full_web_search` wrote every result into a module-level dict that nothing ever cleared.
+- **Impact**: a long run over a large library retained every search result for the life of the process. Verified: 1200 cached results now settle at 200 live entries under the cap instead of growing unbounded. Dropping a stale id costs at most one re-fetch.
 
 ## 6. GUI & CLI Synchronization Issues
 

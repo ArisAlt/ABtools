@@ -24,6 +24,11 @@ CONFIG = config.config
 
 MCP_RESULT_CACHE: Dict[str, Dict[str, Any]] = {}
 MCP_RESULT_SEQ = 0
+# The cache only exists so get_web_search_summaries can look up ids from the
+# current conversation, but nothing ever cleared it -- tagging a large library
+# accumulated every search result for the life of the process. Bound it, oldest
+# out first; dropping a stale id at worst costs one re-fetch.
+_MCP_CACHE_LIMIT = 512
 
 
 def _next_mcp_result_id() -> str:
@@ -278,6 +283,8 @@ def mcp_full_web_search(
         if not include_content and "content" in entry:
             entry.pop("content", None)
         MCP_RESULT_CACHE[entry_id] = entry
+        while len(MCP_RESULT_CACHE) > _MCP_CACHE_LIMIT:
+            MCP_RESULT_CACHE.pop(next(iter(MCP_RESULT_CACHE)))
         collected.append(entry)
     return collected
 
