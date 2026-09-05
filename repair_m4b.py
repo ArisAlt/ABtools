@@ -48,6 +48,10 @@ def run_ffmpeg(input_file: Path, output_file: Path) -> subprocess.CompletedProce
         str(input_file),
         "-c",
         "copy",
+        # Force the container. In --overwrite mode the output is "<name>.m4b.tmp",
+        # and ffmpeg cannot infer a format from a ".tmp" extension.
+        "-f",
+        "mp4",
         str(output_file),
     ]
     return subprocess.run(cmd, capture_output=True, text=True, check=False)

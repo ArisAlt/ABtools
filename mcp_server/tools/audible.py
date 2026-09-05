@@ -10,9 +10,12 @@ def search_audible(query: str):
     """Scrape Audible search results (no API key required)."""
     if not query:
         return {"error": "query is required"}
-    url = f"https://www.audible.com/search?keywords={query.replace(' ', '+')}"
+    # params= so the query is percent-encoded. Interpolating it raw meant a
+    # title containing "&" (e.g. "Dungeons & Dragons") started a new query
+    # parameter and silently truncated the search.
+    url = "https://www.audible.com/search"
     try:
-        response = requests.get(url, headers=HEADERS, timeout=20)
+        response = requests.get(url, params={"keywords": query}, headers=HEADERS, timeout=20)
         response.raise_for_status()
     except requests.RequestException as exc:
         return {"error": f"audible_request_failed:{exc}"}

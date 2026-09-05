@@ -9,6 +9,10 @@ from typing import Optional
 
 _log = logging.getLogger(__name__)
 
+# Score at which a single provider is trusted outright, short-circuiting the
+# remaining lookups.
+ACCEPT_SCORE = 85
+
 from abclient import AbClient
 from bs4 import BeautifulSoup
 from rapidfuzz import fuzz
@@ -179,13 +183,29 @@ def best_match(
         candidates.append(pair)
         results[name] = pair
 
+    # Tier 1: Goodreads alone. A confident hit here costs a single request,
+    # which keeps the common case cheap and is gentle on the scraped sites.
     if client.is_on("use_goodreads", default=True):
         add_result("goodreads", goodreads(author, title))
         best = results.get("goodreads")
-        if best and best[0] >= 85:
+        if best and best[0] >= ACCEPT_SCORE:
             return best, results
 
-    add_result("audible", audible(author, title))
+    # Tier 2: the rest concurrently. openlib/gbooks were previously never
+    # consulted here at all, so a book they could have matched fell through to
+    # the LLM fallback -- but adding them sequentially made a miss cost up to
+    # four chained 10s lookups. Fanning out bounds a miss at roughly one
+    # timeout instead of four, and matches the "parallel" fetch the README
+    # already advertised. add_result runs in this thread, as as_completed
+    # yields here, so `candidates`/`results` need no locking.
+    remaining = {"audible": audible, "openlib": openlib, "gbooks": gbooks}
+    with ThreadPoolExecutor(max_workers=len(remaining)) as pool:
+        futures = {pool.submit(fn, author, title): name for name, fn in remaining.items()}
+        for future in as_completed(futures):
+            try:
+                add_result(futures[future], future.result())
+            except Exception as exc:  # provider helpers already swallow their own
+                _log.debug("provider %s raised: %s", futures[future], exc)
 
     if not candidates:
         return None, results
@@ -201,27 +221,32 @@ def enrich_metadata_with_providers(
     if not title:
         return meta
 
-    needed = {key for key in ("author", "year", "series") if not (meta.get(key) or "")}
-    if not needed:
+    # Only author and year decide whether another lookup is worth making.
+    # `series` used to count too, but most books simply have no series, so it
+    # could never be satisfied -- every standalone book therefore ran all three
+    # providers serially at 10s each, hunting a series that does not exist.
+    # It is still filled opportunistically from whatever a provider returns.
+    def missing_essential() -> set[str]:
+        return {key for key in ("author", "year") if not (meta.get(key) or "")}
+
+    if not missing_essential():
         return meta
 
     author = meta.get("author")
-    providers = (audible, openlib, gbooks)
-    for provider in providers:
+    for provider in (audible, openlib, gbooks):
         info = provider(author, title)
         if not info:
             continue
-        if "author" in needed:
+        if not (meta.get("author") or ""):
             authors = info.get("authors")
             if authors:
                 meta["author"] = ", ".join(value for value in authors if value)
-        if "year" in needed and info.get("year"):
+        if not (meta.get("year") or "") and info.get("year"):
             meta["year"] = info["year"]
-        if "series" in needed and info.get("series"):
+        if not (meta.get("series") or "") and info.get("series"):
             meta["series"] = info["series"]
 
-        needed = {key for key in ("author", "year", "series") if not (meta.get(key) or "")}
-        if not needed:
+        if not missing_essential():
             break
         author = meta.get("author")
 

@@ -45,6 +45,26 @@ def is_audio(p: Path) -> bool:
     return p.suffix.lower() in AUDIO_EXTS
 
 
+def disc_base_name(name: str) -> str:
+    """Derive the book name from a disc folder name.
+
+    Handles a trailing marker ("Book C (Disc 1)") and a leading one
+    ("[Disc 1] Book C"), where the text *before* the marker is empty. Returns
+    "" only for a bare marker such as "Disc 1", which means the parent folder
+    is itself the book.
+
+    Taking just the text before the marker (the previous behaviour) collapsed
+    every prefix-marked folder in a directory to "", merging unrelated books.
+    """
+    parts = DISC_RX.split(name)
+    head = parts[0].strip().strip("-_ ").strip()
+    if head:
+        return head
+    if len(parts) > 1:
+        return parts[-1].strip().strip("-_ ").strip()
+    return ""
+
+
 def disc_sets_in(folder: Path) -> List[Tuple[str, List[Tuple[int, Path]]]]:
     """
     Return list of (base_name, [(disc_no, Path)…]) whose sub-dirs match *disk pattern*.
@@ -57,8 +77,7 @@ def disc_sets_in(folder: Path) -> List[Tuple[str, List[Tuple[int, Path]]]]:
         m = DISC_RX.search(p.name)
         if not m:
             continue
-        base = DISC_RX.split(p.name)[0].strip().rstrip(" -_")
-        groups.setdefault(base, []).append((int(m.group("num")), p))
+        groups.setdefault(disc_base_name(p.name), []).append((int(m.group("num")), p))
     return [(b, sorted(lst, key=lambda t: t[0])) for b, lst in groups.items()]
 
 
@@ -85,8 +104,9 @@ def flatten(
         auto_yes: When True, skip the confirmation prompt.
         root:     The top-level root passed from CLI; used for display-only relative paths.
     """
-    base = DISC_RX.split(discs[0][1].name)[0].strip().rstrip(" -_")
-    book_dir = parent / base
+    base = disc_base_name(discs[0][1].name)
+    # A bare marker ("Disc 1") means the parent folder is the book itself.
+    book_dir = parent / base if base else parent
     tracks = collect_tracks(discs)
     if not tracks:
         return False
@@ -108,8 +128,23 @@ def flatten(
             return False
 
     digits = len(str(len(tracks)))
-    for i, src in enumerate(tracks, 1):
-        dest = book_dir / f"Track {i:0{digits}d}{src.suffix.lower()}"
+    planned = [
+        (src, book_dir / f"Track {i:0{digits}d}{src.suffix.lower()}")
+        for i, src in enumerate(tracks, 1)
+    ]
+
+    # Check every destination up front. safe_move raises FileExistsError, which
+    # nothing here catches, so discovering a clash mid-loop would abort with a
+    # traceback after some tracks had already moved.
+    clashes = [dest for _, dest in planned if dest.exists()]
+    if clashes:
+        print(
+            f"   ! refusing to flatten - {len(clashes)} destination file(s) already "
+            f"exist, e.g. {clashes[0].name}"
+        )
+        return False
+
+    for src, dest in planned:
         print(f"   {'mv' if not dry else '↪'} {src.name} → {dest.relative_to(parent)}")
         if not dry:
             book_dir.mkdir(exist_ok=True)

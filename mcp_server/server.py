@@ -50,21 +50,23 @@ def tag_books_tool(path: str, commit: bool = False, yes: bool = False):
 if __name__ == "__main__":
     import traceback
 
-    sys.stdout.write(f"[mcp] starting {MCP_SERVER_NAME} ({MCP_SERVER_VERSION})\n")
-    sys.stdout.flush()
-    sys.stdout.write(
+    # Diagnostics MUST go to stderr: stdio transport reserves stdout for the
+    # JSON-RPC stream, and any stray text there breaks client initialization.
+    sys.stderr.write(f"[mcp] starting {MCP_SERVER_NAME} ({MCP_SERVER_VERSION})\n")
+    sys.stderr.flush()
+    sys.stderr.write(
         "Registered tools: ['search_audible_tool', 'search_goodreads_tool', "
         "'search_google_books_tool', 'search_openlibrary_tool', 'tag_books_tool']\n"
     )
-    sys.stdout.flush()
+    sys.stderr.flush()
     try:
         mcp.run()
     except Exception:
         traceback.print_exc(file=sys.stderr)
     finally:
         try:
-            sys.stdout.write("[mcp] server stopped\n")
-            sys.stdout.flush()
+            sys.stderr.write("[mcp] server stopped\n")
+            sys.stderr.flush()
         except ValueError:
-            # FastMCP may close stdout during shutdown; ignore the resulting ValueError.
+            # FastMCP may close the stream during shutdown; ignore the ValueError.
             pass

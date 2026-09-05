@@ -1,0 +1,267 @@
+# Proposal: Dynamic LLM Model Configuration
+
+**Status:** All four phases shipped. Scope **widened to include hosted providers** on 2026-09-05, superseding the earlier local-only decision.
+**Date:** 2026-09-05
+**Scope:** `AbtoolsGui.py`, `ablib/core/config.py`, `ablib/metadata/llm.py`, `mcp_server/`
+**Goal:** remove the hardcoded `MODEL_CHOICES` list and make endpoint/model configuration discoverable, persistent and consistent across the GUI, CLI and MCP server.
+
+This document assesses an earlier four-option design sketch (auto-discovery / presets / MRU cache / config cascade), corrects the parts that do not match the code as it actually stands, and proposes a phased plan.
+
+---
+
+## 1. Summary
+
+The core idea — query the server's `/v1/models` endpoint instead of shipping a hardcoded list — is sound and worth doing. Three corrections are needed before implementing it, and one of the four original options is blocked by a missing feature elsewhere in the codebase.
+
+| Option | Verdict | Notes |
+|---|---|---|
+| 1. Live auto-discovery via `/v1/models` | **Adopt** | Needs thread-marshalling and robust URL derivation (§3.1, §3.3) |
+| 3. Persistent settings + MRU model list | **Adopt, with #1** | Must extend the existing settings file, not add a second (§3.4) |
+| 2. Provider presets | **Shipped** | LM Studio / Ollama / vLLM / OpenRouter (§3.2) |
+| 4. Config cascade (env vars) | **Shipped** | The MCP server is now configurable at all — see §4.4 |
+
+**Recommended order:** fix the open P2 correctness bugs first (§5), then ship options 1 + 3 as a single change, then reassess 2 and 4.
+
+---
+
+## 2. Verified findings
+
+Everything below was checked against the running code, not inferred.
+
+### 2.1 All `CONFIG` references are the same object
+
+```
+gui.CONFIG                 id=139757114388368
+cli.main.CONFIG            id=139757114388368
+llm.CONFIG                 id=139757114388368
+core.config.config         id=139757114388368
+combobook.tagger.CONFIG    id=139757114388368
+ALL THE SAME OBJECT: True
+```
+
+`ablib/core/config.py` exposes a single module-level `config = RuntimeConfig()`, and every consumer binds to that same instance.
+
+**Consequence:** this block in `AbtoolsGui.apply_llm_settings()` is dead code — it assigns the object's attributes to themselves:
+
+```python
+tagger_mod = getattr(combobook, "tagger", None)
+if tagger_mod is not None and hasattr(tagger_mod, "CONFIG"):
+    tagger_mod.CONFIG.llm_endpoint = CONFIG.llm_endpoint      # no-op
+    tagger_mod.CONFIG.llm_model_name = CONFIG.llm_model_name  # no-op
+```
+
+It should be deleted regardless of which option is adopted. It implies a decoupling between the GUI and the tagger that does not exist, and will mislead the next reader.
+
+### 2.2 Authenticated / remote providers cannot work today
+
+`ablib/metadata/llm.py::_call_llm` passes no `headers=` argument at all — there is no `Authorization` header, no API-key plumbing. (Grep hits for "api_key" in that module belong to Tavily search, which is unrelated.)
+
+**Consequence:** any preset or documentation implying support for a hosted OpenAI-compatible provider is aspirational. Remote support requires, in order: an auth/token field in the GUI, an `api_key` field on `RuntimeConfig`, and header support in `_call_llm`.
+
+### 2.3 Submodule shadowing in `ablib/cli/__init__.py`
+
+`ablib/cli/__init__.py` contains `from .main import main`, which rebinds the package attribute `main` from the *submodule* to the *function*:
+
+```
+from ablib.cli import main            -> function
+importlib.import_module("ablib.cli.main") -> module
+```
+
+This is almost certainly why `AbtoolsGui.py` uses `importlib.import_module("ablib.cli.main")` rather than a plain import. Not urgent, but it is a live trap for anyone adding imports here; worth a comment in `__init__.py` at minimum.
+
+### 2.4 `/v1/models` URL derivation is tractable
+
+Deriving the models URL from the configured chat endpoint works across the shapes users realistically type, provided it is done with `urllib.parse.urlsplit` rather than string slicing:
+
+| Configured endpoint | Derived models URL |
+|---|---|
+| `http://127.0.0.1:8888/v1/chat/completions` | `http://127.0.0.1:8888/v1/models` |
+| `http://127.0.0.1:1234/v1/chat/completions/` | `http://127.0.0.1:1234/v1/models` |
+| `http://127.0.0.1:11434/v1` | `http://127.0.0.1:11434/v1/models` |
+| `http://127.0.0.1:8000` | `http://127.0.0.1:8000/v1/models` |
+| `https://api.example.com/openai/v1/chat/completions` | `https://api.example.com/openai/v1/models` |
+
+### 2.5 Infrastructure that already exists
+
+- **Settings file:** `~/.abtools_gui.json` already exists, added for theme persistence.
+- **Thread → UI channel:** `output_queue` (a `queue.Queue`) drained by `poll_queue()` via `root.after(100, ...)`.
+- **Worker spawning:** `start_worker()` with `current_worker` / `stop_event`.
+- **Model combobox is already editable** (`state="normal"`), so free-text model names already work. Only the *memory* of them is missing.
+- **`llm_controls`** currently holds 2 widgets; anything new that should grey out with the LLM toggle must be appended to it.
+
+---
+
+## 3. Corrections to the original sketch
+
+### 3.1 Tkinter thread-safety (the actual hard part)
+
+The sketch says to make the HTTP call in the background "so it never freezes the mainloop", but does not address the real constraint: **Tkinter is not thread-safe.** Assigning `model_combo["values"]` from a worker thread produces intermittent, hard-to-reproduce crashes.
+
+The probe must post its result to `output_queue` and let `poll_queue()` apply it on the UI thread. `poll_queue` already has a message-type switch (`stdout` / `progress` / `prompt` / `status`); this adds one more case.
+
+### 3.2 Remote providers — decision reversed, now supported
+
+**Superseded.** An earlier note here recorded a local-only scope. That was reversed the same day when OpenRouter was requested, which required exactly the auth plumbing §2.2 identified as missing.
+
+**Shipped:** `RuntimeConfig.llm_api_key` (defaulting from `ABTOOLS_LLM_API_KEY` or `OPENROUTER_API_KEY`), `_auth_headers()` in `ablib/metadata/llm.py` sending `Authorization: Bearer …` plus OpenRouter's `HTTP-Referer`/`X-Title` attribution headers, a `--llm-api-key` CLI flag, and an API-key field in the GUI. Local servers ignore the header, so nothing regresses for them.
+
+**The key is never written to disk.** It is held in memory only and pre-filled from the environment; the settings file was checked to confirm no trace of it after use.
+
+**One trap worth recording:** OpenRouter serves `/v1/models` *without* authentication, so a successful model probe says nothing about whether completions will work. The GUI therefore keeps a "API key required to run" note visible alongside the model count — otherwise you see 431 models and reasonably conclude you are ready.
+
+### 3.3 Use `urlsplit`, not string manipulation
+
+Trailing slashes, bare hosts and path-prefixed deployments all appear in practice (§2.4). A `.replace("/chat/completions", "/models")` will silently produce a wrong URL for three of the five cases above.
+
+### 3.4 One settings file, not three
+
+The sketch proposes `~/.config/abtools/gui_config.json` *or* `~/.abtools.json`. `~/.abtools_gui.json` already exists (§2.5). Extend it. Note also that `~/.abclient.json` already exists for feature flags — that is a separate concern and should stay separate.
+
+Proposed schema, versioned so future changes can migrate:
+
+```json
+{
+  "version": 1,
+  "theme": "Neutral Slate",
+  "llm_endpoint": "http://127.0.0.1:8888/v1/chat/completions",
+  "llm_model": "qwen2.5-7b-instruct",
+  "recent_models": ["qwen2.5-7b-instruct", "ibm/granite-4-h-tiny"]
+}
+```
+
+### 3.5 Do not honour `OPENAI_*` environment variables
+
+The sketch lists `OPENAI_BASE_URL` / `OPENAI_MODEL_NAME` as fallbacks. Silently inheriting a variable set for an unrelated tool is surprising, and could point tagging at a paid hosted API without the user realising. Use `ABTOOLS_LLM_ENDPOINT` / `ABTOOLS_LLM_MODEL` only.
+
+---
+
+## 4. Plan
+
+### Phase 1 — cleanup ✅ **done 2026-09-05**
+
+- ~~Delete the no-op `tagger_mod.CONFIG` block in `apply_llm_settings` (§2.1).~~ Removed; a comment records why no propagation is needed. Verified the GUI still drives both `combobook.tagger.CONFIG` and `ablib.cli.main.CONFIG`, since all three are one object.
+- ~~Add a comment in `ablib/cli/__init__.py` recording the shadowing trap (§2.3).~~ Added to the module docstring.
+- **Also fixed, found during this cleanup:** the CLI and GUI defaulted to *different models*. `constants.py` gave `ibm/granite-4-h-tiny` while the CLI's `--llm-model` default was the literal `mistral-7b-instruct-q4`, and argparse always supplies its default — so every CLI run silently overrode the constant. The CLI's own `--help` epilog also still advertised port 1234 against a real default of 8888. Both argparse defaults now reference `constants`, and the epilog is an f-string interpolating them, so the three can no longer drift.
+
+### Phase 2 — auto-discovery + persistence ✅ **shipped 2026-09-05**
+
+Options 1 and 3, shipped together. `MODEL_CHOICES` is gone.
+
+**What landed**
+
+- `models_url()` derives the probe URL with `urlsplit`; all five endpoint shapes in §2.4 verified.
+- `probe_models()` runs on a worker thread and posts `("models", …)` to `output_queue`; `poll_queue` applies it on the UI thread, per §3.1.
+- A `↻` button next to the Model box, plus an automatic probe on `<FocusOut>` of the endpoint field and once ~300ms after launch. The button is in `llm_controls`, so it greys out with the LLM toggle.
+- A muted status line under the Model box: *"N model(s) available"*, *"endpoint unreachable"*, or *"N available – 'x' not among them"* when the selected model is not loaded on the server.
+- MRU: `remember_model()` records the model on each run, de-duplicated, most-recent-first, capped at 10. It seeds the dropdown at launch and is the fallback whenever the probe fails.
+- The settings file became one versioned document (`version`, `theme`, `llm_endpoint`, `llm_model`, `recent_models`) via `load_settings()` / `save_settings(**changes)`, per §3.4. The last endpoint and model are restored at startup.
+
+**Verified**: probe populates the dropdown from a stub server; an unreachable endpoint falls back to recent models and says so; a model absent from the server's list is called out; nothing fires while the LLM toggle is off; the seven themes, tooltips and log rendering are unaffected.
+
+**Startup probe** — §6 decision 2 was left open; resolved as *probe once at launch*. With scope now local-only the request only ever goes to a loopback address, runs on a worker with a 4s timeout, and cannot delay the window.
+
+**Endpoint derivation:**
+
+```python
+from urllib.parse import urlsplit, urlunsplit
+
+def models_url(endpoint: str) -> str:
+    """Derive the /v1/models URL from a chat-completions endpoint."""
+    s = urlsplit(endpoint.strip().rstrip("/"))
+    path = s.path
+    for suffix in ("/chat/completions", "/completions"):
+        if path.endswith(suffix):
+            path = path[: -len(suffix)]
+    if not path.endswith("/v1"):
+        path = path.rstrip("/") + "/v1"
+    return urlunsplit((s.scheme, s.netloc, path + "/models", "", ""))
+```
+
+**Probe, off the UI thread, result marshalled back through the existing queue:**
+
+```python
+def probe_models(endpoint: str) -> None:
+    def work() -> None:
+        try:
+            r = requests.get(models_url(endpoint), timeout=3)
+            r.raise_for_status()
+            ids = [m["id"] for m in r.json().get("data", []) if isinstance(m, dict) and m.get("id")]
+            output_queue.put(("models", (sorted(ids), None)))
+        except Exception as exc:
+            output_queue.put(("models", (None, str(exc))))
+    threading.Thread(target=work, daemon=True).start()
+```
+
+**Applied on the UI thread**, as a new case in `poll_queue`:
+
+```python
+elif typ == "models":
+    ids, error = msg
+    if ids:
+        model_combo["values"] = ids
+        endpoint_status.set(f"● {len(ids)} models")
+    else:
+        model_combo["values"] = recent_models()   # graceful fallback
+        endpoint_status.set("● unreachable")
+```
+
+**Triggers:** an explicit `↻` button (appended to `llm_controls`) plus `<FocusOut>` on the endpoint field. Not on every keystroke.
+
+**MRU:** on each run that uses the LLM, prepend the selected model to `recent_models`, de-duplicate, cap at 10, save. On startup, seed `model_combo["values"]` from `recent_models` so the dropdown is useful before any probe completes.
+
+**Removals:** the `MODEL_CHOICES` constant disappears entirely.
+
+### Phase 3 — provider presets ✅ **shipped 2026-09-05**
+
+A Provider dropdown fills in the endpoint and probes it immediately.
+
+| Provider | Endpoint | Key |
+|---|---|---|
+| LM Studio | `http://127.0.0.1:1234/v1/chat/completions` | — |
+| LM Studio (ABtools default) | `http://127.0.0.1:8888/v1/chat/completions` | — |
+| Ollama | `http://127.0.0.1:11434/v1/chat/completions` | — |
+| vLLM | `http://127.0.0.1:8000/v1/chat/completions` | — |
+| OpenRouter | `https://openrouter.ai/api/v1/chat/completions` | required |
+
+Verified live against OpenRouter: 431 models discovered, bearer token sent.
+
+### Phase 4 — config cascade ✅ **shipped 2026-09-05**
+
+Precedence, highest first: **explicit CLI flag / GUI selection → saved GUI settings → `ABTOOLS_*` env vars → `constants.py` defaults.**
+
+**What landed**
+
+- `RuntimeConfig` fields resolve through `_env_str` / `_env_int` / `_env_bool`, honouring `ABTOOLS_LLM_ENDPOINT`, `ABTOOLS_LLM_MODEL`, `ABTOOLS_LLM_TIMEOUT`, `ABTOOLS_LLM_MAX_TOKENS`, `ABTOOLS_LLM_API_KEY` and `ABTOOLS_DEBUG`.
+- The CLI's argparse defaults now read from the resolved config rather than `constants.py`, so an environment value survives unless a flag overrides it. Verified: env alone gives `from-env`, env plus `--llm-model from-flag` gives `from-flag`.
+- `--show-config` prints each setting, its effective value and its source, then exits. The API key is reported as `set`/`unset` and never printed.
+- A malformed value is reported rather than swallowed: `ABTOOLS_LLM_TIMEOUT='abc' is not a whole number; using 90`. Silent fallback would leave the user wondering why the setting had no effect.
+- `OPENAI_BASE_URL` / `OPENAI_MODEL_NAME` remain deliberately ignored, per §3.5.
+
+**The payoff, as predicted.** `mcp_server/tools/tagger.py` reads `core_config.config`, so it inherited the cascade with no changes of its own — the server went from having *no* configuration path to honouring the environment:
+
+```
+before        endpoint: http://127.0.0.1:8888/...  model: ibm/granite-4-h-tiny
+ABTOOLS_* set endpoint: http://127.0.0.1:11434/... model: qwen2.5-7b-instruct
+```
+
+`RuntimeConfig` remains the shared singleton described in §2.1; the cascade only changes how its *initial* values are resolved, so the CLI, GUI and MCP server continue to mutate one instance.
+
+---
+
+## 5. Sequencing against open bugs
+
+This is ergonomics work, and `bug.md` still has open **P2 correctness** items that affect output:
+
+- **5.2** — the `[--]` regex in `ablib/metadata/utils.py` splits on *internal* hyphens, so `Spider-Man - Stan Lee` parses as `['Spider', 'Man', 'Stan Lee']`. Author/title hints are silently corrupted for any hyphenated name.
+- **5.1** — `export_metadata` raises `TypeError` on a non-string metadata value.
+- **5.8** — `choose_meta` raises `AttributeError` on a null provider title.
+
+All three are small. Recommendation: land those first, then Phase 1 + 2 together.
+
+---
+
+## 6. Decisions needed
+
+1. ~~**Auth:** is remote/hosted provider support wanted?~~ **Resolved 2026-09-05: yes.** Initially answered "local only", reversed the same day for OpenRouter. `llm_api_key`, `_auth_headers()`, `--llm-api-key` and the GUI field are all in place.
+2. ~~**Probe on startup:**~~ **Resolved: probe once at launch**, ~300ms after the window appears. Safe now that scope is local-only.
+3. **Phase 4 scope:** GUI + CLI only, or extend to the MCP server at the same time?

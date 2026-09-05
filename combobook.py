@@ -36,8 +36,17 @@ import errno
 import stat
 
 import ablib.metadata.llm as tagger
+from ablib.metadata.utils import (
+    extract_series_and_title,
+    format_canonical_dest,
+    is_plausible_author,
+    normalise_author,
+    parse_book_folder_name,
+    primary_author,
+    truncate_component,
+)
 
-VERSION = "1.18"
+VERSION = "1.20"
 FILE_PATH = Path(__file__).resolve()
 VERSION_INFO = f"%(prog)s v{VERSION} ({FILE_PATH})"
 
@@ -47,7 +56,16 @@ FLATTEN_DISCS = True
 RENAME_TRACKS = False          # Track 001.*, Track 002.* …
 WRITE_TAGS    = True           # needs ffmpeg on PATH
 AUTO_YES      = False          # --yes overrides per-run
+MIN_AUTO_SCORE = 0.75          # --yes means "do not ask me", not "accept anything".
+                               # Without a floor, AUTO_YES took the top-ranked candidate
+                               # at any similarity at all - a 0.47 match wrote a wholly
+                               # unrelated author into the library. Override with
+                               # --auto-accept-score.
 UNMATCHED_DIR = "_unmatched"   # destination for folders with no metadata match
+MOVE_UNMATCHED = False         # when False, folders with no metadata match are LEFT IN PLACE.
+                               # Moving them into <library>/_unmatched/ strips the one piece of
+                               # evidence left for a folder that has no usable tags: its position
+                               # in the source tree. Opt back in with --move-unmatched.
 
 def _coerce_positive_int(value: str | None, default: int) -> int:
     try:
@@ -134,12 +152,80 @@ class Meta:
 def slug(t:str)->str:
     return re.sub(r'[<>:"/\\|?*\x00-\x1F]',"",t).strip().rstrip(" .")
 
+def has_audio(p: Path) -> bool:
+    try:
+        return any(f.suffix.lower() in AUDIO_EXTS for f in p.iterdir())
+    except OSError:
+        return False
+
+
+def is_bare_disc_marker(name: str) -> bool:
+    """True when a folder name is *nothing but* a disc/part marker.
+
+    "Disc 1" / "CD2" -> True   (the parent folder is the book)
+    "[Disc 1] Book A" -> False (carries its own book name)
+    "The Hobbit Part 1" -> False
+
+    Only bare markers may be folded into their parent. A child that carries its
+    own title must stay independent, otherwise two distinct books sitting under
+    one author folder would be merged into a single "book".
+    """
+    for rx in (DISC_RX, PART_RX):
+        m = rx.search(name)
+        if m:
+            remainder = name[: m.start()] + name[m.end():]
+            return not remainder.strip(" -_[](){}.")
+    return False
+
+
+def disc_children(p: Path) -> List[Path]:
+    """Audio-bearing sub-folders of `p` that are all bare disc markers.
+
+    Returns [] unless *every* audio-bearing sub-folder is a bare marker, so an
+    ambiguous mix is left alone rather than guessed at.
+    """
+    try:
+        audio_subdirs = [c for c in p.iterdir() if c.is_dir() and has_audio(c)]
+    except OSError:
+        return []
+    if not audio_subdirs:
+        return []
+    if all(is_bare_disc_marker(c.name) for c in audio_subdirs):
+        return audio_subdirs
+    return []
+
+
 def leaf_dirs(root:Path)->List[Path]:
-    return [p for p in root.rglob("*")
-            if p.is_dir()
-            and any(f.suffix.lower() in AUDIO_EXTS for f in p.iterdir())
-            and not any(c.is_dir() and any(g.suffix.lower() in AUDIO_EXTS for g in c.iterdir())
-                        for c in p.iterdir())]
+    """Find book folders under `root`.
+
+    A multi-disc book (`Book/Disc 1`, `Book/Disc 2`) yields the *book* folder,
+    not one entry per disc. Previously each disc was returned as its own book,
+    so the first disc claimed the destination and every later one was skipped
+    as "already moved" and abandoned in the source.
+
+    `root` itself is a candidate: pointing the tool straight at one book
+    (`combobook.py "/books/Dune" /dest`) must find it. `rglob` only yields
+    descendants, so relying on it alone silently processed nothing.
+    """
+    leaves: List[Path] = []
+    disc_dirs: set[Path] = set()
+    for p in [root, *root.rglob("*")]:
+        if not p.is_dir():
+            continue
+        discs = disc_children(p)
+        if discs:
+            leaves.append(p)          # `p` is the book; its discs are parts of it
+            disc_dirs.update(discs)
+            continue
+        if not has_audio(p):
+            continue
+        try:
+            if any(c.is_dir() and has_audio(c) for c in p.iterdir()):
+                continue              # audio-bearing sub-folders -> not a leaf
+        except OSError:
+            continue
+        leaves.append(p)
+    return [p for p in leaves if p not in disc_dirs]
 
 class ProgressTracker:
     def __init__(self, total: int, desc: str) -> None:
@@ -299,7 +385,14 @@ def _can_use_rename(src: Path, dst: Path) -> bool:
 
 def safe_move(src: Path, dst: Path, copy: bool = False) -> None:
     if dst.exists():
-        raise FileExistsError(dst)
+        # process() deliberately allows an existing *empty* directory as the
+        # destination, then this used to reject it -- the two contradicted each
+        # other and the move died with FileExistsError. Consume it instead; the
+        # rename/copy below recreates it.
+        if dst.is_dir() and not any(dst.iterdir()):
+            dst.rmdir()
+        else:
+            raise FileExistsError(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
 
     rename_failed = False
@@ -364,6 +457,25 @@ def tags_from_track(track:Path)->Optional[Meta]:
 def clean_tail(s:str)->str:
     return TAIL_RX.sub("", s).strip()
 
+def parse_leaf_name(name: str) -> Meta:
+    """Wrap the shared folder-name parser in combobook's Meta record.
+
+    A leaf folder is very often self-describing ("Feist - Riftwar Saga - Book 4
+    - A Darkness at Sethanon"). guess_from_folder() used to look for the author
+    in the *parent* directory only, so in a flat source tree it returned
+    author="Unknown Author" and the whole 54-character string as the title.
+    Nothing could match that and the book was written off. See bug.md 4.12.
+    """
+    parsed = parse_book_folder_name(name)
+    return Meta(
+        author=parsed["author"] or "Unknown Author",
+        title=parsed["title"] or clean_tail(name).strip() or name,
+        year=parsed["year"],
+        series=parsed["series"],
+        seq=parsed["series_index"],
+    )
+
+
 def guess_from_folder(leaf: Path) -> Meta:
     """
     1) Parse a leaf folder name like "5 - Jaws of Darkness (2003)" → seq=5, title, year.
@@ -374,6 +486,13 @@ def guess_from_folder(leaf: Path) -> Meta:
        an author (contains a space but isn't just a year).
     4) Return Meta(author, title, year, series, seq, narr=None).
     """
+    # 0) The folder may name the book outright ("Author - Series - Book 4 - Title").
+    #    Prefer that over climbing the tree: it is the most specific evidence
+    #    available, and in a flat source tree it is the *only* evidence.
+    from_name = parse_leaf_name(leaf.name)
+    if from_name.author != "Unknown Author" and from_name.title:
+        return from_name
+
     # 1) Try to match "Seq - Title (Year)" exactly.
     m = LEAF_RX.match(leaf.name)
     if m:
@@ -398,21 +517,52 @@ def guess_from_folder(leaf: Path) -> Meta:
     else:
         author_dir = parent
 
-    # 3) Climb up until we find a plausible author name (contains a space, not just a year)
+    # 3) Climb up until we find a plausible author name.
+    #    The source tree is no more trustworthy than the tags: a book filed
+    #    under "Side 01/" would otherwise hand that string straight back as the
+    #    author, and it then poisons both the provider query and the similarity
+    #    score. is_plausible_author() is the same guard the tag path uses.
     author = "Unknown Author"
     for candidate in [author_dir, *author_dir.parents]:
         name = candidate.name
-        # if name has at least one space and is not exactly a 4-digit year:
-        if " " in name and not YEAR_RX.fullmatch(name):
-            author = name
-            break
+        if " " not in name or YEAR_RX.fullmatch(name):
+            continue
+        if not is_plausible_author(name):
+            continue
+        author = name
+        break
 
-    return Meta(author=author, title=title, year=year, series=series, seq=seq)
+    # The name may still carry a series even when it named no author
+    # ("Riftwar saga 03 - Silverthorn" under an author folder).
+    if not series and from_name.series:
+        series = from_name.series
+        seq = seq or from_name.seq
+        if from_name.title:
+            title = from_name.title
+    year = year or from_name.year
+
+    return Meta(author=normalise_author(author) or "Unknown Author",
+                title=title, year=year, series=series, seq=seq)
+
+def _query_author(meta: Meta) -> Optional[str]:
+    """The author to send to a provider, or None when we do not have one.
+
+    "Unknown Author" is a placeholder, not a name. Pasting it into the query
+    string made every lookup for an untagged book search for a nonexistent
+    author and return nothing, which is how books with a perfectly searchable
+    title ended up unmatched.
+    """
+    author = (meta.author or "").strip()
+    if not author or not is_plausible_author(author):
+        return None
+    return author
+
 
 # ───────────── online lookup (Open Library ▸ Google Books) ──────────────────
 def ol_search_all(meta: Meta) -> List[Meta]:
     try:
-        q = f"title:{meta.title} author:{meta.author}"
+        author = _query_author(meta)
+        q = f"title:{meta.title} author:{author}" if author else f"title:{meta.title}"
         r = requests.get(
             "https://openlibrary.org/search.json",
             params={"q": q, "limit": 5}, timeout=10,
@@ -432,7 +582,8 @@ def ol_search_all(meta: Meta) -> List[Meta]:
 
 def gb_search_all(meta: Meta) -> List[Meta]:
     try:
-        q = f'intitle:"{meta.title}"+inauthor:"{meta.author}"'
+        author = _query_author(meta)
+        q = f'intitle:"{meta.title}"+inauthor:"{author}"' if author else f'intitle:"{meta.title}"'
         r = requests.get(
             "https://www.googleapis.com/books/v1/volumes",
             params={"q": q, "maxResults": 5}, timeout=10,
@@ -453,7 +604,8 @@ def gb_search_all(meta: Meta) -> List[Meta]:
 
 def audible_search_all(meta: Meta) -> List[Meta]:
     try:
-        q = f"{meta.title} {meta.author}"
+        author = _query_author(meta)
+        q = f"{meta.title} {author}" if author else meta.title
         html = requests.get(
             "https://www.audible.com/search",
             params={"keywords": q},
@@ -500,17 +652,45 @@ def _seq_in_text(seq: str, text: str) -> bool:
     ]
     return any(re.search(p, t) for p in patterns)
 
+def _author_similarity(guess_author: str, hit_author: str) -> float:
+    """Compare two author strings, tolerating partial credits.
+
+    Folder names routinely carry a surname only ("Feist"), and a straight
+    character ratio against "Raymond E. Feist" scores ~0.48 -- low enough to
+    sink the correct book. A name that is wholly contained in the other is the
+    same person, so treat it as a match.
+    """
+    g = set(re.findall(r"[a-z]+", guess_author.lower()))
+    h = set(re.findall(r"[a-z]+", hit_author.lower()))
+    if g and h and (g <= h or h <= g):
+        return 1.0
+    return SequenceMatcher(None, guess_author.lower(), hit_author.lower()).ratio()
+
+
 def _similarity(a: Meta, b: Meta) -> float:
-    t1 = f"{a.author} {a.title}".lower()
-    t2 = f"{b.author} {b.title}".lower()
-    base = SequenceMatcher(None, t1, t2).ratio()
-    # Boost or penalize based on sequence number if present in guess
+    """Score a candidate against the guess.
+
+    Title and author are compared separately. Concatenating them meant that an
+    unknown author dominated the diff: "Unknown Author Silverthorn" against
+    "Raymond E. Feist Silverthorn" scored 0.44 even though the titles are
+    identical. When the guess has no usable author, the title alone decides.
+    """
+    title_score = SequenceMatcher(
+        None, (a.title or "").lower(), (b.title or "").lower()
+    ).ratio()
+
+    guess_author = _query_author(a)
+    if guess_author and b.author:
+        base = 0.7 * title_score + 0.3 * _author_similarity(guess_author, b.author)
+    else:
+        base = title_score
+
+    # Reward a matching sequence number, but never penalise its absence:
+    # providers return a bare book title and almost never carry the index, so
+    # the old -0.12 penalty applied to essentially every correct match.
     seq = str(a.seq or "").strip()
-    if seq:
-        if _seq_in_text(seq, getattr(b, 'title', '') or ''):
-            base = min(1.0, base + 0.12)
-        else:
-            base = max(0.0, base - 0.12)
+    if seq and _seq_in_text(seq, getattr(b, "title", "") or ""):
+        base = min(1.0, base + 0.08)
     return base
 
 def choose_meta(guess: Meta) -> Optional[Meta]:
@@ -525,15 +705,48 @@ def choose_meta(guess: Meta) -> Optional[Meta]:
     seen = set()
     unique = []
     for c in candidates:
+        # Google Books / Open Library can return an entry with no title, which
+        # made this dedup key raise AttributeError on None and abort the book.
+        if not c.title or not c.author:
+            continue
+        # Open Library fills a missing credit with the literal "Unknown". As a
+        # candidate it can only ever produce an "Unknown/" library folder, and
+        # it competes with real matches for the top slot.
+        if not is_plausible_author(c.author):
+            continue
         key = (c.author.lower(), c.title.lower())
         if key not in seen:
             unique.append(c)
             seen.add(key)
     candidates = unique
+    if not candidates:
+        return None
 
     candidates.sort(key=lambda m: _similarity(guess, m), reverse=True)
 
+    # With no author in the guess, the title alone decides, and two different
+    # books can share a title exactly ("Silverthorn" by Feist and by Tubbs both
+    # score 1.00). Taking the first is a coin flip, so under --yes refuse to
+    # pick between them and let the folder fall through untouched rather than
+    # write a confidently wrong author into the library.
+    ambiguous = False
+    if AUTO_YES and len(candidates) > 1:
+        top = _similarity(guess, candidates[0])
+        runner_up = _similarity(guess, candidates[1])
+        if (
+            abs(top - runner_up) < 0.02
+            and (candidates[0].author or "").lower() != (candidates[1].author or "").lower()
+        ):
+            ambiguous = True
+            rprint(
+                f"  [yellow]ambiguous: {candidates[0].author} and "
+                f"{candidates[1].author} both match '{guess.title}' at "
+                f"{top:.2f}; not guessing[/]"
+            )
+
     for hit in candidates:
+        if ambiguous:
+            break
         score = _similarity(guess, hit)
         rprint(
             f"  guess: [italic]{guess.title}[/] by {guess.author} ({guess.year or '?'})"
@@ -542,14 +755,24 @@ def choose_meta(guess: Meta) -> Optional[Meta]:
             f"  match: [bold]{hit.title}[/] by {hit.author} ({hit.year or '?'})  score: {score:.2f}"
         )
         default_yes = score > 0.85
-        if AUTO_YES or Confirm.ask("  use this metadata?", default=default_yes):
+        if AUTO_YES:
+            if score >= MIN_AUTO_SCORE:
+                return hit
+            rprint(
+                f"  [yellow]score {score:.2f} below auto-accept floor "
+                f"{MIN_AUTO_SCORE:.2f}; not taking this match[/]"
+            )
+            continue
+        if Confirm.ask("  use this metadata?", default=default_yes):
             return hit
     return None
 
 # ───────────── FFmpeg tag writer (title / artist / year) ─────────────────────
 def write_tags(track:Path, meta:Meta, index:int=0, total:int=0):
     if not WRITE_TAGS: return
-    tmp = track.with_suffix(track.suffix+".tmp")
+    # Keep the real extension: a bare ".tmp" suffix gives ffmpeg no way to infer
+    # the output container and it aborts with "Unable to choose an output format".
+    tmp = track.with_name(f"{track.stem}.abtmp{track.suffix}")
     cmd=[FFMPEG,"-nostdin","-loglevel","error","-y","-i",str(track),"-codec","copy",
          "-metadata",f"artist={meta.author}",
          "-metadata",f"album={meta.title}",
@@ -561,12 +784,18 @@ def write_tags(track:Path, meta:Meta, index:int=0, total:int=0):
     if meta.year: cmd+=["-metadata",f"date={meta.year}"]
     if index: cmd += ["-metadata", f"track={index}/{total or index}"]
     cmd.append(str(tmp))
-    res = subprocess.run(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    res = subprocess.run(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,text=True)
     if res.returncode == 0 and tmp.exists():
         tmp.replace(track)
-    elif tmp.exists():
-        tmp.unlink(missing_ok=True)
-        rprint("[red]✗ failed to write tags[/]")
+        return
+    # Report failures. Previously ffmpeg produced no file at all, so neither
+    # branch ran and the failure was completely invisible.
+    tmp.unlink(missing_ok=True)
+    detail = (res.stderr or "").strip().splitlines()
+    rprint(
+        f"[red]✗ failed to write tags:[/] {track.name}"
+        + (f" - {detail[-1]}" if detail else "")
+    )
 
 # ───────────── disc-flattener ────────────────────────────────────────────────
 def flatten(folder: Path, dry: bool):
@@ -631,14 +860,8 @@ MAX_AUTHOR_LEN = 50
 MAX_SERIES_LEN = 50
 MAX_TITLE_LEN  = 50
 def _truncate(name: str, limit: int) -> str:
-    """
-    Return a slugged version of name truncated to at most `limit` characters,
-    trimming any trailing dots or spaces.
-    """
-    slugged = slug(name)
-    if len(slugged) <= limit:
-        return slugged
-    return slugged[:limit].rstrip(". ")
+    """Return a slugged version of name truncated to at most `limit` characters."""
+    return truncate_component(name, limit)
 
 def dest_path(lib: Path, meta: Meta) -> Path:
     """
@@ -647,25 +870,44 @@ def dest_path(lib: Path, meta: Meta) -> Path:
       • <series>  → at most MAX_SERIES_LEN
       • <title>   → at most MAX_TITLE_LEN
     """
-    # 1) Truncate author
-    author_folder = _truncate(meta.author or "Unknown Author", MAX_AUTHOR_LEN)
-    dest = lib / author_folder
+    return format_canonical_dest(
+        dest_root=lib,
+        author=meta.author,
+        title=meta.title,
+        year=meta.year,
+        series=meta.series,
+        max_author=MAX_AUTHOR_LEN,
+        max_series=MAX_SERIES_LEN,
+        max_title=MAX_TITLE_LEN,
+    )
 
-    # 2) Truncate series, if present
-    if meta.series:
-        series_folder = _truncate(meta.series, MAX_SERIES_LEN)
-        dest /= series_folder
+def merge_tag_and_folder(tag_meta: Meta, folder_meta: Meta) -> Meta:
+    """Combine tag-derived and folder-derived metadata into one candidate.
 
-    # 3) Build the "Title (Year)" leaf
-    title_text = meta.title or "Unknown Title"
-    if meta.year:
-        title_text = f"{title_text} ({meta.year})"
-    title_slug = _truncate(title_text, MAX_TITLE_LEN)
+    Tags win field by field, the folder fills the gaps. The album frame very
+    often carries the series inline ("Serpentwar Saga 03 - Rage of a Demon
+    King"), so it is run through the same `extract_series_and_title` parser the
+    other organiser uses -- without this, combobook produced a flat
+    "<Author>/<Series NN - Title>" leaf and no series level at all.
+    """
+    author = primary_author(tag_meta.author) or folder_meta.author
+    title = (tag_meta.title or "").strip() or folder_meta.title
+    series, seq = tag_meta.series, tag_meta.seq
 
-    # 4) Append the truncated title slug
-    # 4) Append the truncated title slug
-    dest /= title_slug
-    return dest
+    if not series and title:
+        parsed_series, parsed_seq, parsed_title = extract_series_and_title(title)
+        if parsed_series and parsed_title:
+            series, seq, title = parsed_series, seq or parsed_seq, parsed_title
+
+    return Meta(
+        author=author,
+        title=title,
+        year=tag_meta.year or folder_meta.year,
+        series=series or folder_meta.series,
+        seq=seq or folder_meta.seq,
+        narr=tag_meta.narr or folder_meta.narr,
+    )
+
 
 # ───────────── process one folder ────────────────────────────────────────────
 def process(folder: Path, src: Path, lib: Path, dry: bool, yes: bool, copy: bool, summary: dict):
@@ -676,24 +918,64 @@ def process(folder: Path, src: Path, lib: Path, dry: bool, yes: bool, copy: bool
         p for p in folder.iterdir() if p.suffix.lower() in AUDIO_EXTS
     )
     if not audio_files:
+        # Multi-disc book: the tracks live in bare "Disc N" sub-folders. Tag them
+        # in place here; flatten() merges them into one folder after the move.
+        audio_files = sorted(
+            f
+            for disc in disc_children(folder)
+            for f in disc.iterdir()
+            if f.suffix.lower() in AUDIO_EXTS
+        )
+    if not audio_files:
         rprint("• no audio:", folder)
         summary["skip"] += 1
         return
 
-    # 2) Look for the first file that already has valid artist+album tags
+    # 2) Read existing tags as *evidence*, not as the answer.
+    #    A rip's `artist` frame routinely holds a disc marker ("Side 01"), a
+    #    track index, or the filename. Accepting the first such value verbatim
+    #    used to make it a top-level library folder AND skip the folder guess,
+    #    the provider lookup and the LLM fallback outright, so the mistake could
+    #    never be corrected. Now an implausible artist simply disqualifies the
+    #    tags and the book carries on down the normal path. See bug.md 4.10.
+    folder_guess = guess_from_folder(folder)
     meta: Optional[Meta] = None
+    warned_about_tags = False
     for t in audio_files:
         existing = tags_from_track(t)
-        if existing:
-            meta = existing
-            break
+        if not existing:
+            continue
+        if is_plausible_author(existing.author, filename_stem=t.stem):
+            candidate = merge_tag_and_folder(existing, folder_guess)
+            if candidate.author != "Unknown Author" and candidate.title:
+                meta = candidate
+                break
+        elif not warned_about_tags:
+            warned_about_tags = True
+            rprint(
+                f"  [yellow]ignoring implausible artist tag "
+                f"{existing.author!r} ({t.name}); using folder name and "
+                f"providers instead[/]"
+            )
 
-    # 3) If none of the files had tags, do the online‐lookup flow
+    # 3) If no usable tags, do the online‐lookup flow
     if not meta:
         # Guess metadata from folder name
-        guess = guess_from_folder(folder)
+        guess = folder_guess
         # Prompt the user (or auto‐yes) for a match
         hit = choose_meta(guess)
+        if hit:
+            # A provider knows the author, title and year; it does not return
+            # series data. Carrying the folder's series across keeps the series
+            # level that would otherwise be lost the moment a lookup succeeds.
+            hit = Meta(
+                author=hit.author,
+                title=hit.title,
+                year=hit.year or guess.year,
+                series=hit.series or guess.series,
+                seq=hit.seq or guess.seq,
+                narr=hit.narr or guess.narr,
+            )
         chosen_meta = hit
         llm_used = False
         if not chosen_meta:
@@ -731,6 +1013,16 @@ def process(folder: Path, src: Path, lib: Path, dry: bool, yes: bool, copy: bool
                 rel = folder
             rprint("[yellow]• no metadata match:[/]", rel)
             summary["unmatched"] += 1
+
+            if not MOVE_UNMATCHED:
+                # Leave it exactly where it is, untouched. A folder reaches this
+                # branch because nothing - tags, providers, LLM - could identify
+                # it, so its path under the source root is the only remaining
+                # clue. Flattening or renaming tracks here would destroy that too.
+                rprint(f"  [dim]left in place: {folder}[/]")
+                summary["left_in_place"] += 1
+                return
+
             dest = lib / UNMATCHED_DIR / slug(folder.name)
             action = 'cp' if copy else 'mv'
             rprint(f"{action if not dry else '↪'} {rel} → {dest.relative_to(lib)}")
@@ -758,8 +1050,11 @@ def process(folder: Path, src: Path, lib: Path, dry: bool, yes: bool, copy: bool
                 f"[magenta]• metadata via LLM fallback:[/] {rel} → {chosen_meta.title} by {chosen_meta.author}"
             )
 
-        for idx, t in enumerate(audio_files, 1):
-            write_tags(t, chosen_meta, idx, len(audio_files))
+        # Never mutate the user's files during a preview: every other mutating
+        # step in this function is gated on `dry`, this one was not.
+        if not dry:
+            for idx, t in enumerate(audio_files, 1):
+                write_tags(t, chosen_meta, idx, len(audio_files))
         meta = chosen_meta
 
     # 4) At this point 'meta' is guaranteed to contain author/title, etc.
@@ -822,7 +1117,7 @@ def main(src:Path, lib:Path, commit:bool, yes:bool, copy: bool):
     rprint(f"  {action_word:12}: {summary['moved']}")
     if not commit:
         rprint(f"  would_move   : {summary['would_move']}")
-    for k in ("exists","skip","unmatched"):
+    for k in ("exists","skip","unmatched","left_in_place"):
         rprint(f"  {k:12}: {summary[k]}")
 
 if __name__=="__main__":
@@ -839,6 +1134,12 @@ if __name__=="__main__":
     ap.add_argument("--commit", action="store_true")
     ap.add_argument("--yes",    action="store_true")
     ap.add_argument("--copy",   action="store_true", help="Copy instead of move when used with --commit")
+    ap.add_argument("--auto-accept-score", type=float, default=None, metavar="0..1",
+                    help=f"Minimum similarity --yes will accept without asking "
+                         f"(default {MIN_AUTO_SCORE})")
+    ap.add_argument("--move-unmatched", action="store_true",
+                    help=f"Move folders with no metadata match into <library>/{UNMATCHED_DIR}/ "
+                         "(default: leave them untouched in the source tree)")
     ap.add_argument("--llm-endpoint", default=None,
                     help="OpenAI-compatible endpoint for LM Studio fallback (use 'none' to disable)")
     ap.add_argument("--llm-model", default=None,
@@ -852,6 +1153,9 @@ if __name__=="__main__":
     ap.add_argument("--version", action="version", version=VERSION_INFO)
     args=ap.parse_args()
 
+    MOVE_UNMATCHED = args.move_unmatched
+    if args.auto_accept_score is not None:
+        MIN_AUTO_SCORE = max(0.0, min(1.0, args.auto_accept_score))
     if args.copy_buffer_mb is not None:
         COPY_BUFFER_SIZE = max(1, args.copy_buffer_mb) * 1024 * 1024
     if args.copy_workers is not None:

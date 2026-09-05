@@ -16,13 +16,36 @@ from ablib.core.console import rprint
 from ablib.core.http import SESSION
 from ablib.core.logging import review_log
 from ablib.metadata.utils import determine_best_author, enhanced_author_extraction
-from ablib.providers.mcp import execute_tool_call, serialise_tool_result, _tavily_search
+from ablib.providers.mcp import execute_tool_call, serialise_tool_result
 
 CONFIG = config.config
 
 # Maximum number of tool-call iterations per LLM call to prevent infinite loops
 _MAX_TOOL_ITERATIONS: int = 20
 _MAX_CALLS_PER_TOOL: int = 5
+
+# Score at which an MCP refinement is considered good enough to use. Shared with
+# ablib.cli.main so the two cannot drift: refine_metadata_via_mcp used to stop
+# early at 90 while its caller only accepted 95, so a stage-1 result scoring
+# 90-94 skipped the SequentialThinking stage and was then discarded anyway.
+MCP_ACCEPT_SCORE: int = 95
+
+
+def _auth_headers() -> dict[str, str]:
+    """Headers for the completions request.
+
+    Hosted OpenAI-compatible providers (OpenRouter and friends) need a bearer
+    token; a local LM Studio or Ollama server ignores it. Sending nothing at
+    all was why only local endpoints ever worked.
+    """
+    headers = {"Content-Type": "application/json"}
+    key = (CONFIG.llm_api_key or "").strip()
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+        # OpenRouter attributes requests with these; harmless elsewhere.
+        headers["HTTP-Referer"] = "https://github.com/ArisAlt/ABtools"
+        headers["X-Title"] = "ABtools"
+    return headers
 
 
 def _call_llm(
@@ -63,7 +86,10 @@ def _call_llm(
             payload["tool_choice"] = "auto"
         try:
             resp = SESSION.post(
-                CONFIG.llm_endpoint, json=payload, timeout=CONFIG.llm_timeout
+                CONFIG.llm_endpoint,
+                json=payload,
+                headers=_auth_headers(),
+                timeout=CONFIG.llm_timeout,
             )
         except requests.RequestException as exc:  # pragma: no cover
             if CONFIG.debug:
@@ -143,7 +169,11 @@ def _call_llm(
             continue
 
         if finish_reason == "length" and length_retry == 0:
-            new_budget = min(token_budget * 2, 2048)
+            # max() so the retry can never *shrink* the budget: with the
+            # CONFIG.llm_max_tokens default of 8000, min(16000, 2048) handed
+            # the retry 2048 -- a 4x cut on the very call meant to give the
+            # model more room.
+            new_budget = max(token_budget, min(token_budget * 2, 16384))
             if CONFIG.debug:
                 rprint(
                     f"  [yellow]- LM Studio response hit max_tokens={token_budget}; retrying with {new_budget}[/]"
@@ -347,35 +377,12 @@ def generate_metadata_via_llm(
 
     if missing_fields:
         missing_list = ", ".join(sorted(missing_fields))
-        tavily_context = None
-        if CONFIG.tavily_api_key:
-            query_terms: List[str] = []
-            if result and result.get("title"):
-                query_terms.append(str(result["title"]))
-            else:
-                query_terms.append(folder_label)
-            if result and result.get("author"):
-                query_terms.append(str(result["author"]))
-            query = " ".join(t for t in query_terms if t).strip()
-            if query:
-                tavily_context = _tavily_search(query)
-                if CONFIG.debug and tavily_context:
-                    rprint(f"  [cyan]- Tavily search context fetched for '{query}'[/]")
-
         retry_prompt = (
             prompt
             + "\n\nThe previous response was missing these fields: "
             + missing_list
             + ". Please research reputable audiobook sources (Audible, Open Library, Google Books, publisher sites) and try again."
         )
-        if tavily_context:
-            retry_prompt += (
-                "\n\nExternal research via Tavily Search (summaries):\n"
-                + tavily_context
-                + "\nUse this information to fill the missing metadata fields."
-            )
-        else:
-            retry_prompt += "\n\nIf needed, consult the Tavily Search API when gathering details."
 
         if CONFIG.debug:
             rprint(
@@ -393,7 +400,15 @@ def generate_metadata_via_llm(
         )
         retry_result = parse_llm_raw(retry_raw)
         if retry_result:
-            result = retry_result
+            # Merge, do not replace. This retry exists solely to fill fields the
+            # primary response lacked, but overwriting wholesale meant a retry
+            # that found `series` while omitting `narrator`/`publisher` threw
+            # away values the primary had already established -- leaving less
+            # metadata than before the retry ran. Primary wins any conflict;
+            # the retry only supplies gaps.
+            merged = dict(retry_result)
+            merged.update({k: v for k, v in result.items() if v} if result else {})
+            result = merged
 
     return result
 
@@ -535,7 +550,7 @@ def refine_metadata_via_mcp(
         if CONFIG.debug:
             rprint(f"  [cyan]- Stage 1 refinement score: {stage1_score}[/]")
 
-        if stage1_score >= 90:
+        if stage1_score >= MCP_ACCEPT_SCORE:
             return stage1_meta
 
         if CONFIG.debug:
@@ -637,4 +652,5 @@ def refine_metadata_via_mcp(
         return None
 
 
-__all__ = ["_call_llm", "generate_metadata_via_llm", "refine_metadata_via_mcp"]
+__all__ = ["_call_llm", "_auth_headers", "generate_metadata_via_llm",
+           "refine_metadata_via_mcp", "MCP_ACCEPT_SCORE"]

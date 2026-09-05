@@ -18,15 +18,15 @@ This repository contains small utilities for preparing audiobook folders for [Au
 
 - Uses data from Audible, Goodreads, OpenLibrary, and Google Books
 
-- Reorganizes folders into a clean structure using metadata from tags,
+- Reorganizes folders into Audiobookshelf canonical layout using metadata from tags,
 
-  `metadata.json` or `book.nfo`: `Author/Year - Title`
+  `metadata.json` or `book.nfo`: `Author/[Series]/Title (Year)`
 
 - Strips old or broken tags if needed
 
-- Writes metadata to both `metadata.json` and `book.nfo` (for Kodi-style readers)
+- Writes metadata to both `metadata.json` (conforming to Audiobookshelf's official sidecar schema) and `book.nfo` (for Kodi/XML-style readers)
 
-- Provides preview and logging
+- Preview (omit `--commit`, or untick Commit in the GUI) runs the full pipeline — folder guess, provider lookups and scores, LLM/MCP refinement, validation — and prints exactly what it *would* write, without touching a single file or log
 
 - Optionally prompts for confirmation or proceeds automatically
 
@@ -36,7 +36,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 
 - Local LM Studio fallback now runs a staged pipeline: provider scores ≥90 are accepted immediately, otherwise a "Metadata Refiner" call merges provider matches with MCP web searches (Audible, Open Library, Google Books, Goodreads, plus the generic `search`/`fetch_content` helpers); stubborn cases escalate to a SequentialThinking reasoning pass before a final "Tag Evaluator" assigns a confidence score.
 
-- Optional DuckDuckGo Search integration (no key required) feeds fresh web snippets to the LLM when initial metadata replies are incomplete, improving author/year/series recovery.
+- Optional DuckDuckGo Search integration (no key required) feeds fresh web snippets to the LLM when initial metadata replies are incomplete, improving author/year/series recovery. Tavily support was removed: it needed a paid key that most installs lacked, so it only ever added a failed request before the DuckDuckGo fallback ran.
 
 - LLM replies are retried with stronger prompts when fields stay blank, and any residual gaps (author/year/series/etc.) are resolved inside the staged pipeline before the verifier scores the final JSON.
 
@@ -82,6 +82,14 @@ This repository contains small utilities for preparing audiobook folders for [Au
 
 - Whisper transcription settings have been retired from the GUI and CLI; tagging now relies solely on metadata lookups and LM Studio research.
 
+- GUI ships eight polished themes (Neutral Slate, Tokyo Night, Catppuccin Mocha, Nord, Gruvbox Dark, Bchips Violet, Dracula, and GitHub Light), switchable live from the Theme dropdown and remembered between launches in `~/.abtools_gui.json`. Every theme is contrast-checked to WCAG AA for UI text.
+
+- GUI shows hover help on every button, field and checkbox, explaining what each option actually does - including the non-obvious ones (Timeout only applies with Network Mode on; Destination is optional for Find Duplicates; Find Duplicates never deletes anything).
+
+- Multi-disc books (`Book/Disc 1`, `Book/Disc 2`) are treated as one book and merged on move, rather than each disc being moved separately
+
+- Pointing any tool directly at a single book folder works, not just at a library root
+
 - Duplicate catalog prevents importing the same book twice
 
 
@@ -90,7 +98,7 @@ This repository contains small utilities for preparing audiobook folders for [Au
 
 
 
-- Python 3.11 (tested with the Windows Store build; create the dedicated virtual environment below)
+- Python 3.11 or newer (tested on the Windows Store 3.11 build and on Linux with 3.14; create the dedicated virtual environment below)
 
 - Dependencies (installed via `pip install -r requirements.txt`):
 
@@ -106,7 +114,13 @@ This repository contains small utilities for preparing audiobook folders for [Au
 
   - `tqdm` (optional, for progress display in `find_duplicates.py`)
 
-  - An OpenAI-compatible endpoint (LM Studio 0.2+ exposes one locally; start Llama 3.2 8B Instruct on port 1234 for best results)
+  - `duckduckgo-search` (optional web snippets for the LLM fallback)
+
+  - `mcp<2` (only needed to run `mcp_server/`; pinned because mcp 2.x renamed `FastMCP` to `MCPServer`)
+
+  - `tkinter` (ships with Python on Windows/macOS; on Linux install your distro's `python-tk` / `python3-tk` package for `AbtoolsGui.py`)
+
+  - An OpenAI-compatible endpoint (LM Studio 0.2+ exposes one locally; point ABtools at it with --llm-endpoint; the default is port 8888)
 
 
 
@@ -136,15 +150,15 @@ pip install -r requirements.txt
 
 
 
-1. Download and install [LM Studio](https://lmstudio.ai/). Open the **Llama 3.2 8B Instruct** model (or your preferred chat model) and start the local server on port `1234` so it exposes an OpenAI-compatible `/v1/chat/completions` endpoint.
+1. Download and install [LM Studio](https://lmstudio.ai/). Open the **Llama 3.2 8B Instruct** model (or your preferred chat model) and start the local server on port `8888` so it exposes an OpenAI-compatible `/v1/chat/completions` endpoint.
 
-2. Enable LM Studio's MCP server (Tools -> MCP) and enable the provider tools (`search_audible_tool`, `search_openlibrary_tool`, `search_google_books_tool`, `search_goodreads_tool`) plus the generic `search` and `fetch_content` helpers. The CLI targets `http://127.0.0.1:1234/v1/chat/completions` by default.
+2. Enable LM Studio's MCP server (Tools -> MCP) and enable the provider tools (`search_audible_tool`, `search_openlibrary_tool`, `search_google_books_tool`, `search_goodreads_tool`) plus the generic `search` and `fetch_content` helpers. The CLI targets `http://127.0.0.1:8888/v1/chat/completions` by default.
 
 3. Run `search_and_tag.py` or `combobook.py` with the defaults or override them explicitly:
 
    ```bash
 
-   python search_and_tag.py "E:/Audio Books" --commit --llm-endpoint http://127.0.0.1:1234/v1/chat/completions --llm-model llama-3.2-8b-instruct
+   python search_and_tag.py "E:/Audio Books" --commit --llm-endpoint http://127.0.0.1:8888/v1/chat/completions --llm-model llama-3.2-8b-instruct
 
    ```
 
@@ -164,20 +178,17 @@ pip install -r requirements.txt
 
 
 
-| `combobook.py` | v1.18 | `ablib/combobook.py` (Wrapper) |
-
-| `AbtoolsGui.py` | v0.17 | `ablib/AbtoolsGui.py` (Wrapper) |
-
-| `flatten_discs.py` | v1.4 | `flatten_discs.py` |
-
-| `restructure_for_audiobookshelf.py` | v5.4 | `restructure_for_audiobookshelf.py` |
-
-| `repair_m4b.py` | v1.0 | `repair_m4b.py` |
+| `combobook.py` | v1.20 | `combobook.py` |
+| `AbtoolsGui.py` | v0.17 | `AbtoolsGui.py` |
+| `flatten_discs.py` | v1.5 | `flatten_discs.py` |
+| `restructure_for_audiobookshelf.py` | v5.5 | `restructure_for_audiobookshelf.py` |
+| `repair_m4b.py` | v1.1 | `repair_m4b.py` |
 | `search_and_tag.py` | v2.30 | `search_and_tag.py` |
-| `ab_encode.py` | v1.0 | `ab_encode.py` |
+| `ab_encode.py` | v1.3 | `ab_encode.py` |
 | `find_duplicates.py` | v0.5 | `find_duplicates.py` |
 | `abclient.py` | v0.2 | `abclient.py` |
-| `catalog.py` | v0.1 | `ABtools/catalog.py` |
+| `catalog.py` | v0.1 | `catalog.py` |
+| `mcp_server/server.py` | v1.1.0 | `mcp_server/server.py` |
 
 
 
@@ -187,7 +198,7 @@ Run any script with `--version` to print its version and file location.
 
 ## `combobook.py`
 
-`combobook.py` tags, flattens and moves audiobook folders in a single pass. It searches Open Library, Google Books and Audible, ranks potential matches using fuzzy similarity and asks you to confirm before tagging and moving files. When provider lookups and prompts fail, the script now consults the shared LM Studio fallback to propose metadata, tags every track automatically, and logs which folders used the AI assist. Only when both paths fail does it fall back to moving the folder into an `_unmatched` directory inside your library for manual review.
+`combobook.py` tags, flattens and moves audiobook folders in a single pass. It searches Open Library, Google Books and Audible, ranks potential matches using fuzzy similarity and asks you to confirm before tagging and moving files. Existing tags are treated as evidence rather than as the answer: an `artist` frame holding a disc marker, a track index or the file's own name is rejected and the book falls through to the folder name, the providers and the LLM, so a bad tag can no longer become a top-level library folder. With `--yes`, matches below `--auto-accept-score` (0.75) are declined, and two candidates by different authors tying on the same title are refused rather than decided by sort order. When provider lookups and prompts fail, the script now consults the shared LM Studio fallback to propose metadata, tags every track automatically, and logs which folders used the AI assist. When both paths fail the folder is **left exactly where it is**, untouched, and reported as unmatched — for a book with no usable tags, its position in the source tree is the last clue about what it is, and flattening it into a single `_unmatched` bucket throws that away. Pass `--move-unmatched` (or tick **Move unmatched** in the GUI) to collect them under `<library>/_unmatched/` instead.
 
 
 
@@ -280,6 +291,12 @@ python combobook.py "source_folder" "library_folder" --commit --yes
 # Tag + copy instead of move
 
 python combobook.py "source_folder" "library_folder" --commit --copy
+```
+
+Collect the books nothing could identify into `<library>/_unmatched/` rather than leaving them in the source tree:
+
+```bash
+python combobook.py "source_folder" "library_folder" --commit --move-unmatched
 
 ```
 
@@ -296,6 +313,16 @@ Both `combobook.py` and `restructure_for_audiobookshelf.py` can copy books when 
 ## `AbtoolsGui.py`
 
 `AbtoolsGui.py` offers a Tkinter interface for `combobook.py` and related workflows. The layout now uses titled `ttk.LabelFrame` sections that stack vertically: File Paths (source, destination, Plan JSON pickers), Operation Settings (commit/copy/yes toggles, timeout, threads, compare-by, recurse, network and "only src log" switches), Model Configuration (LLM controls with an enable toggle), Actions, and a Log panel with a `tk.Text` widget + scrollbar. Inputs expand with `grid()` weights, and padding is consistent across sections. Numeric inputs use `ttk.Spinbox`, model selectors are `ttk.Combobox`, and the primary "Move and Tag" action uses a bold ttk style for emphasis. The log pane shares space with the progress bar, and the ETA label sits at the bottom-right.
+
+The action row is Tag / Move / Restructure / Find Duplicates / Stop, all one height, with the primary and destructive actions distinguished by colour rather than size.
+
+**Theming.** A Theme dropdown in the bottom status row switches between eight curated dark and light palettes live, without restarting; the choice is saved to `~/.abtools_gui.json`. Palettes are plain data in the `THEMES` dict at the top of `AbtoolsGui.py`, so adding one is a single entry - `apply_theme()` restyles every widget, including already-printed log output. Fonts are resolved against the families actually installed rather than hardcoded, so the UI does not fall back to something arbitrary on Linux or macOS.
+
+**Hover help.** Every button, entry, spinbox, combobox and checkbox carries a tooltip describing what it actually does. Tooltips are clamped to the screen so the bottom-row buttons do not push them off the edge.
+
+**Providers.** A Provider dropdown covers LM Studio, Ollama, vLLM and **OpenRouter**, filling in the endpoint and checking it. The local runners need no credentials; OpenRouter needs an API key, supplied either in the API key field or — preferably — via the `ABTOOLS_LLM_API_KEY` or `OPENROUTER_API_KEY` environment variable. By default the key is held in memory only. Ticking **Remember key** stores it in `~/.abtools_gui.json` so it survives a restart — in **plain text**, though the file is written owner-only (`0600`). Unticking erases the stored key rather than merely stopping future writes. An environment variable is safer and always takes precedence over a stored key. The CLI takes the same value via `--llm-api-key`.
+
+**Model discovery.** The Model dropdown is filled from the server itself: the GUI queries the endpoint's `/v1/models` shortly after launch, whenever you finish editing the Endpoint field, and on demand via the `↻` button. A status line reports how many models the server has loaded, warns when the selected model is not among them, and says so plainly when the endpoint cannot be reached — in which case the list falls back to models you have used before. Endpoint, model and the recent-model list persist in `~/.abtools_gui.json`. You can still type any model name.
 
 Debug output is written to `AudioBooks_tools/AbtoolsGui.debug.log` so you can inspect the underlying CLI runs when troubleshooting.
 
@@ -339,7 +366,7 @@ details.
 
 
 
-For stubborn matches, keep the default --llm-endpoint http://127.0.0.1:1234/v1/chat/completions or set it explicitly alongside --llm-model llama-3.2-8b-instruct to consult LM Studio. The fallback now runs a four-stage pipeline:
+For stubborn matches, keep the default --llm-endpoint http://127.0.0.1:8888/v1/chat/completions or set it explicitly alongside --llm-model llama-3.2-8b-instruct to consult LM Studio. The fallback now runs a four-stage pipeline:
 
 
 
@@ -355,7 +382,9 @@ For stubborn matches, keep the default --llm-endpoint http://127.0.0.1:1234/v1/c
 
 Supplying a DuckDuckGo key ((no key required) or DUCKDUCKGO_MCP) lets the Metadata Refiner and SequentialThinking stages pull live web snippets before resolving missing fields.
 
-Successful LLM suggestions still skip the review log and are written to tags, metadata.json, and book.nfo like any other metadata. The old `--llm-threshold` flag is accepted for compatibility but the pipeline always uses the 90-point trigger above.
+Successful LLM suggestions still skip the review log and are written to tags, metadata.json, and book.nfo like any other metadata.
+
+`--llm-threshold` is live, not legacy: a provider match scoring below it triggers the LLM fallback (default 85, clamped to 80-100). The separate 90-point trigger above governs only whether the MCP refinement stage is attempted. Note that the confirmation prompt for a low-confidence match is currently hardcoded to fire below 70 rather than below `--llm-threshold` - see [`bug.md`](./bug.md) 2.4.
 
 
 
@@ -369,7 +398,7 @@ Successful LLM suggestions still skip the review log and are written to tags, me
 
 ## `restructure_for_audiobookshelf.py`
 
-`restructure_for_audiobookshelf.py` reorganizes a source collection into Audiobookshelf layout. It reads tags from the audio files first, then `metadata.json` or `book.nfo`, and finally falls back to folder names. Disc folders are flattened and books are moved or copied to `<library>/Author/Series?/Title (Year)/`. Series names and volume numbers are detected with fuzzy matching (e.g. `Book 3`, `#3`, `Volume III`). When run with `--interactive`, the script prompts for missing series info. Metadata matching is handled by `search_and_tag.py`. Track renaming now avoids collisions by staging files with temporary names first.
+`restructure_for_audiobookshelf.py` reorganizes a source collection into Audiobookshelf canonical layout (`<dest>/Author/[Series]/Title (Year)` or `<dest>/Author/[Series]/Title` if year is omitted). It resolves metadata in priority order: embedded audio tags first (ID3, MP4, Vorbis), then sidecars (`metadata.json` or `book.nfo`), and finally falls back to folder name patterns and directory hierarchy. Series names and indices are detected via pattern matching (e.g. `Book 3`, `#3`, `Vol. 2`) or source folder nesting. Multi-disc books (`Disc 1`, `CD 2`) are preserved as unified titles.
 
 
 
@@ -458,4 +487,35 @@ python find_duplicates.py "E:\\Downloads" "E:\\Audiobooks" --by name --hash-time
 
 
 Edit this file to enable or disable experimental features.
+
+
+
+## Known Issues & Bug Tracker
+
+A comprehensive codebase audit report documenting all known logic errors, fatal startup bugs, dry-run caveats, and provider issues is available in [`bug.md`](./bug.md). Every entry carries a status marker, and three claims from an earlier audit pass are marked **REFUTED** with evidence - read those before "fixing" them, because the current code is correct.
+
+All P0 and P1 entries are fixed. The remaining open items are the P2 metadata-correctness group in section 5, of which 5.2 (a regex that silently corrupts author/title for hyphenated names) is the highest impact.
+
+## Configuration
+
+Settings resolve in this order, highest first: an explicit CLI flag or GUI selection, then the saved GUI settings, then the environment, then the defaults in `ablib/core/constants.py`.
+
+| Variable | Sets |
+|---|---|
+| `ABTOOLS_LLM_ENDPOINT` | OpenAI-compatible chat-completions URL |
+| `ABTOOLS_LLM_MODEL` | Model name to request |
+| `ABTOOLS_LLM_API_KEY` | Bearer token for a hosted provider (`OPENROUTER_API_KEY` also accepted) |
+| `ABTOOLS_LLM_TIMEOUT` | Request timeout, seconds |
+| `ABTOOLS_LLM_MAX_TOKENS` | Response token budget |
+| `ABTOOLS_DEBUG` | Verbose diagnostics |
+
+Run `python search_and_tag.py --show-config` to see each effective value and where it came from. The API key is reported as set/unset, never printed.
+
+`OPENAI_BASE_URL` and `OPENAI_MODEL_NAME` are deliberately **not** honoured — silently inheriting a variable set for another tool could point tagging at a paid hosted API without you realising.
+
+This is also the only way to configure `mcp_server/`, which has no command-line flags of its own.
+
+## Design Proposals
+
+[`proposal.md`](./proposal.md) covers making the LLM model configuration dynamic - discovering models from the server's `/v1/models` endpoint instead of the hardcoded list, persisting recently used models, and a configuration cascade for the CLI, GUI and MCP server.
 

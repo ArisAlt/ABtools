@@ -15,7 +15,11 @@ from mutagen.mp4 import MP4StreamInfoError
 from ablib.core import config, constants
 from ablib.core.console import Confirm, rprint
 from ablib.core.logging import log, review_log
-from ablib.metadata.llm import generate_metadata_via_llm, refine_metadata_via_mcp
+from ablib.metadata.llm import (
+    MCP_ACCEPT_SCORE,
+    generate_metadata_via_llm,
+    refine_metadata_via_mcp,
+)
 from ablib.metadata.utils import (
     format_metadata_summary,
     guess_from_path,
@@ -33,8 +37,17 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
         llm_threshold = int(getattr(args, "llm_threshold", 85))
     except (TypeError, ValueError):
         llm_threshold = 85
-    llm_threshold = max(80, min(100, llm_threshold))
+    # Clamped to 0-100, not 80-100. The old floor silently raised any request
+    # below 80 -- asking for 70 quietly became 80 and the LLM fired far more
+    # often than intended. 0 disables the fallback entirely (no score is below
+    # it); 100 sends everything short of a perfect match to the LLM.
+    llm_threshold = max(0, min(100, llm_threshold))
     setattr(args, "llm_threshold", llm_threshold)
+
+    # Preview runs the whole pipeline -- lookups, refinement, validation -- and
+    # withholds only the writes, so "preview" actually shows what would happen.
+    # Defaults True so callers that omit the flag keep the old behaviour.
+    commit = bool(getattr(args, "commit", True))
 
     if path.name == "Unknown Author" or path.parent.name == "Unknown Author":
         rprint("- skip Unknown Author:", path)
@@ -47,6 +60,9 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
             if path.is_file()
             else [f for f in path.rglob("*") if f.suffix.lower() in constants.AUDIO_EXTS]
         )
+        if not commit:
+            rprint(f"[cyan]->[/] {path}  [dim]would strip tags from {len(targets)} file(s)[/]")
+            return
         ok = 0
         for target in targets:
             try:
@@ -100,7 +116,7 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
             mcp_meta = refine_metadata_via_mcp(
                 folder, a_guess, t_guess, s_guess, si_guess, 0
             )
-            if mcp_meta and mcp_meta.get("score", 0) >= 95:
+            if mcp_meta and mcp_meta.get("score", 0) >= MCP_ACCEPT_SCORE:
                 rprint(
                     f"  [magenta]- metadata refined via MCP (score: {mcp_meta['score']})[/]"
                 )
@@ -119,8 +135,10 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
                     meta = llm_meta
                     llm_used = True
                 else:
-                    log("NOMATCH", str(path))
-                    review_log(path, "no_match")
+                    rprint("  [yellow]- no metadata found[/]")
+                    if commit:
+                        log("NOMATCH", str(path))
+                        review_log(path, "no_match")
                     return
         else:
             llm_meta = generate_metadata_via_llm(
@@ -134,8 +152,10 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
                 meta = llm_meta
                 llm_used = True
             else:
-                log("NOMATCH", str(path))
-                review_log(path, "no_match")
+                rprint("  [yellow]- no metadata found[/]")
+                if commit:
+                    log("NOMATCH", str(path))
+                    review_log(path, "no_match")
                 return
     else:
         score, hit = result
@@ -170,7 +190,7 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
                     best_score or 0,
                     meta,
                 )
-                if mcp_meta and mcp_meta.get("score", 0) >= 95:
+                if mcp_meta and mcp_meta.get("score", 0) >= MCP_ACCEPT_SCORE:
                     rprint(
                         f"  [magenta]- metadata refined via MCP (score: {mcp_meta['score']})[/]"
                     )
@@ -206,7 +226,12 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
                     meta = llm_meta
                     llm_used = True
 
-        if not llm_used and best_score is not None and best_score < 70 and not args.yes:
+        # Gate on the configured threshold, not a hardcoded 70. Previously a
+        # match scoring between 70 and --llm-threshold whose LLM fallback had
+        # failed was tagged with no prompt at all, and --no was silently a
+        # no-op for anything >= 70 because the check below sat inside this
+        # guard. --yes still bypasses the prompt entirely.
+        if not llm_used and best_score is not None and best_score < llm_threshold and not args.yes:
             score_val = (
                 f"{best_score:.1f}" if isinstance(best_score, float) else str(best_score)
             )
@@ -226,16 +251,24 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
             prompt_message = "\n".join(summary_lines)
             if args.no:
                 proceed = False
-            elif hasattr(Confirm, "ask"):
-                proceed = Confirm.ask(prompt_message, default=False)
             else:
-                proceed = Confirm(prompt_message, default=False)
+                # Every Confirm in play exposes .ask -- rich's classmethod, the
+                # console fallback's staticmethod, and the GUI's _GuiConfirm
+                # instance. The old `else: Confirm(...)` branch was therefore
+                # unreachable, and would have raised if it ever ran.
+                proceed = Confirm.ask(prompt_message, default=False)
             if not proceed:
-                log("SKIP", str(path))
-                review_log(path, "user_skip")
+                rprint("  [yellow]- declined[/]")
+                if commit:
+                    log("SKIP", str(path))
+                    review_log(path, "user_skip")
                 return
 
     valid, validation_issues = validate_metadata_fields(meta)
+    if valid and validation_issues:
+        # Advisory only -- worth showing, but not a reason to refuse a book
+        # whose title and author are sound.
+        rprint(f"  [yellow]- metadata notes: {', '.join(validation_issues)}[/]")
     if not valid:
         issues_text = ", ".join(validation_issues)
         rprint(f"  [yellow]- metadata validation failed: {issues_text}")
@@ -265,22 +298,12 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
         if not valid:
             issues_text = ", ".join(validation_issues)
             rprint("  [red]- validation failed; book queued for review")
-            log("REVIEW", f"{path} validation_failed: {issues_text}")
-            review_log(path, "validation_failed")
+            if commit:
+                log("REVIEW", f"{path} validation_failed: {issues_text}")
+                review_log(path, "validation_failed")
             return
         if validation_refined:
             rprint("  [magenta]- metadata passed validation after refinement[/]")
-
-    ok = 0
-    for idx, target in enumerate(targets, 1):
-        try:
-            write_tags(target, meta, idx, len(targets))
-            ok += 1
-        except (MutagenError, MP4StreamInfoError):
-            log("ERR", f"tag {target}")
-
-    label = "OK" if ok == len(targets) else "ERR"
-    rprint(f"  [green]tagged {ok}/{len(targets)} file(s)[/]")
 
     suffix_parts: List[str] = []
     if llm_used:
@@ -294,6 +317,25 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
 
     suffix = " " + " ".join(suffix_parts) if suffix_parts else ""
     meta_summary = format_metadata_summary(meta)
+
+    if not commit:
+        # Preview: everything above ran for real -- guess, provider scores,
+        # match, refinement -- so the user can see what *would* be written.
+        # Only the writes are withheld.
+        rprint(f"  [dim]would tag {len(targets)} file(s):[/] {meta_summary}{suffix}")
+        rprint(f"  [dim]would write metadata.json + book.nfo in[/] {path}")
+        return
+
+    ok = 0
+    for idx, target in enumerate(targets, 1):
+        try:
+            write_tags(target, meta, idx, len(targets))
+            ok += 1
+        except (MutagenError, MP4StreamInfoError):
+            log("ERR", f"tag {target}")
+
+    label = "OK" if ok == len(targets) else "ERR"
+    rprint(f"  [green]tagged {ok}/{len(targets)} file(s)[/]")
     log(label, f"{path}  ({ok}/{len(targets)}){suffix} | {meta_summary}")
 
     if label == "OK":
@@ -301,10 +343,15 @@ def process_leaf(path: Path, args: argparse.Namespace) -> None:
 
 
 def walk_leaves(root: Path) -> List[Path]:
+    """Find book folders at or below `root`.
+
+    `root` itself is a candidate: `rglob` only yields descendants, so with
+    `--recurse` pointed straight at a single book folder nothing was found.
+    """
     if root.is_file():
         return [root]
     leaves: List[Path] = []
-    for candidate in root.rglob("*"):
+    for candidate in [root, *root.rglob("*")]:
         if candidate.is_dir() and has_audio(candidate) and not any(
             child.is_dir() and has_audio(child) for child in candidate.iterdir()
         ):
@@ -317,7 +364,7 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Tag or strip audiobook files.",
         epilog=textwrap.dedent(
-            """\
+            f"""\
             flags
             -----
               --recurse     walk sub-folders that hold audio
@@ -325,14 +372,14 @@ def build_parser() -> argparse.ArgumentParser:
               --yes         auto-accept matches (tag mode)
               --no          auto-decline matches (tag mode)
               --striptags   delete *all* tags instead of adding
-              --llm-endpoint URL   OpenAI-compatible endpoint (default: http://127.0.0.1:1234/v1/chat/completions)
-              --llm-model NAME     model to request from the endpoint (default: mistral-7b-instruct-q4)
+              --llm-endpoint URL   OpenAI-compatible endpoint (default: {config.config.llm_endpoint})
+              --llm-model NAME     model to request from the endpoint (default: {config.config.llm_model_name})
               --llm-threshold SCORE  confidence score before using the LLM (default: 85)
-              --tavily-key KEY     Tavily Search API key for supplemental research
+              --llm-api-key KEY    bearer token for a hosted endpoint (e.g. OpenRouter)
             """
         ),
     )
-    parser.add_argument("root", type=Path, help="file or folder")
+    parser.add_argument("root", type=Path, nargs="?", help="file or folder")
     parser.add_argument(
         "--debug", action="store_true", help="print full tracebacks on errors"
     )
@@ -343,12 +390,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--striptags", action="store_true")
     parser.add_argument(
         "--llm-endpoint",
-        default="http://127.0.0.1:8888/v1/chat/completions",
+        default=config.config.llm_endpoint or constants.DEFAULT_LLM_ENDPOINT,
         help="OpenAI-compatible completion endpoint (use 'none' to disable; default: %(default)s)",
     )
     parser.add_argument(
         "--llm-model",
-        default="mistral-7b-instruct-q4",
+        default=config.config.llm_model_name or constants.DEFAULT_LLM_MODEL_NAME,
         help="Model name to request from the LM Studio endpoint (default: %(default)s)",
     )
     parser.add_argument(
@@ -356,12 +403,26 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=85,
         metavar="SCORE",
-        help="use the local LLM when provider score falls below SCORE (default: 85, minimum: 80)",
+        help=(
+            "Use the LLM when the best provider score falls below SCORE "
+            "(default: 85, range 0-100). 0 never uses it; 100 uses it for "
+            "anything short of a perfect match."
+        ),
     )
     parser.add_argument(
-        "--tavily-key",
+        "--show-config",
+        action="store_true",
+        help="Print the effective settings and where each came from, then exit.",
+    )
+    parser.add_argument(
+        "--llm-api-key",
         default=None,
-        help="Tavily Search API key for supplemental research (use 'none' to disable)",
+        metavar="KEY",
+        help=(
+            "Bearer token for a hosted OpenAI-compatible endpoint such as "
+            "OpenRouter. Prefer the ABTOOLS_LLM_API_KEY or OPENROUTER_API_KEY "
+            "environment variable so the key stays out of your shell history."
+        ),
     )
     return parser
 
@@ -369,6 +430,18 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.show_config:
+        rprint("[bold]effective configuration[/]")
+        for name, value, source in config.describe_config():
+            rprint(f"  {name:16} {value:<48} [dim]<- {source}[/]")
+        for problem in config.env_problems:
+            rprint(f"  [yellow]! {problem}[/]")
+        rprint("\n[dim]precedence: CLI flag > saved GUI settings > ABTOOLS_* env > defaults[/]")
+        return
+
+    if args.root is None:
+        parser.error("the following arguments are required: root")
     CONFIG.debug = args.debug
     base = args.root if args.root.is_dir() else args.root.parent
     config.update_paths(base)
@@ -379,22 +452,19 @@ def main(argv: Optional[List[str]] = None) -> None:
     model_arg = (args.llm_model or "").strip()
     CONFIG.llm_model_name = model_arg or None
 
-    if args.tavily_key is not None:
-        tavily_arg = args.tavily_key.strip()
-        CONFIG.tavily_api_key = (
-            None if tavily_arg.lower() in {"", "none", "null"} else tavily_arg
-        )
+    # An explicit flag wins; otherwise whatever the environment already put on
+    # CONFIG.llm_api_key stands.
+    if args.llm_api_key:
+        CONFIG.llm_api_key = args.llm_api_key.strip() or None
 
-    args.llm_threshold = max(80, min(100, args.llm_threshold))
+
+    args.llm_threshold = max(0, min(100, args.llm_threshold))
     if not args.root.exists():
         sys.exit("path not found")
 
     items = walk_leaves(args.root) if args.recurse else [args.root]
     for leaf in items:
         try:
-            if not args.commit:
-                rprint(f"[dim]preview:[/] {leaf}")
-                continue
             process_leaf(leaf, args)
         except Exception as exc:
             rprint(f"[red]ERR:[/] {leaf} - {exc}")
